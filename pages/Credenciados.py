@@ -3,26 +3,24 @@ import requests
 import pandas as pd
 import io
 
-# Função para buscar os dados da API
-# Utiliza o cache do Streamlit para evitar novas chamadas à API a cada interação do usuário
+# --- VERIFICAÇÃO DE LOGIN (GUARDA DE PÁGINA) ---
+# Esta é a parte mais importante para a segurança.
+# Se o usuário não estiver logado, a execução da página para aqui.
+if not st.session_state.get('logged_in'):
+    st.error("🔒 Você precisa estar logado para acessar esta página.")
+    st.info("Por favor, retorne à página de Login e insira suas credenciais.")
+    st.stop()  # Interrompe a execução do script
+
+# --- FUNÇÕES DE DADOS (APRIMORADAS) ---
+
 @st.cache_data
 def fetch_data(api_token):
-    """
-    Busca os dados da API de credenciados usando um token de autorização.
-
-    Args:
-        api_token (str): O token de API para autenticação.
-
-    Returns:
-        list: Uma lista de dicionários com os dados dos credenciados ou None em caso de erro.
-    """
+    """Busca os dados da API de credenciados."""
     url = "https://sigyo.uzzipay.com/api/credenciados?expand=dadosAcesso,municipio,municipio.estado,modulos"
-    headers = {
-        "Authorization": f"Bearer {api_token}"
-    }
+    headers = {"Authorization": f"Bearer {api_token}"}
     try:
         response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()  # Lança um erro para respostas com status 4xx/5xx
+        response.raise_for_status()
         return response.json()
     except requests.exceptions.HTTPError as err:
         if response.status_code == 401:
@@ -34,110 +32,85 @@ def fetch_data(api_token):
         st.error(f"Erro de conexão ao buscar dados: {e}")
         return None
 
-# Função para achatar a estrutura JSON e prepará-la para o DataFrame
-def flatten_data(data):
+def flatten_data_fully(data):
     """
-    Transforma a lista de dicionários aninhados da API em uma lista "achatada".
-
-    Args:
-        data (list): A lista de dados vinda da API.
-
-    Returns:
-        list: Uma lista de dicionários com a estrutura de dados simplificada.
+    Função aprimorada para achatar o JSON, capturando TODOS os campos,
+    incluindo os de 'dadosAcesso', 'municipio' e 'estado'.
     """
     processed_data = []
     for entry in data:
-        # Extrai os módulos e os concatena em uma string
-        modulos = ", ".join([modulo['nome'] for modulo in entry.get('modulos', [])])
+        flat_entry = {}
+        
+        # Adiciona chaves do nível principal
+        for key, value in entry.items():
+            if not isinstance(value, (dict, list)):
+                flat_entry[key] = value
 
-        flat_entry = {
-            'ID': entry.get('id'),
-            'Nome Fantasia': entry.get('nome'),
-            'Razão Social': entry.get('razao_social'),
-            'CNPJ': entry.get('cnpj'),
-            'Situação': entry.get('situacao'),
-            'Ativo': entry.get('ativo'),
-            'Data de Cadastro': entry.get('data_cadastro'),
-            'Telefone': entry.get('telefone'),
-            'Email Responsável': entry.get('dadosAcesso', {}).get('email_responsavel'),
-            'Nome Responsável': entry.get('dadosAcesso', {}).get('nome_responsavel'),
-            'Município': entry.get('municipio', {}).get('nome'),
-            'Estado': entry.get('municipio', {}).get('estado', {}).get('nome'),
-            'UF': entry.get('municipio', {}).get('estado', {}).get('sigla'),
-            'Logradouro': entry.get('logradouro'),
-            'Número': entry.get('numero'),
-            'Bairro': entry.get('bairro'),
-            'CEP': entry.get('cep'),
-            'Módulos': modulos
-        }
+        # Adiciona chaves do 'dadosAcesso'
+        if 'dadosAcesso' in entry and entry['dadosAcesso']:
+            for key, value in entry['dadosAcesso'].items():
+                flat_entry[f"acesso_{key}"] = value
+
+        # Adiciona chaves do 'municipio'
+        if 'municipio' in entry and entry['municipio']:
+            for key, value in entry['municipio'].items():
+                if not isinstance(value, dict):
+                    flat_entry[f"municipio_{key}"] = value
+            
+            # Adiciona chaves do 'estado' dentro de 'municipio'
+            if 'estado' in entry['municipio'] and entry['municipio']['estado']:
+                for key, value in entry['municipio']['estado'].items():
+                    flat_entry[f"estado_{key}"] = value
+        
+        # Concatena os módulos
+        if 'modulos' in entry and entry['modulos']:
+            flat_entry["modulos"] = ", ".join([mod['nome'] for mod in entry['modulos']])
+            
         processed_data.append(flat_entry)
     return processed_data
 
-# Função para converter o DataFrame para um arquivo Excel em memória
 def to_excel(df):
-    """
-    Converte um DataFrame do Pandas para um arquivo Excel (formato XLSX) em memória.
-
-    Args:
-        df (pd.DataFrame): O DataFrame a ser convertido.
-
-    Returns:
-        bytes: O conteúdo do arquivo Excel em bytes.
-    """
+    """Converte um DataFrame para um arquivo Excel em memória."""
     output = io.BytesIO()
-    # 'engine="openpyxl"' é necessário para o formato .xlsx
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Credenciados')
-    processed_data = output.getvalue()
-    return processed_data
+    return output.getvalue()
 
-# --- Interface da Aplicação Streamlit ---
+# --- INTERFACE DA APLICAÇÃO ---
 
-st.set_page_config(layout="wide", page_title="Visualizador de Credenciados")
+st.set_page_config(layout="wide", page_title="Dados dos Credenciados")
 
 st.title("📄 Visualizador e Exportador de Credenciados")
 st.markdown("Insira seu Token de API para buscar os dados, selecionar as colunas desejadas e exportar para Excel.")
 
-# Campo para inserção do Token
 api_token = st.text_input("Insira seu Token de API", type="password")
 
 if api_token:
-    # Busca os dados da API
     json_data = fetch_data(api_token)
 
     if json_data:
-        # Processa e "achata" o JSON para um formato tabular
-        processed_data = flatten_data(json_data)
-        
-        # Cria o DataFrame com os dados processados
+        processed_data = flatten_data_fully(json_data)
         df = pd.DataFrame(processed_data)
 
         st.header("Visualização dos Dados")
         st.info(f"Total de {len(df)} registros encontrados.")
 
-        # Seleção de colunas
-        all_columns = df.columns.tolist()
-        default_columns = ['Nome Fantasia', 'CNPJ', 'Situação', 'Município', 'UF', 'Nome Responsável', 'Email Responsável']
+        all_columns = sorted(df.columns.tolist())
         
-        # Garante que as colunas padrão existam no dataframe antes de usá-las
-        valid_default_columns = [col for col in default_columns if col in all_columns]
+        # Sugestão de colunas padrão (pode personalizar)
+        default_columns = [col for col in ['nome', 'cnpj', 'situacao', 'municipio_nome', 'estado_sigla', 'acesso_nome_responsavel', 'acesso_email_responsavel'] if col in all_columns]
 
         selected_columns = st.multiselect(
             "Selecione as colunas que deseja visualizar e exportar:",
             options=all_columns,
-            default=valid_default_columns
+            default=default_columns
         )
 
         if selected_columns:
-            # Filtra o DataFrame com base nas colunas selecionadas
             df_selected = df[selected_columns]
-
-            # Mostra os dados na tela
             st.dataframe(df_selected, use_container_width=True)
 
             st.header("Exportar Dados")
-
-            # Botão de download para o arquivo XLSX
             excel_data = to_excel(df_selected)
             st.download_button(
                 label="📥 Baixar dados selecionados como XLSX",
