@@ -13,16 +13,17 @@ def check_hashes(password, hashed_text):
         return True
     return False
 
-# "Banco de dados" de usuários. A senha para ambos é "12345"
+# "Banco de dados" de usuários.
+# CORREÇÃO: Hashes de senha atualizados para "12345"
 USERS_DB = {
     "admin@email.com": {
         "name": "Administrador",
-        "hashed_password": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+        "hashed_password": "5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5",
         "role": "admin"
     },
     "usuario@email.com": {
         "name": "Usuário Comum",
-        "hashed_password": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+        "hashed_password": "5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5",
         "role": "user"
     }
 }
