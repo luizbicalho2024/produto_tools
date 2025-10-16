@@ -49,7 +49,7 @@ def to_excel(df, sheet_name='Dados'):
 
 def display_data_section(title, data, file_name):
     """
-    Função aprimorada que pré-processa a coluna 'modulos' antes de exibir.
+    Função aprimorada que pré-processa colunas com listas de objetos.
     """
     st.subheader(title)
     if data is None:
@@ -59,22 +59,38 @@ def display_data_section(title, data, file_name):
         return
 
     try:
-        # --- INÍCIO DA MODIFICAÇÃO ---
-        # Pré-processamento dos dados para achatar a coluna 'modulos'
+        # Pré-processamento dos dados para achatar colunas complexas
         processed_data = []
         for item in data:
-            # Faz uma cópia para não alterar o item original em cache
             new_item = item.copy()
+            
+            # Trata a coluna 'modulos'
             if 'modulos' in new_item and isinstance(new_item['modulos'], list):
-                # Extrai o valor da chave 'nome' de cada dicionário na lista.
-                # O .get() é usado para evitar erros se a chave 'nome' não existir.
                 module_names = [mod.get('nome', 'N/D') for mod in new_item['modulos']]
-                # Junta os nomes em uma única string, separada por vírgula
                 new_item['modulos'] = ", ".join(module_names)
-            processed_data.append(new_item)
-        # --- FIM DA MODIFICAÇÃO ---
 
-        # Usa os dados processados para criar o DataFrame
+            # --- INÍCIO DA NOVA MODIFICAÇÃO ---
+
+            # Trata a coluna 'taxas'
+            if 'taxas' in new_item and isinstance(new_item['taxas'], list):
+                # Formata para "Descrição (Valor%)" para clareza
+                tax_details = [f"{t.get('descricao', 'N/D')} ({t.get('taxa', 0)}%)" for t in new_item['taxas']]
+                new_item['taxas'] = "; ".join(tax_details)
+
+            # Trata a coluna 'pos' (máquinas)
+            if 'pos' in new_item and isinstance(new_item['pos'], list):
+                pos_serials = [p.get('serial', 'N/D') for p in new_item['pos']]
+                new_item['pos'] = ", ".join(pos_serials)
+
+            # Trata a coluna 'chip'
+            if 'chip' in new_item and isinstance(new_item['chip'], list):
+                chip_numbers = [c.get('numero', 'N/D') for c in new_item['chip']]
+                new_item['chip'] = ", ".join(chip_numbers)
+            
+            # --- FIM DA NOVA MODIFICAÇÃO ---
+
+            processed_data.append(new_item)
+            
         df = pd.DataFrame(processed_data)
         
         all_columns = sorted(df.columns.tolist())
@@ -102,7 +118,7 @@ def display_data_section(title, data, file_name):
         )
     except Exception as e:
         st.error(f"Ocorreu um erro ao processar os dados de '{title}': {e}")
-        st.json(data) # Mostra os dados brutos em caso de erro no processamento
+        st.json(data)
 
 # --- INTERFACE DA APLICAÇÃO ---
 
