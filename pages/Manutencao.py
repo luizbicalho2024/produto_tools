@@ -6,7 +6,6 @@ import requests
 import io
 
 # --- URL Base da API (Fixa) ---
-# A URL foi movida para uma constante, tirando-a da interface do usuário.
 API_BASE_URL = "https://services.host.logpay.com.br"
 
 # --- VERIFICAÇÃO DE LOGIN ---
@@ -21,7 +20,6 @@ if not st.session_state.get('logged_in'):
 def fetch_api_data(endpoint, username, password):
     """
     Função genérica para buscar dados da API Logpay usando autenticação Basic.
-    A URL base agora é uma constante.
     """
     full_url = f"{API_BASE_URL}{endpoint}"
     try:
@@ -51,7 +49,7 @@ def to_excel(df, sheet_name='Dados'):
 
 def display_data_section(title, data, file_name):
     """
-    Função aprimorada para exibir um DataFrame com seletor de colunas e botão de download.
+    Função aprimorada que pré-processa a coluna 'modulos' antes de exibir.
     """
     st.subheader(title)
     if data is None:
@@ -61,7 +59,23 @@ def display_data_section(title, data, file_name):
         return
 
     try:
-        df = pd.DataFrame(data)
+        # --- INÍCIO DA MODIFICAÇÃO ---
+        # Pré-processamento dos dados para achatar a coluna 'modulos'
+        processed_data = []
+        for item in data:
+            # Faz uma cópia para não alterar o item original em cache
+            new_item = item.copy()
+            if 'modulos' in new_item and isinstance(new_item['modulos'], list):
+                # Extrai o valor da chave 'nome' de cada dicionário na lista.
+                # O .get() é usado para evitar erros se a chave 'nome' não existir.
+                module_names = [mod.get('nome', 'N/D') for mod in new_item['modulos']]
+                # Junta os nomes em uma única string, separada por vírgula
+                new_item['modulos'] = ", ".join(module_names)
+            processed_data.append(new_item)
+        # --- FIM DA MODIFICAÇÃO ---
+
+        # Usa os dados processados para criar o DataFrame
+        df = pd.DataFrame(processed_data)
         
         all_columns = sorted(df.columns.tolist())
         selected_columns = st.multiselect(
@@ -88,7 +102,7 @@ def display_data_section(title, data, file_name):
         )
     except Exception as e:
         st.error(f"Ocorreu um erro ao processar os dados de '{title}': {e}")
-        st.json(data)
+        st.json(data) # Mostra os dados brutos em caso de erro no processamento
 
 # --- INTERFACE DA APLICAÇÃO ---
 
@@ -100,7 +114,7 @@ st.markdown("Visualize e exporte dados de clientes e credenciados do sistema.")
 # --- INPUT DAS CREDENCIAIS DA API ---
 with st.container(border=True):
     st.subheader("Autenticação da API")
-    col1, col2 = st.columns(2) # Layout ajustado para 2 colunas
+    col1, col2 = st.columns(2)
     with col1:
         api_username = st.text_input(
             "API Username",
