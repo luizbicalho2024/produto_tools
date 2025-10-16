@@ -64,31 +64,22 @@ def display_data_section(title, data, file_name):
         for item in data:
             new_item = item.copy()
             
-            # Trata a coluna 'modulos'
             if 'modulos' in new_item and isinstance(new_item['modulos'], list):
                 module_names = [mod.get('nome', 'N/D') for mod in new_item['modulos']]
                 new_item['modulos'] = ", ".join(module_names)
 
-            # --- INÍCIO DA NOVA MODIFICAÇÃO ---
-
-            # Trata a coluna 'taxas'
             if 'taxas' in new_item and isinstance(new_item['taxas'], list):
-                # Formata para "Descrição (Valor%)" para clareza
                 tax_details = [f"{t.get('descricao', 'N/D')} ({t.get('taxa', 0)}%)" for t in new_item['taxas']]
                 new_item['taxas'] = "; ".join(tax_details)
 
-            # Trata a coluna 'pos' (máquinas)
             if 'pos' in new_item and isinstance(new_item['pos'], list):
                 pos_serials = [p.get('serial', 'N/D') for p in new_item['pos']]
                 new_item['pos'] = ", ".join(pos_serials)
 
-            # Trata a coluna 'chip'
             if 'chip' in new_item and isinstance(new_item['chip'], list):
                 chip_numbers = [c.get('numero', 'N/D') for c in new_item['chip']]
                 new_item['chip'] = ", ".join(chip_numbers)
             
-            # --- FIM DA NOVA MODIFICAÇÃO ---
-
             processed_data.append(new_item)
             
         df = pd.DataFrame(processed_data)
@@ -164,8 +155,50 @@ with tab_clients:
                 client_data = fetch_api_data("/api/Cliente", api_username, api_password)
                 st.session_state['client_data'] = client_data
 
-    if 'client_data' in st.session_state:
-        display_data_section("Clientes", st.session_state['client_data'], "clientes_logpay.xlsx")
+    # --- INÍCIO DA MODIFICAÇÃO COM FILTRO ---
+    if 'client_data' in st.session_state and st.session_state['client_data']:
+        
+        # Converte os dados brutos para um DataFrame para facilitar a manipulação
+        # e aplica o mesmo pré-processamento da função de visualização
+        all_data = st.session_state['client_data']
+        processed_list = []
+        for item in all_data:
+            new_item = item.copy()
+            if 'modulos' in new_item and isinstance(new_item['modulos'], list):
+                module_names = [mod.get('nome', 'N/D') for mod in new_item['modulos']]
+                new_item['modulos'] = ", ".join(module_names)
+            processed_list.append(new_item)
+        
+        df_clients = pd.DataFrame(processed_list)
+
+        # Cria o widget de filtro
+        st.subheader("Filtrar por Módulo")
+        module_filter = st.selectbox(
+            "Selecione um módulo para filtrar a lista:",
+            options=["Todos", "Manutenção", "Abastecimento"],
+            index=0 # "Todos" é o padrão
+        )
+
+        # Aplica o filtro se uma opção diferente de "Todos" for selecionada
+        if module_filter != "Todos":
+            # '.str.contains' verifica se o texto do filtro está na coluna 'modulos'
+            # 'na=False' trata casos onde a coluna pode estar vazia
+            df_filtered = df_clients[df_clients['modulos'].str.contains(module_filter, na=False)]
+        else:
+            df_filtered = df_clients
+        
+        # Converte o DataFrame filtrado de volta para o formato de lista de dicionários
+        # que a função display_data_section espera
+        filtered_data_list = df_filtered.to_dict('records')
+        
+        # Exibe os dados (filtrados ou não)
+        display_data_section("Clientes", filtered_data_list, "clientes_logpay.xlsx")
+    
+    elif 'client_data' in st.session_state:
+        # Caso a busca retorne uma lista vazia, apenas informa o usuário
+        st.info("A consulta não retornou resultados.")
+    # --- FIM DA MODIFICAÇÃO ---
+
 
 # --- ABA 2: CREDENCIADOS (API LOGPAY) ---
 with tab_establishments:
