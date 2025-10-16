@@ -48,8 +48,8 @@ else:
     st.write("Por favor, insira suas credenciais para continuar.")
 
     with st.form("login_form"):
-        email = st.text_input("Email", placeholder="admin@email.com")
-        password = st.text_input("Senha", type="password", placeholder="12345")
+        email = st.text_input("Email", placeholder="")
+        password = st.text_input("Senha", type="password", placeholder="")
         submitted = st.form_submit_button("Entrar")
 
         if submitted:
