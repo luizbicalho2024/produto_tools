@@ -5,6 +5,10 @@ import pandas as pd
 import requests
 import io
 
+# --- URL Base da API (Fixa) ---
+# A URL foi movida para uma constante, tirando-a da interface do usuário.
+API_BASE_URL = "https://services.host.logpay.com.br"
+
 # --- VERIFICAÇÃO DE LOGIN ---
 if not st.session_state.get('logged_in'):
     st.error("🔒 Você precisa estar logado para acessar esta página.")
@@ -14,11 +18,12 @@ if not st.session_state.get('logged_in'):
 # --- FUNÇÕES AUXILIARES ---
 
 @st.cache_data(ttl=600)
-def fetch_api_data(base_url, endpoint, username, password):
+def fetch_api_data(endpoint, username, password):
     """
     Função genérica para buscar dados da API Logpay usando autenticação Basic.
+    A URL base agora é uma constante.
     """
-    full_url = f"{base_url}{endpoint}"
+    full_url = f"{API_BASE_URL}{endpoint}"
     try:
         response = requests.get(full_url, auth=(username, password), timeout=30)
         response.raise_for_status()
@@ -58,13 +63,12 @@ def display_data_section(title, data, file_name):
     try:
         df = pd.DataFrame(data)
         
-        # --- FILTRO DE COLUNAS ADICIONADO AQUI ---
         all_columns = sorted(df.columns.tolist())
         selected_columns = st.multiselect(
             "Selecione as colunas para visualizar e exportar:",
             options=all_columns,
-            default=all_columns, # Todas as colunas são selecionadas por padrão
-            key=f"multiselect_{file_name}" # Chave única para cada seletor
+            default=all_columns,
+            key=f"multiselect_{file_name}"
         )
 
         if not selected_columns:
@@ -93,21 +97,16 @@ st.set_page_config(layout="wide", page_title="Consulta API")
 st.title("🔎 Painel de Consulta API Logpay")
 st.markdown("Visualize e exporte dados de clientes e credenciados do sistema.")
 
-# --- INPUT DA URL E CREDENCIAIS DA API ---
+# --- INPUT DAS CREDENCIAIS DA API ---
 with st.container(border=True):
-    st.subheader("Configuração e Autenticação da API")
-    col1, col2, col3 = st.columns(3)
+    st.subheader("Autenticação da API")
+    col1, col2 = st.columns(2) # Layout ajustado para 2 colunas
     with col1:
-        api_base_url = st.text_input(
-            "URL Base da API",
-            value="https://services.host.logpay.com.br"
-        )
-    with col2:
         api_username = st.text_input(
             "API Username",
             help="Usuário para autenticação Basic na API."
         )
-    with col3:
+    with col2:
         api_password = st.text_input(
             "API Password",
             type="password",
@@ -132,8 +131,7 @@ with tab_clients:
     if st.button("Buscar Todos os Clientes", key="fetch_clients"):
         if can_fetch_data():
             with st.spinner("Consultando API de Clientes..."):
-                # ALTERADO: Usando /api/Cliente que é mais simples e deve evitar o erro 400
-                client_data = fetch_api_data(api_base_url, "/api/Cliente", api_username, api_password)
+                client_data = fetch_api_data("/api/Cliente", api_username, api_password)
                 st.session_state['client_data'] = client_data
 
     if 'client_data' in st.session_state:
@@ -147,7 +145,7 @@ with tab_establishments:
     if st.button("Buscar Todos os Credenciados", key="fetch_establishments"):
         if can_fetch_data():
             with st.spinner("Consultando API de Credenciados..."):
-                establishment_data = fetch_api_data(api_base_url, "/api/Estabelecimento/AdditionalInformation", api_username, api_password)
+                establishment_data = fetch_api_data("/api/Estabelecimento/AdditionalInformation", api_username, api_password)
                 st.session_state['establishment_data'] = establishment_data
 
     if 'establishment_data' in st.session_state:
@@ -159,7 +157,7 @@ with tab_establishments:
     if st.button("Buscar Credenciados com Taxas", key="fetch_establishments_taxas"):
         if can_fetch_data():
             with st.spinner("Buscando credenciados e suas taxas..."):
-                taxas_data = fetch_api_data(api_base_url, "/api/Estabelecimento/Taxas", api_username, api_password)
+                taxas_data = fetch_api_data("/api/Estabelecimento/Taxas", api_username, api_password)
                 st.session_state['taxas_data'] = taxas_data
 
     if 'taxas_data' in st.session_state:
