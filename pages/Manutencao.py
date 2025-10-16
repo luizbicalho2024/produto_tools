@@ -20,7 +20,6 @@ def fetch_api_data(base_url, endpoint, username, password):
     """
     full_url = f"{base_url}{endpoint}"
     try:
-        # A biblioteca 'requests' lida com a codificação da autenticação Basic
         response = requests.get(full_url, auth=(username, password), timeout=30)
         response.raise_for_status()
         return response.json()
@@ -46,10 +45,11 @@ def to_excel(df, sheet_name='Dados'):
     return output.getvalue()
 
 def display_data_section(title, data, file_name):
-    """Função para exibir um DataFrame e o botão de download."""
+    """
+    Função aprimorada para exibir um DataFrame com seletor de colunas e botão de download.
+    """
     st.subheader(title)
-    if data is None: # Modificado para tratar o None explicitamente
-        # A mensagem de erro já foi exibida pela função fetch_api_data
+    if data is None:
         return
     if not data:
         st.info("Nenhum dado encontrado para esta consulta.")
@@ -57,15 +57,30 @@ def display_data_section(title, data, file_name):
 
     try:
         df = pd.DataFrame(data)
-        st.dataframe(df, use_container_width=True, hide_index=True)
         
-        excel_data = to_excel(df, sheet_name=title)
+        # --- FILTRO DE COLUNAS ADICIONADO AQUI ---
+        all_columns = sorted(df.columns.tolist())
+        selected_columns = st.multiselect(
+            "Selecione as colunas para visualizar e exportar:",
+            options=all_columns,
+            default=all_columns, # Todas as colunas são selecionadas por padrão
+            key=f"multiselect_{file_name}" # Chave única para cada seletor
+        )
+
+        if not selected_columns:
+            st.warning("Por favor, selecione ao menos uma coluna para exibir os dados.")
+            return
+            
+        df_selected = df[selected_columns]
+        st.dataframe(df_selected, use_container_width=True, hide_index=True)
+        
+        excel_data = to_excel(df_selected, sheet_name=title)
         st.download_button(
-            label=f"📥 Baixar {title} como XLSX",
+            label=f"📥 Baixar dados selecionados como XLSX",
             data=excel_data,
             file_name=file_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key=f"download_{file_name}" # Chave única para cada botão
+            key=f"download_{file_name}"
         )
     except Exception as e:
         st.error(f"Ocorreu um erro ao processar os dados de '{title}': {e}")
@@ -105,7 +120,6 @@ tab_clients, tab_establishments = st.tabs([
     "🏪 Credenciados (Estabelecimentos)"
 ])
 
-# Função de validação para evitar repetição
 def can_fetch_data():
     if not api_username or not api_password:
         st.warning("Por favor, preencha o Username e o Password da API para continuar.")
@@ -118,7 +132,8 @@ with tab_clients:
     if st.button("Buscar Todos os Clientes", key="fetch_clients"):
         if can_fetch_data():
             with st.spinner("Consultando API de Clientes..."):
-                client_data = fetch_api_data(api_base_url, "/api/Cliente/AdditionalInformation", api_username, api_password)
+                # ALTERADO: Usando /api/Cliente que é mais simples e deve evitar o erro 400
+                client_data = fetch_api_data(api_base_url, "/api/Cliente", api_username, api_password)
                 st.session_state['client_data'] = client_data
 
     if 'client_data' in st.session_state:
