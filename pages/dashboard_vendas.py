@@ -86,14 +86,14 @@ def generate_insights(df_filtered, total_gmv, receita_total):
     
     # Insight 3: Tipo de transação mais comum (Débito vs Crédito)
     if 'tipo' in df_filtered.columns:
-        df_tipo = df_filtered.groupby('tipo')['bruto'].sum().reset_index()
-        if not df_tipo.empty:
-            top_tipo = df_tipo.loc[df_tipo['bruto'].idxmax()]
-            insights.append(f"A modalidade de transação predominante é **{top_tipo['tipo']}**, representando **R$ {top_tipo['bruto']:,.2f}** do GMV total.")
+        df_tipo = df_filtered.groupby('tipo')['bruto'].sum().sum()
+        if not df_tipo == 0:
+            top_tipo = df_filtered.groupby('tipo')['bruto'].sum().idxmax()
+            insights.append(f"A modalidade de transação predominante é **{top_tipo}**.")
     
     # Insight 4: Margem média
     margem_media = (receita_total / total_gmv) * 100 if total_gmv > 0 else 0
-    insights.append(f"A margem média de Receita sobre o GMV no período é de **{margem_media:,.2f}%**, indicando a taxa média de retorno.")
+    insights.append(f"A margem média de Receita sobre o GMV no período é de **{margem_media:,.2f}%**.")
 
     return insights
 
@@ -102,17 +102,14 @@ def generate_insights(df_filtered, total_gmv, receita_total):
 
 st.title("💰 Rovema Bank - Dashboard de Transações")
 
-# --- Área de Upload e Filtros (Barra Lateral) ---
+# --- Área de Upload (Barra Lateral) ---
 with st.sidebar:
-    st.header("Filtros")
-    
-    # Upload
+    st.header("Upload do Arquivo")
     uploaded_file = st.file_uploader(
-        "Upload do Arquivo Único (Excel)",
+        "Arquivo Único (Excel .xlsx)",
         type=['xlsx'],
         key="excel_upload"
     )
-    
     st.markdown(f"**Abas Esperadas:** ` {TRANSACOES_SHEET_NAME} ` e ` {CLIENTES_SHEET_NAME} `")
 
 
@@ -126,57 +123,62 @@ if uploaded_file:
 # --- Dashboard Principal ---
 
 if df_merged.empty or 'bruto' not in df_merged.columns:
-    st.warning("Por favor, faça o upload do arquivo Excel para iniciar a análise.", icon="⚠️")
+    st.warning("Por favor, faça o upload do arquivo Excel na barra lateral para iniciar a análise.", icon="⚠️")
 else:
-    # --- FILTROS COMPLETOS (Barra Lateral) ---
-    with st.sidebar:
-        st.markdown("---")
-        
-        # 1. Filtro de Data
+    # --- FILTROS (Após o Título) ---
+    st.subheader("Filtros de Análise")
+    
+    # Organiza os filtros em colunas para simular o layout de cards
+    col_date, col_vendedor, col_produto, col_bandeira, col_tipo, col_atualizar = st.columns([1.5, 1.5, 1.5, 1, 1, 0.5])
+    
+    with col_date:
         data_min = df_merged['venda'].min().date()
         data_max = df_merged['venda'].max().date()
         data_inicial, data_final = st.date_input(
-            "Período de Análise",
+            "Período",
             value=(data_min, data_max),
             min_value=data_min,
             max_value=data_max
         )
 
-        # 2. Filtro de Vendedor/Carteira
+    with col_vendedor:
         vendedores = ['Todas'] + sorted(df_clientes_original['responsavel_comercial'].unique().tolist())
-        filtro_vendedor = st.selectbox("Filtrar por Vendedor (Carteira)", options=vendedores)
+        filtro_vendedor = st.selectbox("Carteira", options=vendedores)
 
-        # 3. Filtro de Produto
+    with col_produto:
         produtos = ['Todos'] + sorted(df_merged['produto'].unique().tolist())
-        filtro_produto = st.selectbox("Filtrar por Produto", options=produtos)
-        
-        # 4. Filtro de Bandeira
+        filtro_produto = st.selectbox("Produto", options=produtos)
+    
+    with col_bandeira:
         bandeiras = ['Todas'] + sorted(df_merged['bandeira'].unique().tolist())
-        filtro_bandeira = st.selectbox("Filtrar por Bandeira", options=bandeiras)
-        
-        # 5. Filtro de Tipo (Crédito/Débito)
+        filtro_bandeira = st.selectbox("Bandeira", options=bandeiras)
+    
+    with col_tipo:
         tipos = ['Todos'] + sorted(df_merged['tipo'].unique().tolist())
-        filtro_tipo = st.selectbox("Filtrar por Tipo", options=tipos)
-
-        # --- Aplicação dos Filtros ---
-        df_filtered = df_merged[
-            (df_merged['venda'].dt.date >= data_inicial) &
-            (df_merged['venda'].dt.date <= data_final)
-        ].copy()
+        filtro_tipo = st.selectbox("Tipo", options=tipos)
         
-        if filtro_vendedor != 'Todas':
-             df_filtered = df_filtered[df_filtered['responsavel_comercial'] == filtro_vendedor]
-        
-        if filtro_produto != 'Todos':
-             df_filtered = df_filtered[df_filtered['produto'] == filtro_produto]
-             
-        if filtro_bandeira != 'Todas':
-             df_filtered = df_filtered[df_filtered['bandeira'] == filtro_bandeira]
-
-        if filtro_tipo != 'Todos':
-             df_filtered = df_filtered[df_filtered['tipo'] == filtro_tipo]
-             
+    with col_atualizar:
+        # Botão Atualizar (apenas visual, pois Streamlit atualiza por padrão)
+        st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True) # Espaçamento
         st.button("Atualizar") 
+
+    # --- Aplicação dos Filtros ---
+    df_filtered = df_merged[
+        (df_merged['venda'].dt.date >= data_inicial) &
+        (df_merged['venda'].dt.date <= data_final)
+    ].copy()
+    
+    if filtro_vendedor != 'Todas':
+         df_filtered = df_filtered[df_filtered['responsavel_comercial'] == filtro_vendedor]
+    
+    if filtro_produto != 'Todos':
+         df_filtered = df_filtered[df_filtered['produto'] == filtro_produto]
+         
+    if filtro_bandeira != 'Todas':
+         df_filtered = df_filtered[df_filtered['bandeira'] == filtro_bandeira]
+
+    if filtro_tipo != 'Todos':
+         df_filtered = df_filtered[df_filtered['tipo'] == filtro_tipo]
 
     # --- 1. Cálculos de KPIs ---
     
@@ -212,25 +214,8 @@ else:
     col5.metric("Clientes em Queda (Proxy)", f"{clientes_em_queda_proxy:,}")
     
     st.markdown("---")
-    
-    # --- 3. Insights Automáticos (Nova Seção) ---
-    st.subheader("💡 Insights Automáticos")
-    insights_list = generate_insights(df_filtered, total_gmv, receita_total)
-    
-    # Exibe insights em colunas para simular o layout de cards
-    cols_insights = st.columns(len(insights_list))
-    for i, insight in enumerate(insights_list):
-        cols_insights[i].markdown(f"""
-            <div style="background-color: #e6f7ff; padding: 10px; border-radius: 5px; height: 100%;">
-                <small>Insight {i+1}</small>
-                <p style="font-size: 14px; margin: 0;">{insight}</p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("---")
 
-
-    # --- 4. Gráfico de Evolução (GMV vs Receita) ---
+    # --- 3. Gráfico de Evolução (GMV vs Receita) ---
     st.subheader("Evolução do Valor Transacionado vs Receita")
 
     df_evolucao = df_filtered.groupby(df_filtered['venda'].dt.date).agg(
@@ -263,7 +248,7 @@ else:
 
     st.markdown("---")
 
-    # --- 5. Linha de Gráficos (Receita por Carteira e Participação por Bandeira) ---
+    # --- 4. Linha de Gráficos (Receita por Carteira e Participação por Bandeira) ---
     col6, col7 = st.columns([1.5, 1])
 
     with col6:
@@ -297,7 +282,7 @@ else:
         
     st.markdown("---")
 
-    # --- 6. Detalhamento por Cliente (Top 10 Crescimento/Queda - Proxy) ---
+    # --- 5. Detalhamento por Cliente (Top 10 Crescimento/Queda - Proxy) ---
     st.subheader("🔍 Detalhamento por Cliente")
     
     col8, col9 = st.columns(2)
@@ -315,7 +300,6 @@ else:
         df_top10 = df_ranking_clientes.head(10).copy()
         df_top10['GMV'] = df_top10['GMV'].apply(lambda x: f"R$ {x:,.2f}")
         df_top10['Receita'] = df_top10['Receita'].apply(lambda x: f"R$ {x:,.2f}")
-        # Adiciona coluna de % Crescimento como Placeholder
         df_top10.insert(1, '% Cresc. (Proxy)', ['N/A'] * len(df_top10)) 
         df_top10.rename(columns={'ec': 'Cliente', 'GMV': 'Transacionado', 'Vendas': 'Qtd. Vendas'}, inplace=True)
         
@@ -327,12 +311,32 @@ else:
         df_bottom10 = df_ranking_clientes.sort_values(by='GMV', ascending=True).head(10).copy()
         df_bottom10['GMV'] = df_bottom10['GMV'].apply(lambda x: f"R$ {x:,.2f}")
         df_bottom10['Receita'] = df_bottom10['Receita'].apply(lambda x: f"R$ {x:,.2f}")
-        # Adiciona coluna de % Queda como Placeholder
         df_bottom10.insert(1, '% Queda (Proxy)', ['N/A'] * len(df_bottom10))
         df_bottom10.rename(columns={'ec': 'Cliente', 'GMV': 'Transacionado', 'Vendas': 'Qtd. Vendas'}, inplace=True)
 
         st.dataframe(df_bottom10[['Cliente', '% Queda (Proxy)', 'Transacionado', 'Qtd. Vendas', 'Receita']], hide_index=True, use_container_width=True)
         
+    st.markdown("---")
+
+    # --- 6. Insights Automáticos (Última Seção) ---
+    st.subheader("💡 Insights Automáticos")
+    insights_list = generate_insights(df_filtered, total_gmv, receita_total)
+    
+    cols_insights = st.columns(len(insights_list))
+    for i, insight in enumerate(insights_list):
+        cols_insights[i].markdown(f"""
+            <div style="background-color: #e6f7ff; padding: 10px; border-radius: 5px; height: 100%;">
+                <small>Insight {i+1}</small>
+                <p style="font-size: 14px; margin: 0;">{insight}</p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # --- Tabela Detalhada (Rodapé) ---
+    with st.expander("Visualizar Todos os Dados (Detalhados)"):
+        st.dataframe(df_filtered)
+    
     # --- Exportar CSV (Botão) ---
     csv_data = df_filtered.to_csv(index=False).encode('utf-8')
     st.download_button(
