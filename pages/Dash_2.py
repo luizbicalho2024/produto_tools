@@ -54,29 +54,22 @@ def fetch_eliq_data(api_token, start_date, end_date):
         if not all_data: return pd.DataFrame()
 
         df = pd.json_normalize(all_data)
-        if df.empty: return pd.DataFrame() # Retorna vazio se a normalização falhar
+        if df.empty: return pd.DataFrame()
 
         # --- Normalização CORRIGIDA ---
         df_norm = pd.DataFrame()
         df_norm['cnpj'] = df.get('cliente_cnpj', pd.NA)
-
-        # Corrigido: Aplicar to_numeric e fillna em Series, não em objetos possivelmente não-Series
         bruto_series = pd.to_numeric(df.get('valor_total'), errors='coerce').fillna(0)
         df_norm['bruto'] = bruto_series
 
-        taxa_cliente_raw = df.get('cliente_taxa_adm', 0)
-        # Corrigido: Garantir que taxa_cliente_raw seja tratável por to_numeric
-        if isinstance(taxa_cliente_raw, (pd.Series, list, np.ndarray)):
-            taxa_cliente_series = pd.to_numeric(taxa_cliente_raw, errors='coerce').fillna(0)
-        else: # Se for um escalar ou None, cria uma Series preenchida
-            taxa_cliente_series = pd.Series([pd.to_numeric(taxa_cliente_raw, errors='coerce')], index=df.index).fillna(0)
-
+        # Corrigido: Aplicar to_numeric diretamente à coluna/Series retornada por df.get
+        taxa_cliente_series = pd.to_numeric(df.get('cliente_taxa_adm', 0), errors='coerce').fillna(0)
         taxa_cliente_percent = taxa_cliente_series / 100
         df_norm['receita'] = df_norm['bruto'] * taxa_cliente_percent
 
         df_norm['venda'] = pd.to_datetime(df.get('data_cadastro', pd.NaT), errors='coerce', dayfirst=True)
         df_norm = df_norm.dropna(subset=['venda'])
-        if df_norm.empty: return pd.DataFrame() # Retorna vazio se não houver datas válidas
+        if df_norm.empty: return pd.DataFrame()
 
         df_norm['ec'] = df.get('cliente_nome', 'N/A')
         df_norm['plataforma'] = 'Eliq'
@@ -84,7 +77,7 @@ def fetch_eliq_data(api_token, start_date, end_date):
         df_norm['bandeira'] = df.get('bandeira', 'N/A').astype(str)
         df_norm['categoria_pagamento'] = 'Outros'
 
-        st.success(f"API Eliq: {len(df_norm)} registros carregados e processados de {page-1} página(s).")
+        st.success(f"API Eliq: {len(df_norm)} registros carregados e processados de {min(page, max_pages + 1)-1} página(s).") # Ajuste na contagem de paginas
         return df_norm.dropna(subset=['bruto', 'cnpj'])
 
     except requests.exceptions.Timeout:
@@ -124,28 +117,20 @@ def load_bionio_csv(uploaded_file):
                 continue
         if df is None: raise ValueError("Não foi possível ler o arquivo Bionio com encodings comuns.")
 
-        original_columns = df.columns.tolist()
+        original_columns = df.columns.tolist() # Mantido caso precise debugar novamente
         df.columns = (df.columns.str.strip().str.lower()
                       .str.replace(' ', '_', regex=False)
-                      .str.replace('[^0-9a-zA-Z_]', '', regex=True)) # Limpeza agressiva
+                      .str.replace('[^0-9a-zA-Z_]', '', regex=True))
         cleaned_columns = df.columns.tolist()
 
-        # --- DEBUG VISÍVEL ---
-        st.warning("--- DEBUG BIONIO COLUNAS (Verifique os Nomes Abaixo) ---")
-        st.write("Colunas Originais:", original_columns)
-        st.write("Colunas Após Limpeza:", cleaned_columns)
-        st.warning("--- FIM DEBUG ---")
-        # --- FIM DEBUG ---
-
-        # --- AJUSTE OS NOMES AQUI BASEADO NO DEBUG ---
-        # Tente o nome mais provável após a limpeza agressiva
-        cnpj_col = 'cnpjdaorganizacao'
-        bruto_col = 'valor_total_do_pedido' # Parece menos propenso a mudar
-        data_col = 'data_da_criacao_do_pedido' # Pode virar 'datadacriacaodopedido'
-        ec_col = 'razao_social' # Pode virar 'razaosocial'
-        beneficio_col = 'nome_do_beneficio' # Pode virar 'nomedobeneficio'
-        pagamento_col = 'tipo_de_pagamento' # Pode virar 'tipodepagamento'
-        # --- FIM AJUSTE ---
+        # --- Nomes das colunas CORRIGIDOS baseado no debug anterior ---
+        cnpj_col = 'cnpj_da_organizao'         # Corrigido
+        bruto_col = 'valor_total_do_pedido'   # OK
+        data_col = 'data_da_criao_do_pedido'  # Corrigido
+        ec_col = 'razo_social'                # Corrigido
+        beneficio_col = 'nome_do_benefcio'      # Corrigido
+        pagamento_col = 'tipo_de_pagamento'   # OK
+        # --- FIM CORREÇÃO ---
 
         # Validação mais informativa
         missing_cols = []
@@ -155,7 +140,8 @@ def load_bionio_csv(uploaded_file):
             if col not in available_cols:
                 missing_cols.append(col)
         if missing_cols:
-            raise KeyError(f"Colunas esperadas não encontradas após limpeza no Bionio: {', '.join(missing_cols)}. Colunas disponíveis: {', '.join(cleaned_columns)}. Ajuste os nomes das colunas ('*_col') no código.")
+            # Mostra as colunas limpas disponíveis para facilitar a correção manual se necessário
+            raise KeyError(f"Colunas esperadas não encontradas após limpeza no Bionio: {', '.join(missing_cols)}. Colunas disponíveis: {', '.join(cleaned_columns)}. Verifique os nomes das colunas ('*_col') no código.")
 
         # --- Normalização ---
         df_norm = pd.DataFrame()
@@ -183,7 +169,7 @@ def load_bionio_csv(uploaded_file):
         return df_norm.dropna(subset=['bruto', 'cnpj'])
 
     except KeyError as e:
-         st.error(f"Erro ao processar Bionio: {e}")
+         st.error(f"Erro ao processar Bionio: {e}") # Mensagem de erro aprimorada
          return pd.DataFrame()
     except Exception as e:
         st.error(f"Erro inesperado ao processar arquivo Bionio: {e}")
@@ -207,22 +193,15 @@ def load_maquininha_csv(uploaded_file):
                 continue
         if df is None: raise ValueError("Não foi possível ler o arquivo Maquininha com encodings comuns.")
 
-        original_columns = df.columns.tolist() # Para debug, se necessário
         df.columns = (df.columns.str.strip().str.lower()
                       .str.replace(' ', '_', regex=False)
                       .str.replace('[^0-9a-zA-Z_]', '', regex=True))
-        cleaned_columns = df.columns.tolist() # Para debug
+        cleaned_columns = df.columns.tolist()
 
         # --- Normalização ---
         df_norm = pd.DataFrame()
-        # Nomes padrão esperados após limpeza
-        cnpj_col = 'cnpj'
-        bruto_col = 'bruto'
-        liquido_col = 'liquido'
-        venda_col = 'venda'
-        ec_col = 'ec'
-        tipo_col = 'tipo'
-        bandeira_col = 'bandeira'
+        cnpj_col = 'cnpj'; bruto_col = 'bruto'; liquido_col = 'liquido'; venda_col = 'venda'
+        ec_col = 'ec'; tipo_col = 'tipo'; bandeira_col = 'bandeira'
 
         # Validação
         missing_cols = []
@@ -247,13 +226,12 @@ def load_maquininha_csv(uploaded_file):
         df_norm['bandeira'] = df[bandeira_col].astype(str)
 
         def categorize_payment_rp(row):
-            bandeira_lower = str(row.get(bandeira_col, '')).strip().lower() # Usa nome limpo
-            tipo_lower = str(row.get(tipo_col, '')).strip().lower() # Usa nome limpo
+            bandeira_lower = str(row.get(bandeira_col, '')).strip().lower()
+            tipo_lower = str(row.get(tipo_col, '')).strip().lower()
             if 'pix' in bandeira_lower: return 'Pix'
             if tipo_lower == 'crédito': return 'Crédito'
             if tipo_lower == 'débito': return 'Débito'
             return 'Outros'
-        # Passa o DataFrame original 'df' que contém as colunas antes da seleção em df_norm
         df_norm['categoria_pagamento'] = df.apply(categorize_payment_rp, axis=1)
 
         st.success(f"Maquininha: {len(df_norm)} registros carregados e processados.")
@@ -276,48 +254,45 @@ def consolidate_data(df_bionio, df_maquininha, df_eliq, df_asto):
     if df_eliq is not None and not df_eliq.empty: all_transactions.append(df_eliq)
     if df_asto is not None and not df_asto.empty: all_transactions.append(df_asto)
 
-    if not all_transactions:
-        # Não mostra erro aqui, espera a verificação principal
-        return pd.DataFrame()
+    if not all_transactions: return pd.DataFrame() # Retorna vazio se nenhuma fonte tiver dados
 
-    df_consolidated = pd.concat(all_transactions, ignore_index=True)
+    try:
+        df_consolidated = pd.concat(all_transactions, ignore_index=True)
 
-    if 'responsavel_comercial' not in df_consolidated.columns: df_consolidated['responsavel_comercial'] = 'N/A'
-    if 'produto' not in df_consolidated.columns: df_consolidated['produto'] = df_consolidated['plataforma']
+        # Adiciona colunas placeholder se necessário
+        if 'responsavel_comercial' not in df_consolidated.columns: df_consolidated['responsavel_comercial'] = 'N/A'
+        if 'produto' not in df_consolidated.columns: df_consolidated['produto'] = df_consolidated['plataforma']
 
-    df_consolidated['bruto'] = pd.to_numeric(df_consolidated['bruto'], errors='coerce').fillna(0)
-    df_consolidated['receita'] = pd.to_numeric(df_consolidated['receita'], errors='coerce').fillna(0)
-    df_consolidated['venda'] = pd.to_datetime(df_consolidated['venda'], errors='coerce')
-    df_consolidated = df_consolidated.dropna(subset=['venda'])
+        # Garante tipos corretos e trata NAs
+        df_consolidated['bruto'] = pd.to_numeric(df_consolidated['bruto'], errors='coerce').fillna(0)
+        df_consolidated['receita'] = pd.to_numeric(df_consolidated['receita'], errors='coerce').fillna(0)
+        df_consolidated['venda'] = pd.to_datetime(df_consolidated['venda'], errors='coerce')
+        df_consolidated = df_consolidated.dropna(subset=['venda']) # Remove linhas sem data válida após conversão
 
-    st.success(f"Dados de {len(all_transactions)} fontes ({len(df_consolidated)} registros totais) consolidados com sucesso!", icon="✅")
-    return df_consolidated
+        st.success(f"Dados de {len(all_transactions)} fontes ({len(df_consolidated)} registros totais) consolidados com sucesso!", icon="✅")
+        return df_consolidated
+    except Exception as e:
+        st.error(f"Erro durante a concatenação dos dados: {e}")
+        st.error(traceback.format_exc())
+        return pd.DataFrame() # Retorna vazio em caso de erro na concatenação
 
 # --- Função de Insights ---
 def generate_insights(df_filtered, total_gmv, receita_total):
     """Gera insights automáticos."""
+    # (Código da função generate_insights permanece o mesmo da versão anterior)
     insights = []
     if df_filtered.empty: return ["Nenhum dado encontrado para os filtros selecionados."]
-
-    # Cliente com maior GMV
     if 'ec' in df_filtered.columns and not df_filtered.empty:
         df_gmv_cliente = df_filtered.groupby('ec')['bruto'].sum().nlargest(1).reset_index()
         if not df_gmv_cliente.empty: insights.append(f"Cliente principal (GMV): **{df_gmv_cliente.iloc[0]['ec']}** (R$ {df_gmv_cliente.iloc[0]['bruto']:,.2f}).")
-
-    # Plataforma com maior GMV
     if 'plataforma' in df_filtered.columns and not df_filtered.empty:
          df_plataforma = df_filtered.groupby('plataforma')['bruto'].sum().nlargest(1).reset_index()
          if not df_plataforma.empty: insights.append(f"Plataforma principal (GMV): **{df_plataforma.iloc[0]['plataforma']}** (R$ {df_plataforma.iloc[0]['bruto']:,.2f}).")
-
-    # Margem média
     margem = (receita_total / total_gmv) * 100 if total_gmv > 0 else 0
     insights.append(f"Margem média no período: **{margem:,.2f}%**.")
-
-    # Categoria de Pagamento Dominante
     if 'categoria_pagamento' in df_filtered.columns and not df_filtered.empty:
         top_cat = df_filtered['categoria_pagamento'].mode()
         if not top_cat.empty: insights.append(f"Categoria de pag. mais frequente: **{top_cat.iloc[0]}**.")
-
     return insights
 
 # --- Interface Streamlit ---
@@ -341,29 +316,25 @@ with st.sidebar:
     load_button_pressed = st.button("Carregar e Processar Dados", key="load_data_button")
 
 # --- Carregamento e Processamento Principal ---
-# Corrigido: Inicializa df_consolidated ANTES do bloco 'if'
-df_consolidated = pd.DataFrame()
+df_consolidated = pd.DataFrame() # Inicializa ANTES do if
+if 'data_loaded' not in st.session_state: st.session_state.data_loaded = False
+if 'df_consolidated' not in st.session_state: st.session_state.df_consolidated = pd.DataFrame()
 
-# Tenta carregar do estado da sessão se o botão não foi pressionado
-if not load_button_pressed and 'df_consolidated' in st.session_state:
-    df_consolidated = st.session_state.df_consolidated
-# Processa os dados se o botão foi pressionado
-elif load_button_pressed:
+if load_button_pressed:
     st.session_state.data_loaded = True
-    st.session_state.df_consolidated = pd.DataFrame() # Limpa dados antigos
-
-    with st.spinner("Processando fontes de dados... Por favor, aguarde."): # Adiciona spinner
+    st.session_state.df_consolidated = pd.DataFrame() # Limpa
+    with st.spinner("Processando fontes de dados... Por favor, aguarde."):
         df_bionio_processed = load_bionio_csv(uploaded_bionio) if uploaded_bionio else pd.DataFrame()
         df_maquininha_processed = load_maquininha_csv(uploaded_maquininha) if uploaded_maquininha else pd.DataFrame()
         df_eliq_fetched = pd.DataFrame()
-        df_asto_fetched = pd.DataFrame() # Placeholder
+        df_asto_fetched = pd.DataFrame()
         try:
             if 'eliq_api_token' in st.secrets:
                 df_eliq_fetched = fetch_eliq_data(st.secrets["eliq_api_token"], api_start_date, api_end_date)
-            else: st.sidebar.warning("Token API Eliq não encontrado nos secrets.", icon="🔑")
+            else: st.sidebar.warning("Token API Eliq não encontrado.", icon="🔑")
             if 'asto_username' in st.secrets and 'asto_password' in st.secrets:
                  df_asto_fetched = fetch_asto_data(st.secrets["asto_username"], st.secrets["asto_password"], api_start_date, api_end_date)
-            else: st.sidebar.warning("Credenciais API Asto não encontradas nos secrets.", icon="🔑")
+            else: st.sidebar.warning("Credenciais API Asto não encontradas.", icon="🔑")
         except KeyError as e: st.sidebar.error(f"Erro: Chave '{e}' não encontrada em secrets.toml.", icon="❌")
         except Exception as e: st.sidebar.error(f"Erro inesperado nas APIs: {e}", icon="❌")
 
@@ -372,15 +343,17 @@ elif load_button_pressed:
             df_eliq_fetched, df_asto_fetched
         )
         st.session_state.df_consolidated = df_consolidated_loaded
-        df_consolidated = df_consolidated_loaded # Atualiza a variável local também
+        df_consolidated = df_consolidated_loaded # Atualiza variável local
+elif not load_button_pressed: # Se botão não foi pressionado, tenta usar o estado
+    df_consolidated = st.session_state.df_consolidated
 
 
 # --- Dashboard Principal ---
 if df_consolidated.empty:
-    if 'data_loaded' in st.session_state and st.session_state.data_loaded:
-        st.error("O carregamento falhou ou não retornou dados. Verifique os logs e as fontes.")
+    if st.session_state.data_loaded:
+        st.error("Carregamento falhou ou não retornou dados válidos. Verifique as fontes e os logs.")
     else:
-        st.warning("Faça upload dos arquivos e clique em 'Carregar e Processar Dados' na barra lateral.", icon="⚠️")
+        st.warning("Faça upload dos arquivos, ajuste o período das APIs e clique em 'Carregar e Processar Dados'.", icon="⚠️")
 else:
     # --- FILTROS ---
     st.subheader("Filtros de Análise")
@@ -389,44 +362,49 @@ else:
     with col_date:
         data_min = df_consolidated['venda'].min().date()
         data_max = df_consolidated['venda'].max().date()
-        if 'date_filter_values' not in st.session_state: st.session_state.date_filter_values = (data_min, data_max)
-        # Garante que os valores no estado da sessão sejam válidos com os novos dados carregados
+        if 'date_filter_values' not in st.session_state or \
+           st.session_state.date_filter_values[0] < data_min or \
+           st.session_state.date_filter_values[1] > data_max:
+             st.session_state.date_filter_values = (data_min, data_max)
+
+        # Garante que os valores no estado da sessão sejam válidos
         current_start, current_end = st.session_state.date_filter_values
         valid_start = max(data_min, current_start)
         valid_end = min(data_max, current_end)
-        if valid_start > valid_end: valid_start = valid_end # Corrige se intervalo for inválido
+        if valid_start > valid_end: valid_start = data_min; valid_end = data_max # Reseta se inválido
 
         data_inicial, data_final = st.date_input(
             "Período", value=(valid_start, valid_end),
             min_value=data_min, max_value=data_max, key='date_filter'
         )
-        st.session_state.date_filter_values = (data_inicial, data_final)
+        st.session_state.date_filter_values = (data_inicial, data_final) # Atualiza estado
 
-    # Restante dos filtros...
     with col_plataforma:
         plataformas = ['Todos'] + sorted(df_consolidated['plataforma'].unique().tolist())
         filtro_plataforma = st.selectbox("Plataforma/Produto", options=plataformas)
     with col_bandeira:
-        bandeiras = ['Todos'] + sorted(df_consolidated['bandeira'].astype(str).unique().tolist())
+        # Trata possíveis NAs ou tipos mistos antes de unique()
+        bandeiras = ['Todos'] + sorted(df_consolidated['bandeira'].astype(str).fillna('N/A').unique().tolist())
         filtro_bandeira = st.selectbox("Bandeira (Detalhe)", options=bandeiras)
     with col_tipo:
-        tipos = ['Todos'] + sorted(df_consolidated['tipo'].astype(str).unique().tolist())
+        tipos = ['Todos'] + sorted(df_consolidated['tipo'].astype(str).fillna('N/A').unique().tolist())
         filtro_tipo = st.selectbox("Tipo (Detalhe)", options=tipos)
     with col_categoria_pgto:
-        categorias = ['Todos'] + sorted(df_consolidated['categoria_pagamento'].unique().tolist())
+        categorias = ['Todos'] + sorted(df_consolidated['categoria_pagamento'].astype(str).fillna('N/A').unique().tolist())
         filtro_categoria = st.selectbox("Categoria Pagamento", options=categorias)
 
     # --- Aplicação dos Filtros ---
-    df_filtered = pd.DataFrame(columns=df_consolidated.columns) # Inicializa vazio
+    df_filtered = pd.DataFrame(columns=df_consolidated.columns)
     if data_inicial <= data_final:
-        df_filtered = df_consolidated[
-            (df_consolidated['venda'].dt.date >= data_inicial) &
-            (df_consolidated['venda'].dt.date <= data_final)
-        ].copy()
+        # Aplica filtro de data primeiro
+        mask_date = (df_consolidated['venda'].dt.date >= data_inicial) & (df_consolidated['venda'].dt.date <= data_final)
+        df_filtered = df_consolidated[mask_date].copy()
+
+        # Aplica outros filtros sequencialmente
         if filtro_plataforma != 'Todos': df_filtered = df_filtered[df_filtered['plataforma'] == filtro_plataforma]
-        if filtro_bandeira != 'Todos': df_filtered = df_filtered[df_filtered['bandeira'].astype(str) == filtro_bandeira]
-        if filtro_tipo != 'Todos': df_filtered = df_filtered[df_filtered['tipo'].astype(str) == filtro_tipo]
-        if filtro_categoria != 'Todos': df_filtered = df_filtered[df_filtered['categoria_pagamento'] == filtro_categoria]
+        if filtro_bandeira != 'Todos': df_filtered = df_filtered[df_filtered['bandeira'].astype(str).fillna('N/A') == filtro_bandeira]
+        if filtro_tipo != 'Todos': df_filtered = df_filtered[df_filtered['tipo'].astype(str).fillna('N/A') == filtro_tipo]
+        if filtro_categoria != 'Todos': df_filtered = df_filtered[df_filtered['categoria_pagamento'].astype(str).fillna('N/A') == filtro_categoria]
     else:
         st.warning("Data inicial não pode ser posterior à data final.")
 
@@ -453,14 +431,13 @@ else:
              GMV=('bruto', 'sum'), Receita=('receita', 'sum')
         ).reset_index().rename(columns={'venda': 'Data da Venda'})
         if not df_evolucao.empty:
-            # ... (código do gráfico de evolução igual ao anterior) ...
             fig_evolucao = go.Figure()
-            fig_evolucao.add_trace(go.Scatter(x=df_evolucao['Data da Venda'], y=df_evolucao['GMV'], mode='lines+markers', name='Valor Transacionado (Bruto)', line=dict(color='blue', width=2), marker=dict(size=6, opacity=0.8)))
-            fig_evolucao.add_trace(go.Scatter(x=df_evolucao['Data da Venda'], y=df_evolucao['Receita'], mode='lines+markers', name='Nossa Receita', line=dict(color='red', width=2), marker=dict(size=6, opacity=0.8)))
-            fig_evolucao.update_layout(xaxis_title='Data', yaxis_title='Valor (R$)', hovermode="x unified", legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5), template="plotly_white")
-            st.plotly_chart(fig_evolucao, use_container_width=True)
-        else: st.info("Nenhum dado agregado para exibir no gráfico de evolução.")
-    else: st.info("Nenhum dado para exibir no gráfico de evolução.")
+            fig_evolucao.add_trace(go.Scatter(x=df_evolucao['Data da Venda'], y=df_evolucao['GMV'], mode='lines+markers', name='Valor Bruto', line=dict(color='blue', width=2), marker=dict(size=5)))
+            fig_evolucao.add_trace(go.Scatter(x=df_evolucao['Data da Venda'], y=df_evolucao['Receita'], mode='lines+markers', name='Receita', line=dict(color='red', width=2), marker=dict(size=5)))
+            fig_evolucao.update_layout(xaxis_title='Data', yaxis_title='Valor (R$)', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), template="plotly_white", margin=dict(t=20))
+            st.plotly_chart(fig_evolucao, use_container_width=True) # Removido width='stretch' que não é parâmetro aqui
+        else: st.info("Nenhum dado agregado para gráfico de evolução.")
+    else: st.info("Nenhum dado para gráfico de evolução.")
     st.markdown("---")
 
     # --- Gráficos Inferiores ---
@@ -469,29 +446,26 @@ else:
         st.subheader("Receita por Plataforma/Produto")
         if not df_filtered.empty:
             df_receita_plataforma = df_filtered.groupby('plataforma')['receita'].sum().reset_index().sort_values(by='receita', ascending=False)
-            if not df_receita_plataforma.empty:
-                # ... (código do gráfico de barras igual ao anterior) ...
+            if not df_receita_plataforma.empty and df_receita_plataforma['receita'].sum() > 0:
                 fig_receita_plat = px.bar(df_receita_plataforma, x='plataforma', y='receita', labels={'plataforma': 'Plataforma', 'receita': 'Receita (R$)'}, color='plataforma', color_discrete_sequence=px.colors.qualitative.Plotly, title='Receita Gerada por Plataforma', text='receita')
                 fig_receita_plat.update_traces(texttemplate='R$ %{y:,.2f}', textposition='outside')
-                fig_receita_plat.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', template="plotly_white", xaxis_title=None, showlegend=False)
+                fig_receita_plat.update_layout(uniformtext_minsize=8, uniformtext_mode='hide', template="plotly_white", xaxis_title=None, showlegend=False, margin=dict(t=30))
                 st.plotly_chart(fig_receita_plat, use_container_width=True)
-            else: st.info("Nenhum dado agregado para exibir no gráfico de receita por plataforma.")
-        else: st.info("Nenhum dado para exibir no gráfico de receita por plataforma.")
+            else: st.info("Nenhuma receita registrada para gráfico por plataforma.")
+        else: st.info("Nenhum dado para gráfico de receita por plataforma.")
 
     with col7:
         st.subheader("Participação por Categoria de Pagamento")
         if not df_filtered.empty and 'categoria_pagamento' in df_filtered.columns:
             df_categoria_pgto = df_filtered.groupby('categoria_pagamento')['bruto'].sum().reset_index().sort_values(by='bruto', ascending=False)
             if not df_categoria_pgto.empty and df_categoria_pgto['bruto'].sum() > 0:
-                # ... (código do gráfico de pizza igual ao anterior) ...
-                pull_values = [0] * len(df_categoria_pgto)
-                pull_values[0] = 0.1
+                pull_values = [0] * len(df_categoria_pgto); pull_values[0] = 0.1
                 fig_categoria = px.pie(df_categoria_pgto, values='bruto', names='categoria_pagamento', title='Participação do GMV por Cat. Pagamento', color_discrete_sequence=px.colors.qualitative.Safe)
                 fig_categoria.update_traces(textinfo='percent+label', pull=pull_values, marker=dict(line=dict(color='#000000', width=1)))
-                fig_categoria.update_layout(legend_title_text='Categoria')
+                fig_categoria.update_layout(legend_title_text='Categoria', margin=dict(t=30))
                 st.plotly_chart(fig_categoria, use_container_width=True)
-            else: st.info("Nenhum dado com valor bruto positivo para exibir no gráfico de pizza.")
-        else: st.info("Nenhum dado para exibir no gráfico de pizza de categoria de pagamento.")
+            else: st.info("Nenhum valor bruto positivo para gráfico de pizza.")
+        else: st.info("Nenhum dado para gráfico de pizza.")
     st.markdown("---")
 
     # --- Detalhamento por Cliente ---
@@ -502,29 +476,25 @@ else:
             return series.mode().iloc[0]
 
         df_detalhe_cliente = df_filtered.groupby(['cnpj', 'ec']).agg(
-            Receita=('receita', 'sum'),
-            N_Vendas=('cnpj', 'count'),
+            Receita=('receita', 'sum'), N_Vendas=('cnpj', 'count'),
             Categoria_Pag_Principal=('categoria_pagamento', get_most_frequent)
         ).reset_index()
         df_detalhe_cliente['Crescimento'] = 'N/A'
         df_detalhe_cliente['Receita_Formatada'] = df_detalhe_cliente['Receita'].apply(lambda x: f"R$ {x:,.2f}")
         df_detalhe_cliente = df_detalhe_cliente.sort_values(by='Receita', ascending=False)
-
         df_display = df_detalhe_cliente[['cnpj', 'ec', 'Receita_Formatada', 'Crescimento', 'N_Vendas', 'Categoria_Pag_Principal']]
         df_display.columns = ['CNPJ', 'Cliente', 'Receita', 'Crescimento', 'Nº Vendas', 'Cat. Pag. Principal']
 
         st.info("""**Sobre esta tabela:** ...""", icon="ℹ️") # Mantém sua info
         csv_detalhe_cliente = df_display.to_csv(index=False).encode('utf-8')
-        st.download_button(label="Exportar CSV (Detalhamento por Cliente)", data=csv_detalhe_cliente, file_name='detalhamento_por_cliente.csv', mime='text/csv', key='download-csv-detalhe')
-        # Corrigido aviso de depreciação
-        st.dataframe(df_display, hide_index=True, width='stretch')
-        total_clientes_display = len(df_display)
-        st.markdown(f"**Mostrando {total_clientes_display} clientes**")
-    else:
-        st.warning("Nenhum dado de cliente para exibir com os filtros atuais.")
+        st.download_button("Exportar CSV (Det. Cliente)", csv_detalhe_cliente, 'detalhamento_cliente.csv', 'text/csv', key='dl-csv-det-cli')
+        # Corrigido width
+        st.dataframe(df_display, hide_index=True, use_container_width=True)
+        st.markdown(f"**Mostrando {len(df_display)} clientes**")
+    else: st.warning("Nenhum dado de cliente para exibir com os filtros atuais.")
     st.markdown("---")
 
-    # --- Insights Automáticos ---
+    # --- Insights ---
     st.subheader("💡 Insights Automáticos")
     insights_list = generate_insights(df_filtered, total_gmv, receita_total)
     cols_insights = st.columns(len(insights_list) if insights_list else 1)
@@ -534,8 +504,8 @@ else:
 
     # --- Tabela Detalhada (Rodapé) ---
     with st.expander("Visualizar Todos os Dados Filtrados (Detalhados)"):
-         # Corrigido aviso de depreciação
-         st.dataframe(df_filtered, width='stretch')
+         # Corrigido width
+         st.dataframe(df_filtered, use_container_width=True)
 
     csv_data_filtered = df_filtered.to_csv(index=False).encode('utf-8')
-    st.download_button(label="Exportar CSV dos Dados Filtrados", data=csv_data_filtered, file_name='detalhamento_transacoes_filtrado.csv', mime='text/csv', key='download-csv-filtered')
+    st.download_button("Exportar CSV (Dados Filtrados)", csv_data_filtered, 'detalhamento_filtrado.csv', 'text/csv', key='dl-csv-filt')
