@@ -24,6 +24,7 @@ CLIENTES_SHEET_NAME = 'carteira_clientes'
 def load_and_preprocess_data(uploaded_file):
     """
     Carrega o arquivo XLSX, lê as abas, processa, une e calcula a Receita.
+    Inclui a coluna 'produto' para o filtro.
     """
     try:
         xls = pd.ExcelFile(uploaded_file)
@@ -49,18 +50,20 @@ def load_and_preprocess_data(uploaded_file):
         st.error("Coluna 'venda' não encontrada na aba de transações.")
         return pd.DataFrame(), pd.DataFrame()
 
-    # Junção (Merge) e Cálculo de Receita
-    if 'cnpj' in df_transacoes.columns and 'responsavel_comercial' in df_clientes.columns and 'bruto' in df_transacoes.columns and 'liquido' in df_transacoes.columns:
+    # Junção (Merge): AGORA INCLUINDO 'produto' para o filtro
+    cols_to_merge = ['cnpj', 'responsavel_comercial', 'produto']
+    if all(col in df_transacoes.columns for col in ['cnpj', 'bruto', 'liquido']) and all(col in df_clientes.columns for col in cols_to_merge):
         df_merged = pd.merge(
             df_transacoes,
-            df_clientes[['cnpj', 'responsavel_comercial']],
+            df_clientes[cols_to_merge],
             on='cnpj',
             how='left'
         )
         df_merged['responsavel_comercial'] = df_merged['responsavel_comercial'].fillna('Não Atribuído')
+        df_merged['produto'] = df_merged['produto'].fillna('Não Especificado')
         df_merged['receita'] = df_merged['bruto'] - df_merged['liquido']
     else:
-        st.error("Colunas essenciais (cnpj, responsavel_comercial, bruto, ou liquido) não encontradas.")
+        st.error("Colunas essenciais (cnpj, responsavel_comercial, produto, bruto, ou liquido) não encontradas.")
         return pd.DataFrame(), pd.DataFrame()
 
     return df_merged, df_clientes
@@ -96,11 +99,11 @@ if uploaded_file:
 if df_merged.empty or 'bruto' not in df_merged.columns:
     st.warning("Por favor, faça o upload do arquivo Excel para iniciar a análise.", icon="⚠️")
 else:
-    # --- Filtros de Data e Carteira (dentro da execução) ---
+    # --- FILTROS COMPLETOS (Barra Lateral) ---
     with st.sidebar:
         st.markdown("---")
         
-        # Filtro de Data
+        # 1. Filtro de Data
         data_min = df_merged['venda'].min().date()
         data_max = df_merged['venda'].max().date()
         data_inicial, data_final = st.date_input(
@@ -110,21 +113,42 @@ else:
             max_value=data_max
         )
 
-        # Filtro de Vendedor/Carteira
+        # 2. Filtro de Vendedor/Carteira
         vendedores = ['Todas'] + sorted(df_clientes_original['responsavel_comercial'].unique().tolist())
         filtro_vendedor = st.selectbox("Filtrar por Vendedor (Carteira)", options=vendedores)
 
-        # Aplica filtro de data
+        # 3. Filtro de Produto
+        produtos = ['Todos'] + sorted(df_merged['produto'].unique().tolist())
+        filtro_produto = st.selectbox("Filtrar por Produto", options=produtos)
+        
+        # 4. Filtro de Bandeira
+        bandeiras = ['Todas'] + sorted(df_merged['bandeira'].unique().tolist())
+        filtro_bandeira = st.selectbox("Filtrar por Bandeira", options=bandeiras)
+        
+        # 5. Filtro de Tipo (Crédito/Débito)
+        tipos = ['Todos'] + sorted(df_merged['tipo'].unique().tolist())
+        filtro_tipo = st.selectbox("Filtrar por Tipo", options=tipos)
+
+        # --- Aplicação dos Filtros ---
         df_filtered = df_merged[
             (df_merged['venda'].dt.date >= data_inicial) &
             (df_merged['venda'].dt.date <= data_final)
         ].copy()
         
-        # Aplica filtro de vendedor, se selecionado
         if filtro_vendedor != 'Todas':
              df_filtered = df_filtered[df_filtered['responsavel_comercial'] == filtro_vendedor]
+        
+        if filtro_produto != 'Todos':
+             df_filtered = df_filtered[df_filtered['produto'] == filtro_produto]
              
-        st.button("Atualizar") 
+        if filtro_bandeira != 'Todas':
+             df_filtered = df_filtered[df_filtered['bandeira'] == filtro_bandeira]
+
+        if filtro_tipo != 'Todos':
+             df_filtered = df_filtered[df_filtered['tipo'] == filtro_tipo]
+             
+        st.button("Atualizar") # Botão no anexo é só visual, pois o Streamlit atualiza automaticamente
+
 
     # --- 1. Cálculos de KPIs ---
     
