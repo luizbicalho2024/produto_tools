@@ -4,7 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import io
 
-# --- Configurações e Nomes das Abas ---
+# --- Configurações de Aparência ---
 
 st.set_page_config(
     page_title="Dashboard de Transações - Rovema Pay",
@@ -12,39 +12,36 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ATENÇÃO: Ajuste os nomes das abas se forem diferentes no seu arquivo XLSX!
+# Constantes para Nomes das Abas (Sheets)
+# ATENÇÃO: Verifique e ajuste se os nomes das abas em seu XLSX são diferentes!
 TRANSACOES_SHEET_NAME = 'transacoes_rovemapay'
 CLIENTES_SHEET_NAME = 'carteira_clientes'
+
 
 # --- Funções de Carregamento e Pré-processamento ---
 
 @st.cache_data(show_spinner="Carregando e processando dados...")
 def load_and_preprocess_data(uploaded_file):
     """
-    Carrega o arquivo XLSX, lê as abas, processa e une os DataFrames.
+    Carrega o arquivo XLSX, lê as abas, processa, une e calcula a Receita.
     """
     try:
         xls = pd.ExcelFile(uploaded_file)
         
-        # Leitura das abas
         df_transacoes = pd.read_excel(xls, TRANSACOES_SHEET_NAME)
         df_clientes = pd.read_excel(xls, CLIENTES_SHEET_NAME)
         
     except ValueError as e:
-        # Erro se a aba não for encontrada
         st.error(f"Erro: Uma das abas (sheets) não foi encontrada no arquivo Excel. Esperado: '{TRANSACOES_SHEET_NAME}' e '{CLIENTES_SHEET_NAME}'.")
         return pd.DataFrame(), pd.DataFrame()
     except Exception as e:
-        # Outros erros de carregamento
         st.error(f"Erro ao carregar o arquivo Excel: {e}")
         return pd.DataFrame(), pd.DataFrame()
 
-    # Pré-processamento e Limpeza
-    # Limpa espaços em branco nos nomes das colunas de ambos os DFs
+    # Limpeza de colunas e datas
     df_transacoes.columns = [c.strip() for c in df_transacoes.columns]
     df_clientes.columns = [c.strip() for c in df_clientes.columns]
 
-    # Tratar colunas de data 
     if 'venda' in df_transacoes.columns:
         df_transacoes['venda'] = pd.to_datetime(df_transacoes['venda'], errors='coerce')
         df_transacoes.dropna(subset=['venda'], inplace=True) 
@@ -52,8 +49,8 @@ def load_and_preprocess_data(uploaded_file):
         st.error("Coluna 'venda' não encontrada na aba de transações.")
         return pd.DataFrame(), pd.DataFrame()
 
-    # Junção dos DataFrames
-    if 'cnpj' in df_transacoes.columns and 'responsavel_comercial' in df_clientes.columns:
+    # Junção (Merge) e Cálculo de Receita
+    if 'cnpj' in df_transacoes.columns and 'responsavel_comercial' in df_clientes.columns and 'bruto' in df_transacoes.columns and 'liquido' in df_transacoes.columns:
         df_merged = pd.merge(
             df_transacoes,
             df_clientes[['cnpj', 'responsavel_comercial']],
@@ -61,28 +58,23 @@ def load_and_preprocess_data(uploaded_file):
             how='left'
         )
         df_merged['responsavel_comercial'] = df_merged['responsavel_comercial'].fillna('Não Atribuído')
-    else:
-        st.error("Colunas essenciais ('cnpj' ou 'responsavel_comercial') não encontradas. Verifique a formatação.")
-        return pd.DataFrame(), pd.DataFrame()
-
-    # Cálculos essenciais para KPIs e Receita
-    if 'bruto' in df_merged.columns and 'liquido' in df_merged.columns:
         df_merged['receita'] = df_merged['bruto'] - df_merged['liquido']
     else:
-        st.error("Colunas 'bruto' e 'liquido' essenciais não encontradas para cálculos de Receita.")
+        st.error("Colunas essenciais (cnpj, responsavel_comercial, bruto, ou liquido) não encontradas.")
         return pd.DataFrame(), pd.DataFrame()
 
-    st.success("Dados carregados e processados com sucesso!", icon="✅")
     return df_merged, df_clientes
+
 
 # --- Interface Streamlit ---
 
-st.title("💰 Dashboard de Transações")
+st.title("💰 Rovema Bank - Dashboard de Transações")
 
-# --- Área de Upload na Barra Lateral ---
+# --- Área de Upload e Filtros (Barra Lateral) ---
 with st.sidebar:
     st.header("Filtros")
     
+    # Upload
     uploaded_file = st.file_uploader(
         "Upload do Arquivo Único (Excel)",
         type=['xlsx'],
@@ -99,50 +91,67 @@ if uploaded_file:
     df_merged, df_clientes_original = load_and_preprocess_data(uploaded_file)
 
 
-# --- Seção Principal do Dashboard ---
+# --- Dashboard Principal ---
 
 if df_merged.empty or 'bruto' not in df_merged.columns:
-    st.warning("Por favor, faça o upload do arquivo Excel para começar a análise.", icon="⚠️")
+    st.warning("Por favor, faça o upload do arquivo Excel para iniciar a análise.", icon="⚠️")
 else:
-    # --- Filtros de Data (Barra Lateral) ---
+    # --- Filtros de Data e Carteira (dentro da execução) ---
     with st.sidebar:
         st.markdown("---")
+        
+        # Filtro de Data
         data_min = df_merged['venda'].min().date()
         data_max = df_merged['venda'].max().date()
-
         data_inicial, data_final = st.date_input(
-            "Selecione o Período de Análise",
+            "Período de Análise",
             value=(data_min, data_max),
             min_value=data_min,
             max_value=data_max
         )
 
+        # Filtro de Vendedor/Carteira
+        vendedores = ['Todas'] + sorted(df_clientes_original['responsavel_comercial'].unique().tolist())
+        filtro_vendedor = st.selectbox("Filtrar por Vendedor (Carteira)", options=vendedores)
+
+        # Aplica filtro de data
         df_filtered = df_merged[
             (df_merged['venda'].dt.date >= data_inicial) &
             (df_merged['venda'].dt.date <= data_final)
-        ]
+        ].copy()
         
-        # Placeholder para o filtro de Carteira, como no anexo
-        st.selectbox("Filtrar por Vendedor (Carteira)", 
-                     options=['Todos'] + list(df_clientes_original['responsavel_comercial'].unique()),
-                     key="filtro_vendedor")
-        st.button("Atualizar") # Botão no anexo é só visual, pois o Streamlit atualiza automaticamente
+        # Aplica filtro de vendedor, se selecionado
+        if filtro_vendedor != 'Todas':
+             df_filtered = df_filtered[df_filtered['responsavel_comercial'] == filtro_vendedor]
+             
+        st.button("Atualizar") 
 
     # --- 1. Cálculos de KPIs ---
     
     total_gmv = df_filtered['bruto'].sum()
-    total_liquido = df_filtered['liquido'].sum()
     receita_total = df_filtered['receita'].sum()
     clientes_ativos = df_filtered['cnpj'].nunique()
     
     margem_media = (receita_total / total_gmv) * 100 if total_gmv > 0 else 0
     
-    # Clientes em Queda (Placeholder: Usamos clientes com 1 transação como proxy para "baixo engajamento")
-    transacoes_por_cliente = df_filtered.groupby('cnpj')['id_venda'].nunique()
-    clientes_em_queda = transacoes_por_cliente[transacoes_por_cliente == 1].count()
-
-
-    # --- 2. Linha de KPIs ---
+    # Proxy para "Clientes em Queda" (Clientes com GMV baixo, e.g., < R$1000)
+    gmv_por_cliente = df_filtered.groupby('cnpj')['bruto'].sum()
+    clientes_em_queda_proxy = gmv_por_cliente[gmv_por_cliente < 1000].count()
+    
+    # --- 2. Linha de KPIs (Cards) ---
+    st.markdown("""
+        <style>
+            .st-emotion-cache-1r6r0z6 {
+                color: #262730; /* Cor do rótulo da métrica */
+            }
+            .st-emotion-cache-1s0k10z {
+                background-color: #f0f2f6; /* Fundo dos cards (simulando cinza claro) */
+                border-radius: 8px;
+                padding: 10px;
+                box-shadow: 1px 1px 5px rgba(0,0,0,0.05);
+            }
+        </style>
+    """, unsafe_allow_html=True)
     
     col1, col2, col3, col4, col5 = st.columns(5)
 
@@ -150,14 +159,14 @@ else:
     col2.metric("Nossa Receita", f"R$ {receita_total:,.2f}")
     col3.metric("Margem Média", f"{margem_media:,.2f}%")
     col4.metric("Clientes Ativos", f"{clientes_ativos:,}")
-    col5.metric("Clientes em Queda (Proxy)", f"{clientes_em_queda:,}")
+    col5.metric("Clientes em Queda (Proxy)", f"{clientes_em_queda_proxy:,}")
     
     st.markdown("---")
 
     # --- 3. Gráfico de Evolução (GMV vs Receita) ---
     st.subheader("Evolução do Valor Transacionado vs Receita")
 
-    # Agrupamento para o gráfico de linha
+    # Agrupamento por dia
     df_evolucao = df_filtered.groupby(df_filtered['venda'].dt.date).agg(
         GMV=('bruto', 'sum'),
         Receita=('receita', 'sum')
@@ -166,25 +175,23 @@ else:
     
     fig_evolucao = go.Figure()
     
-    # Linha do GMV (Valor Transacionado)
     fig_evolucao.add_trace(go.Scatter(
         x=df_evolucao['Data da Venda'], y=df_evolucao['GMV'],
-        mode='lines+markers', name='Valor Transacionado (Bruto)',
-        line=dict(color='blue')
+        mode='lines', name='Valor Transacionado (Bruto)',
+        line=dict(color='blue', width=2)
     ))
     
-    # Linha da Receita
     fig_evolucao.add_trace(go.Scatter(
         x=df_evolucao['Data da Venda'], y=df_evolucao['Receita'],
-        mode='lines+markers', name='Receita',
-        line=dict(color='red')
+        mode='lines', name='Nossa Receita',
+        line=dict(color='red', width=2)
     ))
     
     fig_evolucao.update_layout(
         xaxis_title='Data',
         yaxis_title='Valor (R$)',
         hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5)
     )
     st.plotly_chart(fig_evolucao, use_container_width=True)
 
@@ -205,6 +212,7 @@ else:
             x='responsavel_comercial', y='receita',
             labels={'responsavel_comercial': 'Vendedor', 'receita': 'Receita (R$)'},
             color='responsavel_comercial',
+            color_discrete_sequence=px.colors.qualitative.Plotly,
             title='Receita Gerada por Responsável Comercial'
         )
         st.plotly_chart(fig_receita_vendedor, use_container_width=True)
@@ -218,44 +226,45 @@ else:
         fig_bandeira = px.pie(
             df_bandeira, values='bruto', names='bandeira',
             title='Participação do GMV por Bandeira',
+            color_discrete_sequence=px.colors.qualitative.Safe
         )
         fig_bandeira.update_traces(textinfo='percent+label', pull=[0.05, 0.0, 0.0])
         st.plotly_chart(fig_bandeira, use_container_width=True)
         
     st.markdown("---")
 
-    # --- 5. Top 10 Clientes (Substituindo Crescimento/Queda) ---
-    st.subheader("Detalhamento por Cliente (GMV)")
+    # --- 5. Tabelas de Detalhamento por Cliente (Top 10 Crescimento/Queda - Proxy) ---
+    st.subheader("Detalhamento por Cliente")
     
     col8, col9 = st.columns(2)
     
-    # Ranking de Clientes (GMV)
+    # DataFrame de Ranqueamento de Clientes
     df_ranking_clientes = df_filtered.groupby(['cnpj', 'ec']).agg(
-        Receita=('receita', 'sum'),
         GMV=('bruto', 'sum'),
+        Receita=('receita', 'sum'),
         Vendas=('id_venda', 'nunique')
     ).reset_index().sort_values(by='GMV', ascending=False)
     
     # TOP 10 (Proxy para Top 10 Crescimento)
     with col8:
-        st.markdown("##### Top 10 Clientes por GMV")
+        st.markdown("##### Top 10 Crescimento (Proxy: Maior GMV)")
         df_top10 = df_ranking_clientes.head(10).copy()
-        df_top10.rename(columns={'ec': 'Cliente', 'GMV': 'Valor Transacionado (R$)', 'Receita': 'Receita (R$)'}, inplace=True)
-        df_top10['Valor Transacionado (R$)'] = df_top10['Valor Transacionado (R$)'].apply(lambda x: f"R$ {x:,.2f}")
-        df_top10['Receita (R$)'] = df_top10['Receita (R$)'].apply(lambda x: f"R$ {x:,.2f}")
+        df_top10['GMV'] = df_top10['GMV'].apply(lambda x: f"R$ {x:,.2f}")
+        df_top10['Receita'] = df_top10['Receita'].apply(lambda x: f"R$ {x:,.2f}")
+        df_top10.rename(columns={'ec': 'Cliente', 'GMV': 'Transacionado', 'Vendas': 'Qtd. Vendas'}, inplace=True)
         
-        st.dataframe(df_top10[['Cliente', 'Valor Transacionado (R$)', 'Vendas', 'Receita (R$)']], hide_index=True, use_container_width=True)
+        st.dataframe(df_top10[['Cliente', 'Transacionado', 'Qtd. Vendas', 'Receita']], hide_index=True, use_container_width=True)
 
     # BOTTOM 10 (Proxy para Top 10 Queda)
     with col9:
-        st.markdown("##### Top 10 Clientes com Menor GMV")
+        st.markdown("##### Top 10 Queda (Proxy: Menor GMV)")
         df_bottom10 = df_ranking_clientes.sort_values(by='GMV', ascending=True).head(10).copy()
-        df_bottom10.rename(columns={'ec': 'Cliente', 'GMV': 'Valor Transacionado (R$)', 'Receita': 'Receita (R$)'}, inplace=True)
-        df_bottom10['Valor Transacionado (R$)'] = df_bottom10['Valor Transacionado (R$)'].apply(lambda x: f"R$ {x:,.2f}")
-        df_bottom10['Receita (R$)'] = df_bottom10['Receita (R$)'].apply(lambda x: f"R$ {x:,.2f}")
-        
-        st.dataframe(df_bottom10[['Cliente', 'Valor Transacionado (R$)', 'Vendas', 'Receita (R$)']], hide_index=True, use_container_width=True)
+        df_bottom10['GMV'] = df_bottom10['GMV'].apply(lambda x: f"R$ {x:,.2f}")
+        df_bottom10['Receita'] = df_bottom10['Receita'].apply(lambda x: f"R$ {x:,.2f}")
+        df_bottom10.rename(columns={'ec': 'Cliente', 'GMV': 'Transacionado', 'Vendas': 'Qtd. Vendas'}, inplace=True)
+
+        st.dataframe(df_bottom10[['Cliente', 'Transacionado', 'Qtd. Vendas', 'Receita']], hide_index=True, use_container_width=True)
 
     # --- Tabela Detalhada (Rodapé) ---
-    with st.expander("Visualizar Todos os Dados Detalhados"):
+    with st.expander("Visualizar Todos os Dados (Detalhados)"):
         st.dataframe(df_filtered)
