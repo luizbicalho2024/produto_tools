@@ -345,40 +345,86 @@ else:
         
     st.markdown("---")
 
-    # --- 5. Detalhamento por Cliente (Top 10 Crescimento/Queda - Proxy) ---
+    # --- 5. Detalhamento por Cliente (Novo Formato) ---
     st.subheader("🔍 Detalhamento por Cliente")
-    
-    col8, col9 = st.columns(2)
-    
-    # DataFrame de Ranqueamento de Clientes
-    df_ranking_clientes = df_filtered.groupby(['cnpj', 'ec']).agg(
-        GMV=('bruto', 'sum'),
-        Receita=('receita', 'sum'),
-        # Usando 'cnpj' como contagem proxy se 'id_venda' não estiver em todas as abas normalizadas
-        Vendas=('cnpj', 'count') 
-    ).reset_index().sort_values(by='GMV', ascending=False)
-    
-    # TOP 10 (Proxy para Top 10 Crescimento)
-    with col8:
-        st.markdown("##### Top 10 Crescimento (Proxy: Maior GMV)")
-        df_top10 = df_ranking_clientes.head(10).copy()
-        df_top10['GMV'] = df_top10['GMV'].apply(lambda x: f"R$ {x:,.2f}")
-        df_top10['Receita'] = df_top10['Receita'].apply(lambda x: f"R$ {x:,.2f}")
-        df_top10.insert(1, '% Cresc. (Proxy)', ['N/A'] * len(df_top10)) 
-        df_top10.rename(columns={'ec': 'Cliente', 'GMV': 'Transacionado', 'Vendas': 'Qtd. Vendas'}, inplace=True)
+
+    if not df_filtered.empty:
+        # Função para encontrar a bandeira mais frequente (moda)
+        def get_most_frequent_bandeira(series):
+            if series.empty:
+                return 'N/A'
+            # mode() retorna uma Series, pegamos o primeiro item
+            return series.mode().iloc[0] 
+
+        # Agrupar os dados por cliente
+        df_detalhe_cliente = df_filtered.groupby(['cnpj', 'ec']).agg(
+            Receita=('receita', 'sum'),
+            N_Vendas=('cnpj', 'count'),
+            Bandeira_Principal=('bandeira', get_most_frequent_bandeira)
+        ).reset_index()
+
+        # Adicionar a coluna 'Crescimento' como 'N/A'
+        # (Não é possível calcular sem dados de período anterior)
+        df_detalhe_cliente['Crescimento'] = 'N/A'
         
-        st.dataframe(df_top10[['Cliente', '% Cresc. (Proxy)', 'Transacionado', 'Qtd. Vendas', 'Receita']], hide_index=True, use_container_width=True)
+        # Criar colunas formatadas
+        df_detalhe_cliente['Receita_Formatada'] = df_detalhe_cliente['Receita'].apply(lambda x: f"R$ {x:,.2f}")
+        
+        # Ordenar por Receita (do maior para o menor)
+        df_detalhe_cliente = df_detalhe_cliente.sort_values(by='Receita', ascending=False)
 
-    # BOTTOM 10 (Proxy para Top 10 Queda)
-    with col9:
-        st.markdown("##### Top 10 Queda (Proxy: Menor GMV)")
-        df_bottom10 = df_ranking_clientes.sort_values(by='GMV', ascending=True).head(10).copy()
-        df_bottom10['GMV'] = df_bottom10['GMV'].apply(lambda x: f"R$ {x:,.2f}")
-        df_bottom10['Receita'] = df_bottom10['Receita'].apply(lambda x: f"R$ {x:,.2f}")
-        df_bottom10.insert(1, '% Queda (Proxy)', ['N/A'] * len(df_bottom10))
-        df_bottom10.rename(columns={'ec': 'Cliente', 'GMV': 'Transacionado', 'Vendas': 'Qtd. Vendas'}, inplace=True)
+        # Reordenar e Renomear colunas para exibição
+        df_display = df_detalhe_cliente[[
+            'cnpj', 
+            'ec', 
+            'Receita_Formatada', 
+            'Crescimento', 
+            'N_Vendas', 
+            'Bandeira_Principal'
+        ]]
+        
+        df_display.columns = [
+            'CNPJ', 
+            'Cliente', 
+            'Receita', 
+            'Crescimento', 
+            'Nº Vendas', 
+            'Bandeira'
+        ]
+        
+        st.info(
+            """
+            **Sobre esta tabela:**
+            * **Crescimento:** Esta coluna é 'N/A' (Não Aplicável). O cálculo de crescimento (ex: +4.5%) 
+                exigiria dados de um período anterior para comparação, que não estão presentes no arquivo.
+            * **Nº Vendas:** É a contagem total de transações do cliente no período filtrado.
+            * **Bandeira:** É a bandeira *mais frequente* (mais usada) pelo cliente no período.
+            """, 
+            icon="ℹ️"
+        )
+        
+        # --- Botão de Exportar CSV para esta tabela ---
+        # (Conforme imagem do usuário)
+        csv_detalhe_cliente = df_display.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="Exportar CSV (Detalhamento por Cliente)",
+            data=csv_detalhe_cliente,
+            file_name='detalhamento_por_cliente.csv',
+            mime='text/csv',
+            key='download-csv-detalhe'
+        )
+        
+        # Exibir o dataframe
+        st.dataframe(df_display, hide_index=True, use_container_width=True)
+        
+        # Adicionar contagem de clientes
+        total_clientes = len(df_display)
+        st.markdown(f"**Mostrando {total_clientes} clientes**")
 
-        st.dataframe(df_bottom10[['Cliente', '% Queda (Proxy)', 'Transacionado', 'Qtd. Vendas', 'Receita']], hide_index=True, use_container_width=True)
+    else:
+        st.warning("Nenhum dado de cliente para exibir com os filtros atuais.")
+            
+    st.markdown("---")
         
     st.markdown("---")
 
