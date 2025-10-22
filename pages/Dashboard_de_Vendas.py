@@ -68,22 +68,22 @@ def load_and_preprocess_data(uploaded_file):
                     df_norm['plataforma'] = 'Eliq'
                     df_norm['tipo'] = df['grupo'].astype(str) # Usando grupo como tipo para Eliq
                     df_norm['bandeira'] = df['subgrupo'].astype(str) # Usando subgrupo como bandeira
-                    
+                        
                 elif sheet_name == 'transacoes_asto':
                     df_norm['cnpj'] = df['cliente_cnpj']
                     df_norm['bruto'] = df['valor']
-                    # Receita Proxy: margem baseada na taxa do cliente (5% sobre o valor)
+                    # Receita Proxy: margem baseada na taxa do cliente
                     df_norm['receita'] = df['valor'] * (df['taxa_cliente'] / 100)
                     df_norm['venda'] = pd.to_datetime(df['data'], errors='coerce')
                     df_norm['ec'] = df['cliente']
                     df_norm['plataforma'] = 'Asto'
                     df_norm['tipo'] = df['unidade'].astype(str) # Usando unidade como tipo para Asto
                     df_norm['bandeira'] = df['estabelecimento'].astype(str) # Usando estabelecimento como bandeira
-                    
+                        
                 elif sheet_name == 'transacoes_bionio':
                     df_norm['cnpj'] = df['cnpj_da_organizacao']
                     df_norm['bruto'] = df['valor_total_do_pedido']
-                    # Receita Proxy: 5% fixo sobre o valor total (Apenas para exemplificar o cálculo de métricas)
+                    # Receita Proxy: 5% fixo sobre o valor total
                     df_norm['receita'] = df['valor_total_do_pedido'] * 0.05
                     df_norm['venda'] = pd.to_datetime(df['data_da_criacao_do_pedido'], errors='coerce')
                     df_norm['ec'] = df['razao_social']
@@ -129,7 +129,7 @@ def generate_insights(df_filtered, total_gmv, receita_total):
     
     if df_filtered.empty:
         return ["Nenhum dado encontrado para o período/filtros selecionados."]
-        
+            
     # Insight 1: Vendedor com maior Receita
     if 'responsavel_comercial' in df_filtered.columns:
         df_receita_vendedor = df_filtered.groupby('responsavel_comercial')['receita'].sum().reset_index()
@@ -220,7 +220,7 @@ else:
         # Filtro de Tipo (usando 'tipo' normalizado)
         tipos = ['Todos'] + sorted(df_merged['tipo'].unique().tolist())
         filtro_tipo = st.selectbox("Tipo", options=tipos)
-        
+            
     with col_atualizar:
         st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True) 
         st.button("Atualizar") 
@@ -236,7 +236,7 @@ else:
     
     if filtro_vendedor != 'Todas':
          df_filtered = df_filtered[df_filtered['responsavel_comercial'] == filtro_vendedor]
-         
+            
     if filtro_bandeira != 'Todas':
          df_filtered = df_filtered[df_filtered['bandeira'] == filtro_bandeira]
 
@@ -354,7 +354,8 @@ else:
     df_ranking_clientes = df_filtered.groupby(['cnpj', 'ec']).agg(
         GMV=('bruto', 'sum'),
         Receita=('receita', 'sum'),
-        Vendas=('id_venda', 'nunique') if 'id_venda' in df_filtered.columns else ('cnpj', 'count')
+        # Usando 'cnpj' como contagem proxy se 'id_venda' não estiver em todas as abas normalizadas
+        Vendas=('cnpj', 'count') 
     ).reset_index().sort_values(by='GMV', ascending=False)
     
     # TOP 10 (Proxy para Top 10 Crescimento)
@@ -385,7 +386,9 @@ else:
     st.subheader("💡 Insights Automáticos")
     insights_list = generate_insights(df_filtered, total_gmv, receita_total)
     
-    cols_insights = st.columns(len(insights_list))
+    # Cria colunas dinamicamente para os insights
+    cols_insights = st.columns(len(insights_list) if insights_list else 1)
+    
     for i, insight in enumerate(insights_list):
         cols_insights[i].markdown(f"""
             <div style="background-color: #e6f7ff; padding: 10px; border-radius: 5px; height: 100%;">
