@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import io
 import numpy as np
 import requests # Necessário para chamadas de API
-from datetime import datetime, timedelta # Necessário para datas nas APIs
+from datetime import datetime, timedelta, date # Necessário para datas nas APIs e min_value
 
 # --- Configurações de Aparência ---
 st.set_page_config(
