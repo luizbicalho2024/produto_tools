@@ -13,22 +13,19 @@ st.set_page_config(
 )
 
 # Constantes para Nomes das Abas (Sheets)
-# ATENÇÃO: Verifique e ajuste se os nomes das abas em seu XLSX são diferentes!
 TRANSACOES_SHEET_NAME = 'transacoes_rovemapay'
 CLIENTES_SHEET_NAME = 'carteira_clientes'
 
 
-# --- Funções de Carregamento e Pré-processamento ---
+# --- Funções de Processamento e Insights ---
 
 @st.cache_data(show_spinner="Carregando e processando dados...")
 def load_and_preprocess_data(uploaded_file):
     """
     Carrega o arquivo XLSX, lê as abas, processa, une e calcula a Receita.
-    Inclui a coluna 'produto' para o filtro.
     """
     try:
         xls = pd.ExcelFile(uploaded_file)
-        
         df_transacoes = pd.read_excel(xls, TRANSACOES_SHEET_NAME)
         df_clientes = pd.read_excel(xls, CLIENTES_SHEET_NAME)
         
@@ -50,9 +47,9 @@ def load_and_preprocess_data(uploaded_file):
         st.error("Coluna 'venda' não encontrada na aba de transações.")
         return pd.DataFrame(), pd.DataFrame()
 
-    # Junção (Merge): AGORA INCLUINDO 'produto' para o filtro
+    # Junção (Merge) e Cálculo de Receita
     cols_to_merge = ['cnpj', 'responsavel_comercial', 'produto']
-    if all(col in df_transacoes.columns for col in ['cnpj', 'bruto', 'liquido']) and all(col in df_clientes.columns for col in cols_to_merge):
+    if all(col in df_transacoes.columns for col in ['cnpj', 'bruto', 'liquido', 'bandeira', 'tipo']) and all(col in df_clientes.columns for col in cols_to_merge):
         df_merged = pd.merge(
             df_transacoes,
             df_clientes[cols_to_merge],
@@ -63,10 +60,42 @@ def load_and_preprocess_data(uploaded_file):
         df_merged['produto'] = df_merged['produto'].fillna('Não Especificado')
         df_merged['receita'] = df_merged['bruto'] - df_merged['liquido']
     else:
-        st.error("Colunas essenciais (cnpj, responsavel_comercial, produto, bruto, ou liquido) não encontradas.")
+        st.error("Colunas essenciais não encontradas. Verifique a estrutura da planilha.")
         return pd.DataFrame(), pd.DataFrame()
 
     return df_merged, df_clientes
+
+def generate_insights(df_filtered, total_gmv, receita_total):
+    """Gera insights automáticos baseados nos dados filtrados."""
+    insights = []
+    
+    if df_filtered.empty:
+        return ["Nenhum dado encontrado para o período/filtros selecionados."]
+        
+    # Insight 1: Vendedor com maior Receita
+    if 'responsavel_comercial' in df_filtered.columns:
+        df_receita_vendedor = df_filtered.groupby('responsavel_comercial')['receita'].sum().reset_index()
+        top_vendedor = df_receita_vendedor.loc[df_receita_vendedor['receita'].idxmax()]
+        insights.append(f"O **{top_vendedor['responsavel_comercial']}** é o vendedor com a maior Receita no período, gerando **R$ {top_vendedor['receita']:,.2f}**.")
+
+    # Insight 2: Cliente com maior GMV
+    if 'ec' in df_filtered.columns:
+        df_gmv_cliente = df_filtered.groupby('ec')['bruto'].sum().reset_index()
+        top_cliente = df_gmv_cliente.loc[df_gmv_cliente['bruto'].idxmax()]
+        insights.append(f"O cliente **{top_cliente['ec']}** é o principal motor de vendas, com um GMV de **R$ {top_cliente['bruto']:,.2f}**.")
+    
+    # Insight 3: Tipo de transação mais comum (Débito vs Crédito)
+    if 'tipo' in df_filtered.columns:
+        df_tipo = df_filtered.groupby('tipo')['bruto'].sum().reset_index()
+        if not df_tipo.empty:
+            top_tipo = df_tipo.loc[df_tipo['bruto'].idxmax()]
+            insights.append(f"A modalidade de transação predominante é **{top_tipo['tipo']}**, representando **R$ {top_tipo['bruto']:,.2f}** do GMV total.")
+    
+    # Insight 4: Margem média
+    margem_media = (receita_total / total_gmv) * 100 if total_gmv > 0 else 0
+    insights.append(f"A margem média de Receita sobre o GMV no período é de **{margem_media:,.2f}%**, indicando a taxa média de retorno.")
+
+    return insights
 
 
 # --- Interface Streamlit ---
@@ -147,8 +176,7 @@ else:
         if filtro_tipo != 'Todos':
              df_filtered = df_filtered[df_filtered['tipo'] == filtro_tipo]
              
-        st.button("Atualizar") # Botão no anexo é só visual, pois o Streamlit atualiza automaticamente
-
+        st.button("Atualizar") 
 
     # --- 1. Cálculos de KPIs ---
     
@@ -165,9 +193,7 @@ else:
     # --- 2. Linha de KPIs (Cards) ---
     st.markdown("""
         <style>
-            .st-emotion-cache-1r6r0z6 {
-                color: #262730; /* Cor do rótulo da métrica */
-            }
+            .st-emotion-cache-1r6r0z6 {color: #262730;} /* Cor do rótulo da métrica */
             .st-emotion-cache-1s0k10z {
                 background-color: #f0f2f6; /* Fundo dos cards (simulando cinza claro) */
                 border-radius: 8px;
@@ -186,11 +212,27 @@ else:
     col5.metric("Clientes em Queda (Proxy)", f"{clientes_em_queda_proxy:,}")
     
     st.markdown("---")
+    
+    # --- 3. Insights Automáticos (Nova Seção) ---
+    st.subheader("💡 Insights Automáticos")
+    insights_list = generate_insights(df_filtered, total_gmv, receita_total)
+    
+    # Exibe insights em colunas para simular o layout de cards
+    cols_insights = st.columns(len(insights_list))
+    for i, insight in enumerate(insights_list):
+        cols_insights[i].markdown(f"""
+            <div style="background-color: #e6f7ff; padding: 10px; border-radius: 5px; height: 100%;">
+                <small>Insight {i+1}</small>
+                <p style="font-size: 14px; margin: 0;">{insight}</p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
 
-    # --- 3. Gráfico de Evolução (GMV vs Receita) ---
+
+    # --- 4. Gráfico de Evolução (GMV vs Receita) ---
     st.subheader("Evolução do Valor Transacionado vs Receita")
 
-    # Agrupamento por dia
     df_evolucao = df_filtered.groupby(df_filtered['venda'].dt.date).agg(
         GMV=('bruto', 'sum'),
         Receita=('receita', 'sum')
@@ -221,13 +263,12 @@ else:
 
     st.markdown("---")
 
-    # --- 4. Linha de Gráficos (Receita por Carteira e Participação por Bandeira) ---
+    # --- 5. Linha de Gráficos (Receita por Carteira e Participação por Bandeira) ---
     col6, col7 = st.columns([1.5, 1])
 
     with col6:
         st.subheader("Receita por Carteira")
         
-        # Agrupamento para Receita por Vendedor
         df_receita_vendedor = df_filtered.groupby('responsavel_comercial')['receita'].sum().reset_index()
         df_receita_vendedor = df_receita_vendedor.sort_values(by='receita', ascending=False)
 
@@ -244,7 +285,6 @@ else:
     with col7:
         st.subheader("Participação por Bandeira")
         
-        # Agrupamento para Participação por Bandeira
         df_bandeira = df_filtered.groupby('bandeira')['bruto'].sum().reset_index()
         
         fig_bandeira = px.pie(
@@ -257,8 +297,8 @@ else:
         
     st.markdown("---")
 
-    # --- 5. Tabelas de Detalhamento por Cliente (Top 10 Crescimento/Queda - Proxy) ---
-    st.subheader("Detalhamento por Cliente")
+    # --- 6. Detalhamento por Cliente (Top 10 Crescimento/Queda - Proxy) ---
+    st.subheader("🔍 Detalhamento por Cliente")
     
     col8, col9 = st.columns(2)
     
@@ -275,9 +315,11 @@ else:
         df_top10 = df_ranking_clientes.head(10).copy()
         df_top10['GMV'] = df_top10['GMV'].apply(lambda x: f"R$ {x:,.2f}")
         df_top10['Receita'] = df_top10['Receita'].apply(lambda x: f"R$ {x:,.2f}")
+        # Adiciona coluna de % Crescimento como Placeholder
+        df_top10.insert(1, '% Cresc. (Proxy)', ['N/A'] * len(df_top10)) 
         df_top10.rename(columns={'ec': 'Cliente', 'GMV': 'Transacionado', 'Vendas': 'Qtd. Vendas'}, inplace=True)
         
-        st.dataframe(df_top10[['Cliente', 'Transacionado', 'Qtd. Vendas', 'Receita']], hide_index=True, use_container_width=True)
+        st.dataframe(df_top10[['Cliente', '% Cresc. (Proxy)', 'Transacionado', 'Qtd. Vendas', 'Receita']], hide_index=True, use_container_width=True)
 
     # BOTTOM 10 (Proxy para Top 10 Queda)
     with col9:
@@ -285,10 +327,18 @@ else:
         df_bottom10 = df_ranking_clientes.sort_values(by='GMV', ascending=True).head(10).copy()
         df_bottom10['GMV'] = df_bottom10['GMV'].apply(lambda x: f"R$ {x:,.2f}")
         df_bottom10['Receita'] = df_bottom10['Receita'].apply(lambda x: f"R$ {x:,.2f}")
+        # Adiciona coluna de % Queda como Placeholder
+        df_bottom10.insert(1, '% Queda (Proxy)', ['N/A'] * len(df_bottom10))
         df_bottom10.rename(columns={'ec': 'Cliente', 'GMV': 'Transacionado', 'Vendas': 'Qtd. Vendas'}, inplace=True)
 
-        st.dataframe(df_bottom10[['Cliente', 'Transacionado', 'Qtd. Vendas', 'Receita']], hide_index=True, use_container_width=True)
-
-    # --- Tabela Detalhada (Rodapé) ---
-    with st.expander("Visualizar Todos os Dados (Detalhados)"):
-        st.dataframe(df_filtered)
+        st.dataframe(df_bottom10[['Cliente', '% Queda (Proxy)', 'Transacionado', 'Qtd. Vendas', 'Receita']], hide_index=True, use_container_width=True)
+        
+    # --- Exportar CSV (Botão) ---
+    csv_data = df_filtered.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="Exportar CSV do Detalhamento",
+        data=csv_data,
+        file_name='detalhamento_transacoes_filtrado.csv',
+        mime='text/csv',
+        key='download-csv'
+    )
