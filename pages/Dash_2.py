@@ -58,26 +58,21 @@ def fetch_eliq_data(api_token, start_date, end_date):
         df = pd.json_normalize(all_data)
         if df.empty: return pd.DataFrame()
 
-        # --- Normalização REVISADA ---
+        # --- Normalização REVISADA NOVAMENTE ---
         df_norm = pd.DataFrame()
         df_norm['cnpj'] = df.get('cliente_cnpj', pd.NA)
         bruto_series = pd.to_numeric(df.get('valor_total'), errors='coerce').fillna(0)
         df_norm['bruto'] = bruto_series
 
-        # CORREÇÃO DEFINITIVA: Tratar a coluna 'cliente_taxa_adm' com segurança
         taxa_column_name = 'cliente_taxa_adm'
         if taxa_column_name in df.columns:
-            # Se a coluna existe, converte para numérico e preenche NaNs
             taxa_cliente_series = pd.to_numeric(df[taxa_column_name], errors='coerce').fillna(0)
         else:
-            # Se a coluna NÃO existe, cria uma Series de zeros com o mesmo índice do DataFrame
-            st.warning(f"API Eliq: Coluna '{taxa_column_name}' não encontrada nos dados retornados. Assumindo taxa 0.")
-            taxa_cliente_series = pd.Series(0, index=df.index, dtype=float) # Garante tipo float
+            # Removido o st.warning daqui para não poluir tanto se for comum
+            taxa_cliente_series = pd.Series(0, index=df.index, dtype=float)
 
         taxa_cliente_percent = taxa_cliente_series / 100
-        # Garantir que a receita não seja negativa se a taxa for negativa (embora improvável)
         df_norm['receita'] = (df_norm['bruto'] * taxa_cliente_percent).clip(lower=0)
-        # --- FIM DA CORREÇÃO ---
 
         df_norm['venda'] = pd.to_datetime(df.get('data_cadastro', pd.NaT), errors='coerce', dayfirst=True)
         df_norm = df_norm.dropna(subset=['venda'])
@@ -85,8 +80,23 @@ def fetch_eliq_data(api_token, start_date, end_date):
 
         df_norm['ec'] = df.get('cliente_nome', 'N/A')
         df_norm['plataforma'] = 'Eliq'
-        df_norm['tipo'] = df.get('tipo_transacao_sigla', 'N/A').astype(str)
-        df_norm['bandeira'] = df.get('bandeira', 'N/A').astype(str)
+
+        # CORREÇÃO PARA 'tipo' e 'bandeira'
+        tipo_col_name = 'tipo_transacao_sigla'
+        if tipo_col_name in df.columns:
+            df_norm['tipo'] = df[tipo_col_name].astype(str).fillna('N/A')
+        else:
+            st.warning(f"API Eliq: Coluna '{tipo_col_name}' não encontrada. Usando 'N/A'.")
+            df_norm['tipo'] = 'N/A'
+
+        bandeira_col_name = 'bandeira'
+        if bandeira_col_name in df.columns:
+            df_norm['bandeira'] = df[bandeira_col_name].astype(str).fillna('N/A')
+        else:
+            st.warning(f"API Eliq: Coluna '{bandeira_col_name}' não encontrada. Usando 'N/A'.")
+            df_norm['bandeira'] = 'N/A'
+        # --- FIM DA CORREÇÃO ---
+
         df_norm['categoria_pagamento'] = 'Outros'
 
         st.success(f"API Eliq: {len(df_norm)} registros carregados e processados de {processed_pages} página(s).")
@@ -100,9 +110,11 @@ def fetch_eliq_data(api_token, start_date, end_date):
         return pd.DataFrame()
     except Exception as e:
         st.error(f"Erro inesperado ao processar dados da API Eliq: {e}")
-        st.error(traceback.format_exc()) # Mostra traceback detalhado para debug
+        st.error(traceback.format_exc())
         return pd.DataFrame()
 
+# --- (O restante das funções: fetch_asto_data, load_bionio_csv, load_maquininha_csv, consolidate_data, generate_insights) ---
+# --- (Permanece o mesmo da versão anterior) ---
 
 @st.cache_data(show_spinner="Buscando dados da API Asto/Logpay (Limitado)...")
 def fetch_asto_data(api_username, api_password, start_date, end_date):
@@ -110,8 +122,6 @@ def fetch_asto_data(api_username, api_password, start_date, end_date):
     st.warning("A API Asto/Logpay não é otimizada para relatórios. Função placeholder ativa.", icon="⚠️")
     df_norm_placeholder = pd.DataFrame(columns=['cnpj', 'bruto', 'receita', 'venda', 'ec', 'plataforma', 'tipo', 'bandeira', 'categoria_pagamento'])
     return df_norm_placeholder
-
-# --- Funções de Carregamento de CSV ---
 
 @st.cache_data(show_spinner="Carregando e processando Bionio...")
 def load_bionio_csv(uploaded_file):
@@ -135,14 +145,12 @@ def load_bionio_csv(uploaded_file):
                       .str.replace('[^0-9a-zA-Z_]', '', regex=True))
         cleaned_columns = df.columns.tolist()
 
-        # --- Nomes das colunas CORRIGIDOS ---
         cnpj_col = 'cnpj_da_organizao'
         bruto_col = 'valor_total_do_pedido'
         data_col = 'data_da_criao_do_pedido'
         ec_col = 'razo_social'
         beneficio_col = 'nome_do_benefcio'
         pagamento_col = 'tipo_de_pagamento'
-        # --- FIM CORREÇÃO ---
 
         missing_cols = []
         expected_cols = {cnpj_col, bruto_col, data_col, ec_col, beneficio_col, pagamento_col}
@@ -179,7 +187,6 @@ def load_bionio_csv(uploaded_file):
     except Exception as e: st.error(f"Erro inesperado ao processar Bionio: {e}"); st.error(traceback.format_exc())
     return pd.DataFrame()
 
-
 @st.cache_data(show_spinner="Carregando e processando Maquininha/Veripag...")
 def load_maquininha_csv(uploaded_file):
     """ Carrega o CSV da Maquininha/Veripag e normaliza. """
@@ -214,7 +221,7 @@ def load_maquininha_csv(uploaded_file):
         df_norm['cnpj'] = df[cnpj_col]
         df_norm['bruto'] = pd.to_numeric(df[bruto_col], errors='coerce').fillna(0)
         df_norm['liquido'] = pd.to_numeric(df[liquido_col], errors='coerce').fillna(0)
-        df_norm['receita'] = (df_norm['bruto'] - df_norm['liquido']).clip(lower=0) # Evita receita negativa
+        df_norm['receita'] = (df_norm['bruto'] - df_norm['liquido']).clip(lower=0)
         df_norm['venda'] = pd.to_datetime(df[venda_col], errors='coerce', dayfirst=True, format='%d/%m/%Y %H:%M:%S')
         if df_norm['venda'].isnull().all(): df_norm['venda'] = pd.to_datetime(df[venda_col], errors='coerce', dayfirst=True)
         df_norm = df_norm.dropna(subset=['venda'])
@@ -241,7 +248,6 @@ def load_maquininha_csv(uploaded_file):
     except Exception as e: st.error(f"Erro inesperado ao processar Maquininha: {e}"); st.error(traceback.format_exc())
     return pd.DataFrame()
 
-# --- Função Principal de Consolidação ---
 def consolidate_data(df_bionio, df_maquininha, df_eliq, df_asto):
     """ Concatena todos os DataFrames normalizados. """
     all_transactions = []
@@ -257,7 +263,7 @@ def consolidate_data(df_bionio, df_maquininha, df_eliq, df_asto):
         if 'responsavel_comercial' not in df_consolidated.columns: df_consolidated['responsavel_comercial'] = 'N/A'
         if 'produto' not in df_consolidated.columns: df_consolidated['produto'] = df_consolidated['plataforma']
         df_consolidated['bruto'] = pd.to_numeric(df_consolidated['bruto'], errors='coerce').fillna(0)
-        df_consolidated['receita'] = pd.to_numeric(df_consolidated['receita'], errors='coerce').fillna(0).clip(lower=0) # Garante não negativo
+        df_consolidated['receita'] = pd.to_numeric(df_consolidated['receita'], errors='coerce').fillna(0).clip(lower=0)
         df_consolidated['venda'] = pd.to_datetime(df_consolidated['venda'], errors='coerce')
         df_consolidated = df_consolidated.dropna(subset=['venda'])
 
@@ -268,7 +274,6 @@ def consolidate_data(df_bionio, df_maquininha, df_eliq, df_asto):
         st.error(traceback.format_exc())
         return pd.DataFrame()
 
-# --- Função de Insights ---
 def generate_insights(df_filtered, total_gmv, receita_total):
     """Gera insights automáticos."""
     insights = []
@@ -431,7 +436,6 @@ else:
         st.subheader("Participação por Categoria de Pagamento")
         if not df_filtered.empty and 'categoria_pagamento' in df_filtered.columns:
             df_categoria_pgto = df_filtered.groupby('categoria_pagamento')['bruto'].sum().reset_index().sort_values(by='bruto', ascending=False)
-            # Adicionado .astype(float) para garantir que a soma funcione mesmo se houver tipos mistos (embora improvável aqui)
             if not df_categoria_pgto.empty and df_categoria_pgto['bruto'].astype(float).sum() > 0:
                 pull_values = [0] * len(df_categoria_pgto); pull_values[0] = 0.1
                 fig_categoria = px.pie(df_categoria_pgto, values='bruto', names='categoria_pagamento', title='Participação do GMV por Cat. Pagamento', color_discrete_sequence=px.colors.qualitative.Safe)
