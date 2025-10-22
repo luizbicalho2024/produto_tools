@@ -57,39 +57,61 @@ def load_and_preprocess_data(uploaded_file):
                     df_norm['plataforma'] = 'Rovema Pay'
                     df_norm['tipo'] = df['tipo'].astype(str)
                     df_norm['bandeira'] = df['bandeira'].astype(str)
+
+                    # --- Lógica de Categoria de Pagamento (para gráfico de pizza) ---
+                    def categorize_payment_rp(row):
+                        if str(row['bandeira']).strip().lower() == 'pix':
+                            return 'Pix'
+                        if str(row['tipo']).strip().lower() == 'crédito':
+                            return 'Crédito'
+                        if str(row['tipo']).strip().lower() == 'débito':
+                            return 'Débito'
+                        return 'Outros'
+                    df_norm['categoria_pagamento'] = df.apply(categorize_payment_rp, axis=1)
+                    # --- Fim ---
                 
                 elif sheet_name == 'transacoes_eliq':
                     df_norm['cnpj'] = df['cliente_cnpj']
                     df_norm['bruto'] = df['valor_bruto']
-                    # Receita Proxy: valor a receber (margem Eliq)
                     df_norm['receita'] = df['valor_receber']
                     df_norm['venda'] = pd.to_datetime(df['data'], errors='coerce')
                     df_norm['ec'] = df['cliente_nome']
                     df_norm['plataforma'] = 'Eliq'
                     df_norm['tipo'] = df['grupo'].astype(str) # Usando grupo como tipo para Eliq
                     df_norm['bandeira'] = df['subgrupo'].astype(str) # Usando subgrupo como bandeira
+                    df_norm['categoria_pagamento'] = 'Outros' # Não há Pix/Crédito/Débito aqui
                         
                 elif sheet_name == 'transacoes_asto':
                     df_norm['cnpj'] = df['cliente_cnpj']
                     df_norm['bruto'] = df['valor']
-                    # Receita Proxy: margem baseada na taxa do cliente
                     df_norm['receita'] = df['valor'] * (df['taxa_cliente'] / 100)
                     df_norm['venda'] = pd.to_datetime(df['data'], errors='coerce')
                     df_norm['ec'] = df['cliente']
                     df_norm['plataforma'] = 'Asto'
                     df_norm['tipo'] = df['unidade'].astype(str) # Usando unidade como tipo para Asto
                     df_norm['bandeira'] = df['estabelecimento'].astype(str) # Usando estabelecimento como bandeira
+                    df_norm['categoria_pagamento'] = 'Outros' # Não há Pix/Crédito/Débito aqui
                         
                 elif sheet_name == 'transacoes_bionio':
                     df_norm['cnpj'] = df['cnpj_da_organizacao']
                     df_norm['bruto'] = df['valor_total_do_pedido']
-                    # Receita Proxy: 5% fixo sobre o valor total
                     df_norm['receita'] = df['valor_total_do_pedido'] * 0.05
                     df_norm['venda'] = pd.to_datetime(df['data_da_criacao_do_pedido'], errors='coerce')
                     df_norm['ec'] = df['razao_social']
                     df_norm['plataforma'] = 'Bionio'
                     df_norm['tipo'] = df['nome_do_beneficio'].astype(str) # Usando nome_do_beneficio como tipo
                     df_norm['bandeira'] = df['tipo_de_pagamento'].astype(str) # Usando tipo_de_pagamento como bandeira
+
+                    # --- Lógica de Categoria de Pagamento (com suposições) ---
+                    def categorize_payment_bionio(tipo_pgto):
+                        tipo_pgto_lower = str(tipo_pgto).strip().lower()
+                        if 'transferência' in tipo_pgto_lower:
+                            return 'Pix' # Suposição
+                        if 'cartão' in tipo_pgto_lower:
+                            return 'Crédito' # Suposição
+                        return 'Outros'
+                    df_norm['categoria_pagamento'] = df['tipo_de_pagamento'].apply(categorize_payment_bionio)
+                    # --- Fim ---
 
                 df_norm.dropna(subset=['venda', 'bruto', 'cnpj'], inplace=True)
                 all_transactions.append(df_norm)
@@ -332,19 +354,20 @@ else:
 
     with col7:
         # --- BLOCO MODIFICADO ---
-        # (Substituído 'plataforma' por 'bandeira')
+        # (Agrupando pela nova 'categoria_pagamento' unificada)
         st.subheader("Participação por Bandeira")
         
-        df_bandeira = df_filtered.groupby('bandeira')['bruto'].sum().reset_index()
+        df_categoria_pgto = df_filtered.groupby('categoria_pagamento')['bruto'].sum().reset_index()
         
         fig_bandeira = px.pie(
-            df_bandeira, 
+            df_categoria_pgto, 
             values='bruto', 
-            names='bandeira',
+            names='categoria_pagamento',
             title='Participação do GMV por Bandeira',
             color_discrete_sequence=px.colors.qualitative.Safe
         )
         fig_bandeira.update_traces(textinfo='percent+label')
+        fig_bandeira.update_layout(legend_title_text='Categoria')
         st.plotly_chart(fig_bandeira, use_container_width=True)
         # --- FIM DO BLOCO MODIFICADO ---
         
@@ -362,10 +385,11 @@ else:
             return series.mode().iloc[0] 
 
         # Agrupar os dados por cliente
+        # Usamos 'categoria_pagamento' para a coluna 'Bandeira' na tabela
         df_detalhe_cliente = df_filtered.groupby(['cnpj', 'ec']).agg(
             Receita=('receita', 'sum'),
             N_Vendas=('cnpj', 'count'),
-            Bandeira_Principal=('bandeira', get_most_frequent_bandeira)
+            Bandeira_Principal=('categoria_pagamento', get_most_frequent_bandeira)
         ).reset_index()
 
         # Adicionar a coluna 'Crescimento' como 'N/A'
@@ -403,7 +427,7 @@ else:
             * **Crescimento:** Esta coluna é 'N/A' (Não Aplicável). O cálculo de crescimento (ex: +4.5%) 
                 exigiria dados de um período anterior para comparação, que não estão presentes no arquivo.
             * **Nº Vendas:** É a contagem total de transações do cliente no período filtrado.
-            * **Bandeira:** É a bandeira *mais frequente* (mais usada) pelo cliente no período.
+            * **Bandeira:** É a categoria de pagamento *mais frequente* (Pix, Crédito, Débito, Outros) usada pelo cliente no período.
             """, 
             icon="ℹ️"
         )
