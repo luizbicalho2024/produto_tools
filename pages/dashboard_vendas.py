@@ -13,7 +13,6 @@ st.set_page_config(
 )
 
 # Constantes para Nomes das Abas (Sheets)
-# O script utiliza apenas estas duas abas do seu arquivo XLSX:
 TRANSACOES_SHEET_NAME = 'transacoes_rovemapay'
 CLIENTES_SHEET_NAME = 'carteira_clientes'
 
@@ -27,7 +26,6 @@ def load_and_preprocess_data(uploaded_file):
     """
     try:
         xls = pd.ExcelFile(uploaded_file)
-        # Lendo apenas as abas necessárias
         df_transacoes = pd.read_excel(xls, TRANSACOES_SHEET_NAME)
         df_clientes = pd.read_excel(xls, CLIENTES_SHEET_NAME)
         
@@ -148,7 +146,8 @@ else:
         filtro_vendedor = st.selectbox("Carteira", options=vendedores)
 
     with col_produto:
-        produtos = ['Todos'] + sorted(df_merged['produto'].unique().tolist())
+        # CORREÇÃO AQUI: Usa df_clientes_original para listar TODOS os produtos cadastrados
+        produtos = ['Todos'] + sorted(df_clientes_original['produto'].unique().tolist())
         filtro_produto = st.selectbox("Produto", options=produtos)
     
     with col_bandeira:
