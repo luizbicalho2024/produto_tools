@@ -213,7 +213,7 @@ else:
     
     with col_bandeira:
         # Filtro de Bandeira (usando 'bandeira' normalizada)
-        bandeiras = ['Todas'] + sorted(df_merged['bandeira'].unique().tolist())
+        bandeiras = ['Todos'] + sorted(df_merged['bandeira'].unique().tolist())
         filtro_bandeira = st.selectbox("Bandeira", options=bandeiras)
     
     with col_tipo:
@@ -237,7 +237,7 @@ else:
     if filtro_vendedor != 'Todas':
          df_filtered = df_filtered[df_filtered['responsavel_comercial'] == filtro_vendedor]
             
-    if filtro_bandeira != 'Todas':
+    if filtro_bandeira != 'Todos':
          df_filtered = df_filtered[df_filtered['bandeira'] == filtro_bandeira]
 
     if filtro_tipo != 'Todos':
@@ -311,7 +311,7 @@ else:
 
     st.markdown("---")
 
-    # --- 4. Linha de Gráficos (Receita por Carteira e Participação por Plataforma/Produto) ---
+    # --- 4. Linha de Gráficos (Receita por Carteira e Participação por Bandeira) ---
     col6, col7 = st.columns([1.5, 1])
 
     with col6:
@@ -331,17 +331,22 @@ else:
         st.plotly_chart(fig_receita_vendedor, use_container_width=True)
 
     with col7:
-        st.subheader("Participação por Plataforma/Produto")
+        # --- BLOCO MODIFICADO ---
+        # (Substituído 'plataforma' por 'bandeira')
+        st.subheader("Participação por Bandeira")
         
-        df_plataforma = df_filtered.groupby('plataforma')['bruto'].sum().reset_index()
+        df_bandeira = df_filtered.groupby('bandeira')['bruto'].sum().reset_index()
         
-        fig_plataforma = px.pie(
-            df_plataforma, values='bruto', names='plataforma',
-            title='Participação do GMV por Plataforma',
+        fig_bandeira = px.pie(
+            df_bandeira, 
+            values='bruto', 
+            names='bandeira',
+            title='Participação do GMV por Bandeira',
             color_discrete_sequence=px.colors.qualitative.Safe
         )
-        fig_plataforma.update_traces(textinfo='percent+label', pull=[0.05, 0.0, 0.0])
-        st.plotly_chart(fig_plataforma, use_container_width=True)
+        fig_bandeira.update_traces(textinfo='percent+label')
+        st.plotly_chart(fig_bandeira, use_container_width=True)
+        # --- FIM DO BLOCO MODIFICADO ---
         
     st.markdown("---")
 
