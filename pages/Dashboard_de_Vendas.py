@@ -3,8 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import io
-import numpy as np 
-import json # Necessário para o amCharts
+import numpy as np # Necessário para o gráfico de pizza
 
 # --- Configurações de Aparência ---
 
@@ -247,8 +246,6 @@ else:
             
     with col_atualizar:
         st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True) 
-        # NOTA: Este botão "Atualizar" não funcionará para o amCharts.
-        # O amCharts só será carregado uma vez.
         st.button("Atualizar") 
 
     # --- Aplicação dos Filtros ---
@@ -378,83 +375,35 @@ else:
         st.plotly_chart(fig_receita_vendedor, use_container_width=True)
 
     with col7:
-        # --- NOVO BLOCO AMCHARTS ---
-        st.subheader("Participação por Bandeira (amCharts)")
+        # --- GRÁFICO DE PIZZA (Plotly) ---
+        st.subheader("Participação por Bandeira")
         
         df_categoria_pgto = df_filtered.groupby('categoria_pagamento')['bruto'].sum().reset_index()
         
-        # Converter dados do Pandas para JSON para o JavaScript
-        # Usamos .to_dict() e json.dumps() para garantir um JSON seguro
-        data_list = df_categoria_pgto.to_dict(orient='records')
-        data_json = json.dumps(data_list)
+        # Ordenar para destacar a maior fatia
+        df_categoria_pgto = df_categoria_pgto.sort_values(by='bruto', ascending=False)
         
-        # HTML/JavaScript para o amCharts
-        # Note que os dados são injetados via f-string: {data_json}
-        # Este gráfico NÃO será atualizado pelos filtros
-        amchart_html = f"""
-            <script src="https://cdn.amcharts.com/lib/5/index.js"></script>
-            <script src="https://cdn.amcharts.com/lib/5/percent.js"></script>
-            <script src="https://cdn.amcharts.com/lib/5/themes/Animated.js"></script>
-            
-            <div id="chartdiv" style="width: 100%; height: 500px;"></div>
-            
-            <script>
-            am5.ready(function() {{
-            
-            // Create root element
-            var root = am5.Root.new("chartdiv");
-            
-            // Remove o logo do amCharts (requer licença!)
-            // root._logo.dispose(); 
-            
-            // Set themes
-            root.setThemes([
-              am5themes_Animated.new(root)
-            ]);
-            
-            // Create chart
-            var chart = root.container.children.push(am5percent.PieChart.new(root, {{
-              layout: root.verticalLayout,
-              innerRadius: am5.percent(50)
-            }}));
-            
-            
-            // Create series
-            var series = chart.series.push(am5percent.PieSeries.new(root, {{
-              valueField: "bruto",
-              categoryField: "categoria_pagamento",
-              alignLabels: false
-            }}));
-            
-            series.labels.template.setAll({{
-              textType: "circular",
-              centerX: 0,
-              centerY: 0
-            }});
-            
-            // Injeta os dados do Python (DataFrame)
-            series.data.setAll({data_json});
-            
-            // Create legend
-            var legend = chart.children.push(am5.Legend.new(root, {{
-              centerX: am5.percent(50),
-              x: am5.percent(50),
-              marginTop: 15,
-              marginBottom: 15,
-            }}));
-            
-            legend.data.setAll(series.dataItems);
+        # Criar o array de 'pull' (destaque)
+        pull_values = [0] * len(df_categoria_pgto)
+        if not df_categoria_pgto.empty:
+            pull_values[0] = 0.1 # Destaca a primeira (maior) fatia
 
-            // Animação
-            series.appear(1000, 100);
-            
-            }}); // end am5.ready()
-            </script>
-        """
+        fig_bandeira = px.pie(
+            df_categoria_pgto, 
+            values='bruto', 
+            names='categoria_pagamento',
+            title='Participação do GMV por Bandeira',
+            color_discrete_sequence=px.colors.qualitative.Safe
+        )
+        fig_bandeira.update_traces(
+            textinfo='percent+label', 
+            pull=pull_values, # Aplica o destaque
+            marker=dict(line=dict(color='#000000', width=1)) # Adiciona linha de contorno
+        )
+        fig_bandeira.update_layout(legend_title_text='Categoria')
         
-        st.components.v1.html(amchart_html, height=500, scrolling=False)
-        st.caption("Nota: Este gráfico amCharts é um exemplo e não será atualizado pelos filtros.")
-        # --- FIM DO BLOCO AMCHARTS ---
+        st.plotly_chart(fig_bandeira, use_container_width=True)
+        # --- FIM DO BLOCO PLOTLY ---
         
     st.markdown("---")
 
