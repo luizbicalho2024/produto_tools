@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import io
+import numpy as np # Necessário para o gráfico de pizza
 
 # --- Configurações de Aparência ---
 
@@ -311,23 +312,30 @@ else:
     
     fig_evolucao = go.Figure()
     
+    # --- GRÁFICO DE LINHA MELHORADO ---
     fig_evolucao.add_trace(go.Scatter(
         x=df_evolucao['Data da Venda'], y=df_evolucao['GMV'],
-        mode='lines', name='Valor Transacionado (Bruto)',
-        line=dict(color='blue', width=2)
+        mode='lines+markers', # Adiciona marcadores
+        name='Valor Transacionado (Bruto)',
+        line=dict(color='blue', width=2),
+        marker=dict(size=6, opacity=0.8)
     ))
     
     fig_evolucao.add_trace(go.Scatter(
         x=df_evolucao['Data da Venda'], y=df_evolucao['Receita'],
-        mode='lines', name='Nossa Receita',
-        line=dict(color='red', width=2)
+        mode='lines+markers', # Adiciona marcadores
+        name='Nossa Receita',
+        line=dict(color='red', width=2),
+        marker=dict(size=6, opacity=0.8)
     ))
+    # --- FIM DA MELHORIA ---
     
     fig_evolucao.update_layout(
         xaxis_title='Data',
         yaxis_title='Valor (R$)',
         hovermode="x unified",
-        legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5)
+        legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5),
+        template="plotly_white" # Um tema mais limpo
     )
     st.plotly_chart(fig_evolucao, use_container_width=True)
 
@@ -348,17 +356,40 @@ else:
             labels={'responsavel_comercial': 'Vendedor', 'receita': 'Receita (R$)'},
             color='responsavel_comercial',
             color_discrete_sequence=px.colors.qualitative.Plotly,
-            title='Receita Gerada por Responsável Comercial'
+            title='Receita Gerada por Responsável Comercial',
+            text='receita' # Adiciona o valor como texto
         )
+        
+        # --- GRÁFICO DE BARRAS MELHORADO ---
+        fig_receita_vendedor.update_traces(
+            texttemplate='R$ %{y:,.2f}', 
+            textposition='outside'
+        )
+        fig_receita_vendedor.update_layout(
+            uniformtext_minsize=8, 
+            uniformtext_mode='hide',
+            template="plotly_white",
+            xaxis_title=None, # Remove o título do eixo x para um visual mais limpo
+            showlegend=False # Remove a legenda, pois a cor já está no eixo
+        )
+        # --- FIM DA MELHORIA ---
+        
         st.plotly_chart(fig_receita_vendedor, use_container_width=True)
 
     with col7:
-        # --- BLOCO MODIFICADO ---
-        # (Agrupando pela nova 'categoria_pagamento' unificada)
         st.subheader("Participação por Bandeira")
         
         df_categoria_pgto = df_filtered.groupby('categoria_pagamento')['bruto'].sum().reset_index()
         
+        # --- GRÁFICO DE PIZZA MELHORADO ---
+        # Ordenar para destacar a maior fatia
+        df_categoria_pgto = df_categoria_pgto.sort_values(by='bruto', ascending=False)
+        
+        # Criar o array de 'pull' (destaque)
+        pull_values = [0] * len(df_categoria_pgto)
+        if not df_categoria_pgto.empty:
+            pull_values[0] = 0.1 # Destaca a primeira (maior) fatia
+
         fig_bandeira = px.pie(
             df_categoria_pgto, 
             values='bruto', 
@@ -366,10 +397,15 @@ else:
             title='Participação do GMV por Bandeira',
             color_discrete_sequence=px.colors.qualitative.Safe
         )
-        fig_bandeira.update_traces(textinfo='percent+label')
+        fig_bandeira.update_traces(
+            textinfo='percent+label', 
+            pull=pull_values, # Aplica o destaque
+            marker=dict(line=dict(color='#000000', width=1)) # Adiciona linha de contorno
+        )
         fig_bandeira.update_layout(legend_title_text='Categoria')
+        # --- FIM DA MELHORIA ---
+        
         st.plotly_chart(fig_bandeira, use_container_width=True)
-        # --- FIM DO BLOCO MODIFICADO ---
         
     st.markdown("---")
 
