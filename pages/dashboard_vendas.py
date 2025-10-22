@@ -13,6 +13,7 @@ st.set_page_config(
 )
 
 # Constantes para Nomes das Abas (Sheets)
+# O script utiliza apenas estas duas abas do seu arquivo XLSX:
 TRANSACOES_SHEET_NAME = 'transacoes_rovemapay'
 CLIENTES_SHEET_NAME = 'carteira_clientes'
 
@@ -26,6 +27,7 @@ def load_and_preprocess_data(uploaded_file):
     """
     try:
         xls = pd.ExcelFile(uploaded_file)
+        # Lendo apenas as abas necessárias
         df_transacoes = pd.read_excel(xls, TRANSACOES_SHEET_NAME)
         df_clientes = pd.read_excel(xls, CLIENTES_SHEET_NAME)
         
@@ -158,8 +160,7 @@ else:
         filtro_tipo = st.selectbox("Tipo", options=tipos)
         
     with col_atualizar:
-        # Botão Atualizar (apenas visual, pois Streamlit atualiza por padrão)
-        st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True) # Espaçamento
+        st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True) 
         st.button("Atualizar") 
 
     # --- Aplicação dos Filtros ---
