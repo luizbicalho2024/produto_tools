@@ -3,63 +3,59 @@ import pandas as pd
 import plotly.express as px
 import io
 
-# Configuração da página
+# --- Configurações e Nomes das Abas ---
 st.set_page_config(
     page_title="Dashboard de Vendas Rovema Pay",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# ATENÇÃO: Se os nomes das suas abas (sheets) forem diferentes, ajuste aqui!
+TRANSACOES_SHEET_NAME = 'transacoes_rovemapay'
+CLIENTES_SHEET_NAME = 'carteira_clientes'
+
 # --- Funções de Carregamento e Pré-processamento ---
 
 @st.cache_data
-def load_and_preprocess_data(uploaded_transacoes, uploaded_clientes):
+def load_and_preprocess_data(uploaded_file):
     """
-    Carrega os dados dos arquivos de upload, realiza o pré-processamento
-    e a junção dos DataFrames.
+    Carrega os dados do arquivo XLSX, lê as abas e realiza o pré-processamento.
     """
-    st.info("Carregando e processando dados...", icon="⏳")
+    st.info(f"Carregando e processando dados das abas: {TRANSACOES_SHEET_NAME} e {CLIENTES_SHEET_NAME}...", icon="⏳")
 
-    # 1. Carregar o arquivo de Transações
-    # Usamos io.BytesIO para ler o objeto UploadedFile
+    # 1. Carregar o arquivo XLSX
     try:
-        if uploaded_transacoes.name.endswith('.csv'):
-            df_transacoes = pd.read_csv(io.StringIO(uploaded_transacoes.getvalue().decode('utf-8')))
-        # Adicionar suporte para Excel caso o usuário upe um XLSX (se o nome do arquivo vier como .csv mas for XLSX)
-        # O Streamlit trata arquivos XLSX automaticamente se for lido com pd.read_excel, mas aqui estamos com o objeto em memória
-        # Como o problema inicial era com CSVs, focamos em CSV.
-        else:
-             df_transacoes = pd.read_csv(io.StringIO(uploaded_transacoes.getvalue().decode('utf-8')))
-    except Exception as e:
-        st.error(f"Erro ao carregar o arquivo de Transações: {e}")
+        # Lê o arquivo Excel, lendo todas as abas de uma vez
+        xls = pd.ExcelFile(uploaded_file)
+        
+        # Tenta ler as abas específicas
+        df_transacoes = pd.read_excel(xls, TRANSACOES_SHEET_NAME)
+        df_clientes = pd.read_excel(xls, CLIENTES_SHEET_NAME)
+        
+    except ValueError as e:
+        # Captura erro se a aba não for encontrada
+        st.error(f"Erro: Uma das abas (sheets) não foi encontrada no arquivo Excel. Verifique se os nomes estão corretos: '{TRANSACOES_SHEET_NAME}' e '{CLIENTES_SHEET_NAME}'.")
+        st.error(f"Detalhes do erro: {e}")
         return pd.DataFrame(), pd.DataFrame()
-
-    # 2. Carregar o arquivo de Clientes
-    try:
-        if uploaded_clientes.name.endswith('.csv'):
-            df_clientes = pd.read_csv(io.StringIO(uploaded_clientes.getvalue().decode('utf-8')))
-        else:
-            df_clientes = pd.read_csv(io.StringIO(uploaded_clientes.getvalue().decode('utf-8')))
     except Exception as e:
-        st.error(f"Erro ao carregar o arquivo de Clientes: {e}")
+        st.error(f"Erro ao carregar o arquivo Excel: {e}")
         return pd.DataFrame(), pd.DataFrame()
 
 
-    # 3. Pré-processamento e Limpeza
+    # 2. Pré-processamento e Limpeza
+    # Limpa espaços em branco nos nomes das colunas de ambos os DFs
+    df_transacoes.columns = [c.strip() for c in df_transacoes.columns]
+    df_clientes.columns = [c.strip() for c in df_clientes.columns]
 
-    # Tratar colunas de data (assumindo formato YYYY-MM-DD como visto na análise anterior)
+    # Tratar colunas de data (assumindo formato YYYY-MM-DD)
     if 'venda' in df_transacoes.columns:
-        # Tenta converter para datetime, forçando erros para NaT
+        # Converte para datetime
         df_transacoes['venda'] = pd.to_datetime(df_transacoes['venda'], errors='coerce')
         df_transacoes.dropna(subset=['venda'], inplace=True) # Remove linhas com data inválida
 
-    # 4. Junção dos DataFrames
-    # Renomear colunas para garantir a junção
-    df_clientes.columns = [c.strip() for c in df_clientes.columns]
-    df_transacoes.columns = [c.strip() for c in df_transacoes.columns]
-
-    # Usar 'cnpj' para a junção
-    if 'cnpj' in df_transacoes.columns and 'cnpj' in df_clientes.columns:
+    # 3. Junção dos DataFrames
+    # Usa 'cnpj' para a junção
+    if 'cnpj' in df_transacoes.columns and 'responsavel_comercial' in df_clientes.columns:
         df_merged = pd.merge(
             df_transacoes,
             df_clientes[['cnpj', 'responsavel_comercial']],
@@ -68,7 +64,7 @@ def load_and_preprocess_data(uploaded_transacoes, uploaded_clientes):
         )
         df_merged['responsavel_comercial'] = df_merged['responsavel_comercial'].fillna('Não Atribuído')
     else:
-        st.error("Colunas 'cnpj' não encontradas em ambos os arquivos. Verifique se os nomes das colunas estão corretos.")
+        st.error("Colunas essenciais ('cnpj' ou 'responsavel_comercial') não encontradas após o carregamento. Verifique a formatação das abas.")
         return pd.DataFrame(), pd.DataFrame()
 
     st.success("Dados carregados e processados com sucesso!", icon="✅")
@@ -81,31 +77,31 @@ st.markdown("Métricas estratégicas para acompanhamento de vendas e gestão do 
 
 # --- Área de Upload na Barra Lateral ---
 with st.sidebar:
-    st.header("Upload dos Arquivos")
-    st.markdown("Faça o upload dos dois arquivos originais (.csv)")
+    st.header("Upload do Arquivo de Dados")
+    st.markdown("Faça o upload do arquivo Excel (.xlsx) contendo as abas de Transações e Clientes.")
 
-    uploaded_transacoes = st.file_uploader(
-        "1. Upload do Arquivo de Transações",
-        type=['csv'],
-        key="transacoes"
+    uploaded_file = st.file_uploader(
+        "1. Upload do Arquivo Único (Excel)",
+        type=['xlsx'],
+        key="excel_upload"
     )
+    
+    # Exibe os nomes das abas esperadas para referência
+    st.markdown(f"**Abas Esperadas:**")
+    st.markdown(f"- Transações: `{TRANSACOES_SHEET_NAME}`")
+    st.markdown(f"- Clientes: `{CLIENTES_SHEET_NAME}`")
 
-    uploaded_clientes = st.file_uploader(
-        "2. Upload do Arquivo de Clientes",
-        type=['csv'],
-        key="clientes"
-    )
 
 df_merged = pd.DataFrame()
-df_clientes = pd.DataFrame()
+df_clientes_original = pd.DataFrame()
 
-if uploaded_transacoes and uploaded_clientes:
-    # Chama a função de processamento com os arquivos carregados
-    df_merged, df_clientes_original = load_and_preprocess_data(uploaded_transacoes, uploaded_clientes)
+if uploaded_file:
+    # Chama a função de processamento com o arquivo carregado
+    df_merged, df_clientes_original = load_and_preprocess_data(uploaded_file)
 
 # Verifica se os dados foram carregados corretamente
 if df_merged.empty or 'bruto' not in df_merged.columns:
-    st.warning("Aguardando upload dos arquivos e processamento dos dados.", icon="⚠️")
+    st.warning("Aguardando upload do arquivo Excel e processamento dos dados.", icon="⚠️")
 else:
     # --- Filtros de Data (Sidebar) ---
     with st.sidebar:
@@ -207,7 +203,7 @@ else:
 
     with col8:
         st.subheader("Total de Clientes por Vendedor")
-        # Contagem de clientes únicos a partir do DataFrame original (df_clientes_original)
+        # Contagem de clientes únicos a partir do DataFrame original
         df_clientes_vendedor = df_clientes_original.groupby('responsavel_comercial')['cnpj'].nunique().reset_index()
         df_clientes_vendedor.columns = ['Vendedor', 'Total de Clientes']
         df_clientes_vendedor = df_clientes_vendedor.sort_values(by='Total de Clientes', ascending=False)
