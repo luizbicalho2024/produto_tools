@@ -30,6 +30,7 @@ def fetch_eliq_data(api_token, start_date, end_date):
     page = 1
     max_pages = 5 # Limite para teste, ajuste conforme necessário
     page_size_assumption = 50
+    processed_pages = 0 # Contador para páginas realmente processadas
 
     try:
         st.write(f"API Eliq: Buscando dados de {start_str} a {end_str}...")
@@ -38,6 +39,7 @@ def fetch_eliq_data(api_token, start_date, end_date):
             response = requests.get(base_url, headers=headers, params=params, timeout=60)
             response.raise_for_status()
             data = response.json()
+            processed_pages = page # Atualiza contador aqui
 
             if isinstance(data, list) and data:
                 all_data.extend(data)
@@ -49,23 +51,33 @@ def fetch_eliq_data(api_token, start_date, end_date):
             else:
                 if page == 1 and not data: st.warning(f"API Eliq: Nenhuma transação encontrada para o período {start_str} - {end_str}.", icon="⚠️")
                 elif page > 1: st.info(f"API Eliq: Fim dos dados (página vazia) alcançado na página {page}.")
-                break
+                break # Sai do loop
 
         if not all_data: return pd.DataFrame()
 
         df = pd.json_normalize(all_data)
         if df.empty: return pd.DataFrame()
 
-        # --- Normalização CORRIGIDA ---
+        # --- Normalização REVISADA ---
         df_norm = pd.DataFrame()
         df_norm['cnpj'] = df.get('cliente_cnpj', pd.NA)
         bruto_series = pd.to_numeric(df.get('valor_total'), errors='coerce').fillna(0)
         df_norm['bruto'] = bruto_series
 
-        # Corrigido: Aplicar to_numeric diretamente à coluna/Series retornada por df.get
-        taxa_cliente_series = pd.to_numeric(df.get('cliente_taxa_adm', 0), errors='coerce').fillna(0)
+        # CORREÇÃO DEFINITIVA: Tratar a coluna 'cliente_taxa_adm' com segurança
+        taxa_column_name = 'cliente_taxa_adm'
+        if taxa_column_name in df.columns:
+            # Se a coluna existe, converte para numérico e preenche NaNs
+            taxa_cliente_series = pd.to_numeric(df[taxa_column_name], errors='coerce').fillna(0)
+        else:
+            # Se a coluna NÃO existe, cria uma Series de zeros com o mesmo índice do DataFrame
+            st.warning(f"API Eliq: Coluna '{taxa_column_name}' não encontrada nos dados retornados. Assumindo taxa 0.")
+            taxa_cliente_series = pd.Series(0, index=df.index, dtype=float) # Garante tipo float
+
         taxa_cliente_percent = taxa_cliente_series / 100
-        df_norm['receita'] = df_norm['bruto'] * taxa_cliente_percent
+        # Garantir que a receita não seja negativa se a taxa for negativa (embora improvável)
+        df_norm['receita'] = (df_norm['bruto'] * taxa_cliente_percent).clip(lower=0)
+        # --- FIM DA CORREÇÃO ---
 
         df_norm['venda'] = pd.to_datetime(df.get('data_cadastro', pd.NaT), errors='coerce', dayfirst=True)
         df_norm = df_norm.dropna(subset=['venda'])
@@ -77,7 +89,7 @@ def fetch_eliq_data(api_token, start_date, end_date):
         df_norm['bandeira'] = df.get('bandeira', 'N/A').astype(str)
         df_norm['categoria_pagamento'] = 'Outros'
 
-        st.success(f"API Eliq: {len(df_norm)} registros carregados e processados de {min(page, max_pages + 1)-1} página(s).") # Ajuste na contagem de paginas
+        st.success(f"API Eliq: {len(df_norm)} registros carregados e processados de {processed_pages} página(s).")
         return df_norm.dropna(subset=['bruto', 'cnpj'])
 
     except requests.exceptions.Timeout:
@@ -90,6 +102,7 @@ def fetch_eliq_data(api_token, start_date, end_date):
         st.error(f"Erro inesperado ao processar dados da API Eliq: {e}")
         st.error(traceback.format_exc()) # Mostra traceback detalhado para debug
         return pd.DataFrame()
+
 
 @st.cache_data(show_spinner="Buscando dados da API Asto/Logpay (Limitado)...")
 def fetch_asto_data(api_username, api_password, start_date, end_date):
@@ -117,33 +130,27 @@ def load_bionio_csv(uploaded_file):
                 continue
         if df is None: raise ValueError("Não foi possível ler o arquivo Bionio com encodings comuns.")
 
-        original_columns = df.columns.tolist() # Mantido caso precise debugar novamente
         df.columns = (df.columns.str.strip().str.lower()
                       .str.replace(' ', '_', regex=False)
                       .str.replace('[^0-9a-zA-Z_]', '', regex=True))
         cleaned_columns = df.columns.tolist()
 
-        # --- Nomes das colunas CORRIGIDOS baseado no debug anterior ---
-        cnpj_col = 'cnpj_da_organizao'         # Corrigido
-        bruto_col = 'valor_total_do_pedido'   # OK
-        data_col = 'data_da_criao_do_pedido'  # Corrigido
-        ec_col = 'razo_social'                # Corrigido
-        beneficio_col = 'nome_do_benefcio'      # Corrigido
-        pagamento_col = 'tipo_de_pagamento'   # OK
+        # --- Nomes das colunas CORRIGIDOS ---
+        cnpj_col = 'cnpj_da_organizao'
+        bruto_col = 'valor_total_do_pedido'
+        data_col = 'data_da_criao_do_pedido'
+        ec_col = 'razo_social'
+        beneficio_col = 'nome_do_benefcio'
+        pagamento_col = 'tipo_de_pagamento'
         # --- FIM CORREÇÃO ---
 
-        # Validação mais informativa
         missing_cols = []
         expected_cols = {cnpj_col, bruto_col, data_col, ec_col, beneficio_col, pagamento_col}
         available_cols = set(cleaned_columns)
         for col in expected_cols:
-            if col not in available_cols:
-                missing_cols.append(col)
-        if missing_cols:
-            # Mostra as colunas limpas disponíveis para facilitar a correção manual se necessário
-            raise KeyError(f"Colunas esperadas não encontradas após limpeza no Bionio: {', '.join(missing_cols)}. Colunas disponíveis: {', '.join(cleaned_columns)}. Verifique os nomes das colunas ('*_col') no código.")
+            if col not in available_cols: missing_cols.append(col)
+        if missing_cols: raise KeyError(f"Colunas esperadas não encontradas no Bionio: {', '.join(missing_cols)}. Colunas disponíveis: {', '.join(cleaned_columns)}.")
 
-        # --- Normalização ---
         df_norm = pd.DataFrame()
         df_norm['cnpj'] = df[cnpj_col]
         df_norm['bruto'] = pd.to_numeric(df[bruto_col], errors='coerce').fillna(0)
@@ -168,13 +175,10 @@ def load_bionio_csv(uploaded_file):
         st.success(f"Bionio: {len(df_norm)} registros carregados e processados.")
         return df_norm.dropna(subset=['bruto', 'cnpj'])
 
-    except KeyError as e:
-         st.error(f"Erro ao processar Bionio: {e}") # Mensagem de erro aprimorada
-         return pd.DataFrame()
-    except Exception as e:
-        st.error(f"Erro inesperado ao processar arquivo Bionio: {e}")
-        st.error(traceback.format_exc())
-        return pd.DataFrame()
+    except KeyError as e: st.error(f"Erro ao processar Bionio: {e}")
+    except Exception as e: st.error(f"Erro inesperado ao processar Bionio: {e}"); st.error(traceback.format_exc())
+    return pd.DataFrame()
+
 
 @st.cache_data(show_spinner="Carregando e processando Maquininha/Veripag...")
 def load_maquininha_csv(uploaded_file):
@@ -188,22 +192,17 @@ def load_maquininha_csv(uploaded_file):
                 df = pd.read_csv(uploaded_file, encoding=encoding, sep=None, engine='python', decimal=',')
                 st.write(f"Maquininha: Arquivo lido com encoding '{encoding}' e separador detectado.")
                 break
-            except Exception as e:
-                st.write(f"Maquininha: Falha ao ler com encoding '{encoding}': {e}")
-                continue
-        if df is None: raise ValueError("Não foi possível ler o arquivo Maquininha com encodings comuns.")
+            except Exception as e: st.write(f"Maquininha: Falha ao ler com encoding '{encoding}': {e}")
+        if df is None: raise ValueError("Não foi possível ler o arquivo Maquininha.")
 
         df.columns = (df.columns.str.strip().str.lower()
                       .str.replace(' ', '_', regex=False)
                       .str.replace('[^0-9a-zA-Z_]', '', regex=True))
         cleaned_columns = df.columns.tolist()
 
-        # --- Normalização ---
-        df_norm = pd.DataFrame()
         cnpj_col = 'cnpj'; bruto_col = 'bruto'; liquido_col = 'liquido'; venda_col = 'venda'
         ec_col = 'ec'; tipo_col = 'tipo'; bandeira_col = 'bandeira'
 
-        # Validação
         missing_cols = []
         expected_cols = {cnpj_col, bruto_col, liquido_col, venda_col, ec_col, tipo_col, bandeira_col}
         available_cols = set(cleaned_columns)
@@ -211,10 +210,11 @@ def load_maquininha_csv(uploaded_file):
             if col not in available_cols: missing_cols.append(col)
         if missing_cols: raise KeyError(f"Colunas esperadas não encontradas na Maquininha: {', '.join(missing_cols)}. Colunas disponíveis: {', '.join(cleaned_columns)}.")
 
+        df_norm = pd.DataFrame()
         df_norm['cnpj'] = df[cnpj_col]
         df_norm['bruto'] = pd.to_numeric(df[bruto_col], errors='coerce').fillna(0)
         df_norm['liquido'] = pd.to_numeric(df[liquido_col], errors='coerce').fillna(0)
-        df_norm['receita'] = df_norm['bruto'] - df_norm['liquido']
+        df_norm['receita'] = (df_norm['bruto'] - df_norm['liquido']).clip(lower=0) # Evita receita negativa
         df_norm['venda'] = pd.to_datetime(df[venda_col], errors='coerce', dayfirst=True, format='%d/%m/%Y %H:%M:%S')
         if df_norm['venda'].isnull().all(): df_norm['venda'] = pd.to_datetime(df[venda_col], errors='coerce', dayfirst=True)
         df_norm = df_norm.dropna(subset=['venda'])
@@ -237,13 +237,9 @@ def load_maquininha_csv(uploaded_file):
         st.success(f"Maquininha: {len(df_norm)} registros carregados e processados.")
         return df_norm.dropna(subset=['bruto', 'cnpj'])
 
-    except KeyError as e:
-         st.error(f"Erro ao processar Maquininha: {e}")
-         return pd.DataFrame()
-    except Exception as e:
-        st.error(f"Erro inesperado ao processar arquivo Maquininha: {e}")
-        st.error(traceback.format_exc())
-        return pd.DataFrame()
+    except KeyError as e: st.error(f"Erro ao processar Maquininha: {e}")
+    except Exception as e: st.error(f"Erro inesperado ao processar Maquininha: {e}"); st.error(traceback.format_exc())
+    return pd.DataFrame()
 
 # --- Função Principal de Consolidação ---
 def consolidate_data(df_bionio, df_maquininha, df_eliq, df_asto):
@@ -254,32 +250,27 @@ def consolidate_data(df_bionio, df_maquininha, df_eliq, df_asto):
     if df_eliq is not None and not df_eliq.empty: all_transactions.append(df_eliq)
     if df_asto is not None and not df_asto.empty: all_transactions.append(df_asto)
 
-    if not all_transactions: return pd.DataFrame() # Retorna vazio se nenhuma fonte tiver dados
+    if not all_transactions: return pd.DataFrame()
 
     try:
         df_consolidated = pd.concat(all_transactions, ignore_index=True)
-
-        # Adiciona colunas placeholder se necessário
         if 'responsavel_comercial' not in df_consolidated.columns: df_consolidated['responsavel_comercial'] = 'N/A'
         if 'produto' not in df_consolidated.columns: df_consolidated['produto'] = df_consolidated['plataforma']
-
-        # Garante tipos corretos e trata NAs
         df_consolidated['bruto'] = pd.to_numeric(df_consolidated['bruto'], errors='coerce').fillna(0)
-        df_consolidated['receita'] = pd.to_numeric(df_consolidated['receita'], errors='coerce').fillna(0)
+        df_consolidated['receita'] = pd.to_numeric(df_consolidated['receita'], errors='coerce').fillna(0).clip(lower=0) # Garante não negativo
         df_consolidated['venda'] = pd.to_datetime(df_consolidated['venda'], errors='coerce')
-        df_consolidated = df_consolidated.dropna(subset=['venda']) # Remove linhas sem data válida após conversão
+        df_consolidated = df_consolidated.dropna(subset=['venda'])
 
         st.success(f"Dados de {len(all_transactions)} fontes ({len(df_consolidated)} registros totais) consolidados com sucesso!", icon="✅")
         return df_consolidated
     except Exception as e:
         st.error(f"Erro durante a concatenação dos dados: {e}")
         st.error(traceback.format_exc())
-        return pd.DataFrame() # Retorna vazio em caso de erro na concatenação
+        return pd.DataFrame()
 
 # --- Função de Insights ---
 def generate_insights(df_filtered, total_gmv, receita_total):
     """Gera insights automáticos."""
-    # (Código da função generate_insights permanece o mesmo da versão anterior)
     insights = []
     if df_filtered.empty: return ["Nenhum dado encontrado para os filtros selecionados."]
     if 'ec' in df_filtered.columns and not df_filtered.empty:
@@ -316,13 +307,13 @@ with st.sidebar:
     load_button_pressed = st.button("Carregar e Processar Dados", key="load_data_button")
 
 # --- Carregamento e Processamento Principal ---
-df_consolidated = pd.DataFrame() # Inicializa ANTES do if
+df_consolidated = pd.DataFrame()
 if 'data_loaded' not in st.session_state: st.session_state.data_loaded = False
 if 'df_consolidated' not in st.session_state: st.session_state.df_consolidated = pd.DataFrame()
 
 if load_button_pressed:
     st.session_state.data_loaded = True
-    st.session_state.df_consolidated = pd.DataFrame() # Limpa
+    st.session_state.df_consolidated = pd.DataFrame()
     with st.spinner("Processando fontes de dados... Por favor, aguarde."):
         df_bionio_processed = load_bionio_csv(uploaded_bionio) if uploaded_bionio else pd.DataFrame()
         df_maquininha_processed = load_maquininha_csv(uploaded_maquininha) if uploaded_maquininha else pd.DataFrame()
@@ -343,22 +334,18 @@ if load_button_pressed:
             df_eliq_fetched, df_asto_fetched
         )
         st.session_state.df_consolidated = df_consolidated_loaded
-        df_consolidated = df_consolidated_loaded # Atualiza variável local
-elif not load_button_pressed: # Se botão não foi pressionado, tenta usar o estado
+        df_consolidated = df_consolidated_loaded
+elif not load_button_pressed:
     df_consolidated = st.session_state.df_consolidated
-
 
 # --- Dashboard Principal ---
 if df_consolidated.empty:
-    if st.session_state.data_loaded:
-        st.error("Carregamento falhou ou não retornou dados válidos. Verifique as fontes e os logs.")
-    else:
-        st.warning("Faça upload dos arquivos, ajuste o período das APIs e clique em 'Carregar e Processar Dados'.", icon="⚠️")
+    if st.session_state.data_loaded: st.error("Carregamento falhou ou não retornou dados. Verifique logs/fontes.")
+    else: st.warning("Faça upload dos arquivos e clique em 'Carregar e Processar Dados'.", icon="⚠️")
 else:
     # --- FILTROS ---
     st.subheader("Filtros de Análise")
     col_date, col_plataforma, col_bandeira, col_tipo, col_categoria_pgto = st.columns([1.5, 1.5, 1, 1, 1.5])
-
     with col_date:
         data_min = df_consolidated['venda'].min().date()
         data_max = df_consolidated['venda'].max().date()
@@ -366,24 +353,16 @@ else:
            st.session_state.date_filter_values[0] < data_min or \
            st.session_state.date_filter_values[1] > data_max:
              st.session_state.date_filter_values = (data_min, data_max)
-
-        # Garante que os valores no estado da sessão sejam válidos
         current_start, current_end = st.session_state.date_filter_values
-        valid_start = max(data_min, current_start)
-        valid_end = min(data_max, current_end)
-        if valid_start > valid_end: valid_start = data_min; valid_end = data_max # Reseta se inválido
-
-        data_inicial, data_final = st.date_input(
-            "Período", value=(valid_start, valid_end),
-            min_value=data_min, max_value=data_max, key='date_filter'
-        )
-        st.session_state.date_filter_values = (data_inicial, data_final) # Atualiza estado
+        valid_start = max(data_min, current_start); valid_end = min(data_max, current_end)
+        if valid_start > valid_end: valid_start = data_min; valid_end = data_max
+        data_inicial, data_final = st.date_input("Período", value=(valid_start, valid_end), min_value=data_min, max_value=data_max, key='date_filter')
+        st.session_state.date_filter_values = (data_inicial, data_final)
 
     with col_plataforma:
         plataformas = ['Todos'] + sorted(df_consolidated['plataforma'].unique().tolist())
         filtro_plataforma = st.selectbox("Plataforma/Produto", options=plataformas)
     with col_bandeira:
-        # Trata possíveis NAs ou tipos mistos antes de unique()
         bandeiras = ['Todos'] + sorted(df_consolidated['bandeira'].astype(str).fillna('N/A').unique().tolist())
         filtro_bandeira = st.selectbox("Bandeira (Detalhe)", options=bandeiras)
     with col_tipo:
@@ -396,17 +375,13 @@ else:
     # --- Aplicação dos Filtros ---
     df_filtered = pd.DataFrame(columns=df_consolidated.columns)
     if data_inicial <= data_final:
-        # Aplica filtro de data primeiro
         mask_date = (df_consolidated['venda'].dt.date >= data_inicial) & (df_consolidated['venda'].dt.date <= data_final)
         df_filtered = df_consolidated[mask_date].copy()
-
-        # Aplica outros filtros sequencialmente
         if filtro_plataforma != 'Todos': df_filtered = df_filtered[df_filtered['plataforma'] == filtro_plataforma]
         if filtro_bandeira != 'Todos': df_filtered = df_filtered[df_filtered['bandeira'].astype(str).fillna('N/A') == filtro_bandeira]
         if filtro_tipo != 'Todos': df_filtered = df_filtered[df_filtered['tipo'].astype(str).fillna('N/A') == filtro_tipo]
         if filtro_categoria != 'Todos': df_filtered = df_filtered[df_filtered['categoria_pagamento'].astype(str).fillna('N/A') == filtro_categoria]
-    else:
-        st.warning("Data inicial não pode ser posterior à data final.")
+    else: st.warning("Data inicial não pode ser posterior à data final.")
 
     # --- KPIs ---
     total_gmv = df_filtered['bruto'].sum()
@@ -427,15 +402,13 @@ else:
     # --- Gráfico de Evolução ---
     st.subheader("Evolução do Valor Transacionado vs Receita")
     if not df_filtered.empty:
-        df_evolucao = df_filtered.groupby(df_filtered['venda'].dt.date).agg(
-             GMV=('bruto', 'sum'), Receita=('receita', 'sum')
-        ).reset_index().rename(columns={'venda': 'Data da Venda'})
+        df_evolucao = df_filtered.groupby(df_filtered['venda'].dt.date).agg(GMV=('bruto', 'sum'), Receita=('receita', 'sum')).reset_index().rename(columns={'venda': 'Data da Venda'})
         if not df_evolucao.empty:
             fig_evolucao = go.Figure()
             fig_evolucao.add_trace(go.Scatter(x=df_evolucao['Data da Venda'], y=df_evolucao['GMV'], mode='lines+markers', name='Valor Bruto', line=dict(color='blue', width=2), marker=dict(size=5)))
             fig_evolucao.add_trace(go.Scatter(x=df_evolucao['Data da Venda'], y=df_evolucao['Receita'], mode='lines+markers', name='Receita', line=dict(color='red', width=2), marker=dict(size=5)))
             fig_evolucao.update_layout(xaxis_title='Data', yaxis_title='Valor (R$)', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), template="plotly_white", margin=dict(t=20))
-            st.plotly_chart(fig_evolucao, use_container_width=True) # Removido width='stretch' que não é parâmetro aqui
+            st.plotly_chart(fig_evolucao, use_container_width=True)
         else: st.info("Nenhum dado agregado para gráfico de evolução.")
     else: st.info("Nenhum dado para gráfico de evolução.")
     st.markdown("---")
@@ -458,7 +431,8 @@ else:
         st.subheader("Participação por Categoria de Pagamento")
         if not df_filtered.empty and 'categoria_pagamento' in df_filtered.columns:
             df_categoria_pgto = df_filtered.groupby('categoria_pagamento')['bruto'].sum().reset_index().sort_values(by='bruto', ascending=False)
-            if not df_categoria_pgto.empty and df_categoria_pgto['bruto'].sum() > 0:
+            # Adicionado .astype(float) para garantir que a soma funcione mesmo se houver tipos mistos (embora improvável aqui)
+            if not df_categoria_pgto.empty and df_categoria_pgto['bruto'].astype(float).sum() > 0:
                 pull_values = [0] * len(df_categoria_pgto); pull_values[0] = 0.1
                 fig_categoria = px.pie(df_categoria_pgto, values='bruto', names='categoria_pagamento', title='Participação do GMV por Cat. Pagamento', color_discrete_sequence=px.colors.qualitative.Safe)
                 fig_categoria.update_traces(textinfo='percent+label', pull=pull_values, marker=dict(line=dict(color='#000000', width=1)))
@@ -485,10 +459,9 @@ else:
         df_display = df_detalhe_cliente[['cnpj', 'ec', 'Receita_Formatada', 'Crescimento', 'N_Vendas', 'Categoria_Pag_Principal']]
         df_display.columns = ['CNPJ', 'Cliente', 'Receita', 'Crescimento', 'Nº Vendas', 'Cat. Pag. Principal']
 
-        st.info("""**Sobre esta tabela:** ...""", icon="ℹ️") # Mantém sua info
+        st.info("""**Sobre esta tabela:**\n* **Crescimento:** 'N/A' - Requer dados de período anterior.\n* **Nº Vendas:** Contagem total de transações.\n* **Cat. Pag. Principal:** Categoria de pagamento mais frequente.""", icon="ℹ️")
         csv_detalhe_cliente = df_display.to_csv(index=False).encode('utf-8')
         st.download_button("Exportar CSV (Det. Cliente)", csv_detalhe_cliente, 'detalhamento_cliente.csv', 'text/csv', key='dl-csv-det-cli')
-        # Corrigido width
         st.dataframe(df_display, hide_index=True, use_container_width=True)
         st.markdown(f"**Mostrando {len(df_display)} clientes**")
     else: st.warning("Nenhum dado de cliente para exibir com os filtros atuais.")
@@ -504,7 +477,6 @@ else:
 
     # --- Tabela Detalhada (Rodapé) ---
     with st.expander("Visualizar Todos os Dados Filtrados (Detalhados)"):
-         # Corrigido width
          st.dataframe(df_filtered, use_container_width=True)
 
     csv_data_filtered = df_filtered.to_csv(index=False).encode('utf-8')
