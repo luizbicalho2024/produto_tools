@@ -166,7 +166,10 @@ def load_bionio_csv(uploaded_file):
         for encoding in encodings_to_try:
             try:
                 uploaded_file.seek(0)
-                df = pd.read_csv(uploaded_file, encoding=encoding, sep=None, engine='python', thousands='.', decimal=',')
+                # [CORREÇÃO 1] Adiciona dtype=str para ler colunas problemáticas como texto
+                df = pd.read_csv(uploaded_file, encoding=encoding, sep=None, engine='python', thousands='.', decimal=',', dtype=str)
+                # Tenta converter colunas numéricas após a leitura
+                df[BIONIO_COLS['bruto']] = pd.to_numeric(df[BIONIO_COLS['bruto']], errors='coerce')
                 break
             except Exception:
                 continue
@@ -226,9 +229,9 @@ def load_maquininha_csv(uploaded_file):
                 # [CORREÇÃO 1] Adiciona dtype=str para ler colunas problemáticas como texto
                 df = pd.read_csv(uploaded_file, encoding=encoding, sep=None, engine='python', decimal=',', dtype=str)
                 # Tenta converter colunas numéricas após a leitura
-                df['bruto'] = pd.to_numeric(df['bruto'], errors='coerce')
-                df['liquido'] = pd.to_numeric(df['liquido'], errors='coerce')
-
+                df[MAQUININHA_COLS['bruto']] = pd.to_numeric(df[MAQUININHA_COLS['bruto']], errors='coerce')
+                df[MAQUININHA_COLS['liquido']] = pd.to_numeric(df[MAQUININHA_COLS['liquido']], errors='coerce')
+                break
             except Exception:
                 continue
         if df is None: raise ValueError("Não foi possível ler o arquivo Maquininha.")
@@ -521,9 +524,6 @@ else:
         df_detalhe_cliente['Receita_Formatada'] = df_detalhe_cliente['Receita'].apply(lambda x: f"R$ {x:,.2f}")
         df_detalhe_cliente = df_detalhe_cliente.sort_values(by='Receita', ascending=False)
         
-        # [CORREÇÃO 1] Garante que a coluna CNPJ final seja string
-        df_detalhe_cliente['cnpj'] = df_detalhe_cliente['cnpj'].astype(str)
-        
         df_display = df_detalhe_cliente[['cnpj', 'ec', 'Receita_Formatada', 'Crescimento', 'N_Vendas', 'Categoria_Pag_Principal']]
         df_display.columns = ['CNPJ', 'Cliente', 'Receita', 'Crescimento', 'Nº Vendas', 'Cat. Pag. Principal']
 
@@ -531,7 +531,8 @@ else:
         csv_detalhe_cliente = df_display.to_csv(index=False).encode('utf-8')
         st.download_button("Exportar CSV (Det. Cliente)", csv_detalhe_cliente, 'detalhamento_cliente.csv', 'text/csv', key='dl-csv-det-cli')
         
-        # [CORREÇÃO 3] Substitui use_container_width por width='stretch'
+        # [CORREÇÃO FINAL] Força a coluna CNPJ (maiúsculo) para string ANTES de exibir
+        df_display['CNPJ'] = df_display['CNPJ'].astype(str)
         st.dataframe(df_display, hide_index=True, width='stretch')
         
         st.markdown(f"**Mostrando {len(df_display)} clientes**")
@@ -548,7 +549,8 @@ else:
 
     # --- Tabela Detalhada (Rodapé) ---
     with st.expander("Visualizar Todos os Dados Filtrados (Detalhados)"):
-         # [CORREÇÃO 3] Substitui use_container_width por width='stretch'
+         # [CORREÇÃO FINAL] Força a coluna cnpj (minúsculo) para string ANTES de exibir
+         df_filtered['cnpj'] = df_filtered['cnpj'].astype(str)
          st.dataframe(df_filtered, width='stretch')
 
     csv_data_filtered = df_filtered.to_csv(index=False).encode('utf-8')
