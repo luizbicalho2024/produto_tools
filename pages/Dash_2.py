@@ -4,9 +4,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import io
 import numpy as np
-import requests # Necessário para chamadas de API
-from datetime import datetime, timedelta, date # Necessário para datas nas APIs e min_value
-import traceback # Para exibir erros mais detalhados
+import requests  # Necessário para chamadas de API
+from datetime import datetime, timedelta, date  # Necessário para datas nas APIs e min_value
+import traceback  # Para exibir erros mais detalhados
 
 # --- Configurações de Aparência ---
 st.set_page_config(
@@ -14,6 +14,57 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# --- [MELHORIA 1: SEGURANÇA] ---
+# Adiciona a verificação de login (Page Guard)
+if not st.session_state.get('logged_in'):
+    st.error("🔒 Você precisa estar logado para acessar esta página.")
+    st.info("Por favor, retorne à página de Login e insira suas credenciais.")
+    st.stop()
+# --- FIM DA MELHORIA 1 ---
+
+
+# --- [MELHORIA 4: CONSTANTES] ---
+# Define os nomes das colunas esperadas para fácil manutenção
+BIONIO_COLS = {
+    'cnpj': 'cnpj_da_organizao',
+    'bruto': 'valor_total_do_pedido',
+    'data': 'data_da_criao_do_pedido',
+    'ec': 'razo_social',
+    'tipo': 'nome_do_benefcio',
+    'bandeira': 'tipo_de_pagamento'
+}
+
+MAQUININHA_COLS = {
+    'cnpj': 'cnpj',
+    'bruto': 'bruto',
+    'liquido': 'liquido',
+    'data': 'venda',
+    'ec': 'ec',
+    'tipo': 'tipo',
+    'bandeira': 'bandeira'
+}
+# --- FIM DA MELHORIA 4 ---
+
+
+# --- Funções Auxiliares (Categoria de Pagamento) ---
+# Movidas para fora das funções de load para melhor organização
+
+def categorize_payment_bionio(tipo_pgto):
+    tipo_pgto_lower = str(tipo_pgto).strip().lower()
+    if 'pix' in tipo_pgto_lower or 'transferência' in tipo_pgto_lower: return 'Pix'
+    if 'cartão' in tipo_pgto_lower: return 'Crédito'
+    if 'boleto' in tipo_pgto_lower: return 'Boleto'
+    return 'Outros'
+
+def categorize_payment_rp(row, tipo_col, bandeira_col):
+    bandeira_lower = str(row.get(bandeira_col, '')).strip().lower()
+    tipo_lower = str(row.get(tipo_col, '')).strip().lower()
+    if 'pix' in bandeira_lower: return 'Pix'
+    if tipo_lower == 'crédito': return 'Crédito'
+    if tipo_lower == 'débito': return 'Débito'
+    return 'Outros'
+
 
 # --- Funções de Chamada de API ---
 
@@ -28,78 +79,62 @@ def fetch_eliq_data(api_token, start_date, end_date):
 
     all_data = []
     page = 1
-    max_pages = 5 # Limite para teste, ajuste conforme necessário
-    page_size_assumption = 50
-    processed_pages = 0 # Contador para páginas realmente processadas
+    max_pages = 50 # Limite de segurança aumentado
+    processed_pages = 0
 
     try:
-        st.write(f"API Eliq: Buscando dados de {start_str} a {end_str}...")
+        st.info(f"API Eliq: Buscando dados de {start_str} a {end_str}...")
+        
         while page <= max_pages:
             params['page'] = page
             response = requests.get(base_url, headers=headers, params=params, timeout=60)
             response.raise_for_status()
             data = response.json()
-            processed_pages = page # Atualiza contador aqui
+            processed_pages = page
 
+            # --- [MELHORIA 3: ROBUSTEZ API] ---
+            # A verificação correta é se a API parou de retornar dados
             if isinstance(data, list) and data:
                 all_data.extend(data)
-                st.write(f"API Eliq: Recebidos {len(data)} registros da página {page}.")
-                if len(data) < page_size_assumption:
-                    st.info(f"API Eliq: Fim dos dados (ou limite de página) alcançado na página {page}.")
-                    break
+                # [MELHORIA 5: UX] Usando st.toast para feedback menos intrusivo
+                st.toast(f"API Eliq: Recebidos {len(data)} registros da página {page}.")
                 page += 1
             else:
-                if page == 1 and not data: st.warning(f"API Eliq: Nenhuma transação encontrada para o período {start_str} - {end_str}.", icon="⚠️")
-                elif page > 1: st.info(f"API Eliq: Fim dos dados (página vazia) alcançado na página {page}.")
-                break # Sai do loop
+                if page == 1 and not data: 
+                    st.warning(f"API Eliq: Nenhuma transação encontrada para o período {start_str} - {end_str}.", icon="⚠️")
+                elif page > 1: 
+                    st.info(f"API Eliq: Fim dos dados. Total de {processed_pages} página(s) processada(s).")
+                break # Sai do loop se 'data' estiver vazio ou não for lista
+            # --- FIM DA MELHORIA 3 ---
 
         if not all_data: return pd.DataFrame()
 
         df = pd.json_normalize(all_data)
         if df.empty: return pd.DataFrame()
 
-        # --- Normalização REVISADA NOVAMENTE ---
+        # --- Normalização ---
         df_norm = pd.DataFrame()
         df_norm['cnpj'] = df.get('cliente_cnpj', pd.NA)
-        bruto_series = pd.to_numeric(df.get('valor_total'), errors='coerce').fillna(0)
-        df_norm['bruto'] = bruto_series
+        df_norm['bruto'] = pd.to_numeric(df.get('valor_total'), errors='coerce').fillna(0)
 
         taxa_column_name = 'cliente_taxa_adm'
         if taxa_column_name in df.columns:
             taxa_cliente_series = pd.to_numeric(df[taxa_column_name], errors='coerce').fillna(0)
         else:
-            # Removido o st.warning daqui para não poluir tanto se for comum
             taxa_cliente_series = pd.Series(0, index=df.index, dtype=float)
 
-        taxa_cliente_percent = taxa_cliente_series / 100
-        df_norm['receita'] = (df_norm['bruto'] * taxa_cliente_percent).clip(lower=0)
-
+        df_norm['receita'] = (df_norm['bruto'] * (taxa_cliente_series / 100)).clip(lower=0)
         df_norm['venda'] = pd.to_datetime(df.get('data_cadastro', pd.NaT), errors='coerce', dayfirst=True)
         df_norm = df_norm.dropna(subset=['venda'])
         if df_norm.empty: return pd.DataFrame()
 
         df_norm['ec'] = df.get('cliente_nome', 'N/A')
         df_norm['plataforma'] = 'Eliq'
-
-        # CORREÇÃO PARA 'tipo' e 'bandeira'
-        tipo_col_name = 'tipo_transacao_sigla'
-        if tipo_col_name in df.columns:
-            df_norm['tipo'] = df[tipo_col_name].astype(str).fillna('N/A')
-        else:
-            st.warning(f"API Eliq: Coluna '{tipo_col_name}' não encontrada. Usando 'N/A'.")
-            df_norm['tipo'] = 'N/A'
-
-        bandeira_col_name = 'bandeira'
-        if bandeira_col_name in df.columns:
-            df_norm['bandeira'] = df[bandeira_col_name].astype(str).fillna('N/A')
-        else:
-            st.warning(f"API Eliq: Coluna '{bandeira_col_name}' não encontrada. Usando 'N/A'.")
-            df_norm['bandeira'] = 'N/A'
-        # --- FIM DA CORREÇÃO ---
-
+        df_norm['tipo'] = df.get('tipo_transacao_sigla', 'N/A').astype(str)
+        df_norm['bandeira'] = df.get('bandeira', 'N/A').astype(str)
         df_norm['categoria_pagamento'] = 'Outros'
 
-        st.success(f"API Eliq: {len(df_norm)} registros carregados e processados de {processed_pages} página(s).")
+        st.success(f"API Eliq: {len(df_norm)} registros carregados e processados.")
         return df_norm.dropna(subset=['bruto', 'cnpj'])
 
     except requests.exceptions.Timeout:
@@ -112,9 +147,6 @@ def fetch_eliq_data(api_token, start_date, end_date):
         st.error(f"Erro inesperado ao processar dados da API Eliq: {e}")
         st.error(traceback.format_exc())
         return pd.DataFrame()
-
-# --- (O restante das funções: fetch_asto_data, load_bionio_csv, load_maquininha_csv, consolidate_data, generate_insights) ---
-# --- (Permanece o mesmo da versão anterior) ---
 
 @st.cache_data(show_spinner="Buscando dados da API Asto/Logpay (Limitado)...")
 def fetch_asto_data(api_username, api_password, start_date, end_date):
@@ -133,58 +165,53 @@ def load_bionio_csv(uploaded_file):
             try:
                 uploaded_file.seek(0)
                 df = pd.read_csv(uploaded_file, encoding=encoding, sep=None, engine='python', thousands='.', decimal=',')
-                st.write(f"Bionio: Arquivo lido com encoding '{encoding}' e separador detectado.")
                 break
-            except Exception as e:
-                st.write(f"Bionio: Falha ao ler com encoding '{encoding}': {e}")
+            except Exception:
                 continue
         if df is None: raise ValueError("Não foi possível ler o arquivo Bionio com encodings comuns.")
 
         df.columns = (df.columns.str.strip().str.lower()
                       .str.replace(' ', '_', regex=False)
                       .str.replace('[^0-9a-zA-Z_]', '', regex=True))
+        
+        # --- [MELHORIA 2: ROBUSTEZ CSV] ---
+        # Verifica colunas ausentes em vez de quebrar
         cleaned_columns = df.columns.tolist()
-
-        cnpj_col = 'cnpj_da_organizao'
-        bruto_col = 'valor_total_do_pedido'
-        data_col = 'data_da_criao_do_pedido'
-        ec_col = 'razo_social'
-        beneficio_col = 'nome_do_benefcio'
-        pagamento_col = 'tipo_de_pagamento'
-
         missing_cols = []
-        expected_cols = {cnpj_col, bruto_col, data_col, ec_col, beneficio_col, pagamento_col}
-        available_cols = set(cleaned_columns)
-        for col in expected_cols:
-            if col not in available_cols: missing_cols.append(col)
-        if missing_cols: raise KeyError(f"Colunas esperadas não encontradas no Bionio: {', '.join(missing_cols)}. Colunas disponíveis: {', '.join(cleaned_columns)}.")
+        # Usa as constantes definidas no topo
+        expected_cols_map = BIONIO_COLS
+        for key, col_name in expected_cols_map.items():
+            if col_name not in cleaned_columns:
+                missing_cols.append(f"'{col_name}' (para {key})")
+        
+        if missing_cols:
+            st.error(f"Erro no arquivo Bionio: Colunas esperadas não encontradas: {', '.join(missing_cols)}. Colunas disponíveis: {', '.join(cleaned_columns)}.")
+            return pd.DataFrame()
+        # --- FIM DA MELHORIA 2 ---
 
         df_norm = pd.DataFrame()
-        df_norm['cnpj'] = df[cnpj_col]
-        df_norm['bruto'] = pd.to_numeric(df[bruto_col], errors='coerce').fillna(0)
+        df_norm['cnpj'] = df[expected_cols_map['cnpj']]
+        df_norm['bruto'] = pd.to_numeric(df[expected_cols_map['bruto']], errors='coerce').fillna(0)
         df_norm['receita'] = df_norm['bruto'] * 0.05
-        df_norm['venda'] = pd.to_datetime(df[data_col], errors='coerce', dayfirst=True, format='%d/%m/%Y %H:%M:%S')
-        if df_norm['venda'].isnull().all(): df_norm['venda'] = pd.to_datetime(df[data_col], errors='coerce', dayfirst=True)
+        df_norm['venda'] = pd.to_datetime(df[expected_cols_map['data']], errors='coerce', dayfirst=True, format='%d/%m/%Y %H:%M:%S')
+        if df_norm['venda'].isnull().all(): 
+            df_norm['venda'] = pd.to_datetime(df[expected_cols_map['data']], errors='coerce', dayfirst=True)
+        
         df_norm = df_norm.dropna(subset=['venda'])
         if df_norm.empty: return pd.DataFrame()
 
-        df_norm['ec'] = df[ec_col]
+        df_norm['ec'] = df[expected_cols_map['ec']]
         df_norm['plataforma'] = 'Bionio'
-        df_norm['tipo'] = df[beneficio_col].astype(str)
-        df_norm['bandeira'] = df[pagamento_col].astype(str)
-        def categorize_payment_bionio(tipo_pgto):
-            tipo_pgto_lower = str(tipo_pgto).strip().lower()
-            if 'pix' in tipo_pgto_lower or 'transferência' in tipo_pgto_lower: return 'Pix'
-            if 'cartão' in tipo_pgto_lower: return 'Crédito'
-            if 'boleto' in tipo_pgto_lower: return 'Boleto'
-            return 'Outros'
-        df_norm['categoria_pagamento'] = df[pagamento_col].apply(categorize_payment_bionio)
+        df_norm['tipo'] = df[expected_cols_map['tipo']].astype(str)
+        df_norm['bandeira'] = df[expected_cols_map['bandeira']].astype(str)
+        df_norm['categoria_pagamento'] = df[expected_cols_map['bandeira']].apply(categorize_payment_bionio)
 
         st.success(f"Bionio: {len(df_norm)} registros carregados e processados.")
         return df_norm.dropna(subset=['bruto', 'cnpj'])
 
-    except KeyError as e: st.error(f"Erro ao processar Bionio: {e}")
-    except Exception as e: st.error(f"Erro inesperado ao processar Bionio: {e}"); st.error(traceback.format_exc())
+    except Exception as e: 
+        st.error(f"Erro inesperado ao processar Bionio: {e}"); 
+        st.error(traceback.format_exc())
     return pd.DataFrame()
 
 @st.cache_data(show_spinner="Carregando e processando Maquininha/Veripag...")
@@ -197,56 +224,59 @@ def load_maquininha_csv(uploaded_file):
             try:
                 uploaded_file.seek(0)
                 df = pd.read_csv(uploaded_file, encoding=encoding, sep=None, engine='python', decimal=',')
-                st.write(f"Maquininha: Arquivo lido com encoding '{encoding}' e separador detectado.")
                 break
-            except Exception as e: st.write(f"Maquininha: Falha ao ler com encoding '{encoding}': {e}")
+            except Exception:
+                continue
         if df is None: raise ValueError("Não foi possível ler o arquivo Maquininha.")
 
         df.columns = (df.columns.str.strip().str.lower()
                       .str.replace(' ', '_', regex=False)
                       .str.replace('[^0-9a-zA-Z_]', '', regex=True))
+        
+        # --- [MELHORIA 2: ROBUSTEZ CSV] ---
         cleaned_columns = df.columns.tolist()
-
-        cnpj_col = 'cnpj'; bruto_col = 'bruto'; liquido_col = 'liquido'; venda_col = 'venda'
-        ec_col = 'ec'; tipo_col = 'tipo'; bandeira_col = 'bandeira'
-
         missing_cols = []
-        expected_cols = {cnpj_col, bruto_col, liquido_col, venda_col, ec_col, tipo_col, bandeira_col}
-        available_cols = set(cleaned_columns)
-        for col in expected_cols:
-            if col not in available_cols: missing_cols.append(col)
-        if missing_cols: raise KeyError(f"Colunas esperadas não encontradas na Maquininha: {', '.join(missing_cols)}. Colunas disponíveis: {', '.join(cleaned_columns)}.")
+        expected_cols_map = MAQUININHA_COLS
+        for key, col_name in expected_cols_map.items():
+            if col_name not in cleaned_columns:
+                missing_cols.append(f"'{col_name}' (para {key})")
+
+        if missing_cols:
+            st.error(f"Erro no arquivo Maquininha: Colunas esperadas não encontradas: {', '.join(missing_cols)}. Colunas disponíveis: {', '.join(cleaned_columns)}.")
+            return pd.DataFrame()
+        # --- FIM DA MELHORIA 2 ---
 
         df_norm = pd.DataFrame()
-        df_norm['cnpj'] = df[cnpj_col]
-        df_norm['bruto'] = pd.to_numeric(df[bruto_col], errors='coerce').fillna(0)
-        df_norm['liquido'] = pd.to_numeric(df[liquido_col], errors='coerce').fillna(0)
+        df_norm['cnpj'] = df[expected_cols_map['cnpj']]
+        df_norm['bruto'] = pd.to_numeric(df[expected_cols_map['bruto']], errors='coerce').fillna(0)
+        df_norm['liquido'] = pd.to_numeric(df[expected_cols_map['liquido']], errors='coerce').fillna(0)
         df_norm['receita'] = (df_norm['bruto'] - df_norm['liquido']).clip(lower=0)
-        df_norm['venda'] = pd.to_datetime(df[venda_col], errors='coerce', dayfirst=True, format='%d/%m/%Y %H:%M:%S')
-        if df_norm['venda'].isnull().all(): df_norm['venda'] = pd.to_datetime(df[venda_col], errors='coerce', dayfirst=True)
+        df_norm['venda'] = pd.to_datetime(df[expected_cols_map['data']], errors='coerce', dayfirst=True, format='%d/%m/%Y %H:%M:%S')
+        if df_norm['venda'].isnull().all(): 
+            df_norm['venda'] = pd.to_datetime(df[expected_cols_map['data']], errors='coerce', dayfirst=True)
+        
         df_norm = df_norm.dropna(subset=['venda'])
         if df_norm.empty: return pd.DataFrame()
 
-        df_norm['ec'] = df[ec_col]
+        df_norm['ec'] = df[expected_cols_map['ec']]
         df_norm['plataforma'] = 'Rovema Pay'
-        df_norm['tipo'] = df[tipo_col].astype(str)
-        df_norm['bandeira'] = df[bandeira_col].astype(str)
-
-        def categorize_payment_rp(row):
-            bandeira_lower = str(row.get(bandeira_col, '')).strip().lower()
-            tipo_lower = str(row.get(tipo_col, '')).strip().lower()
-            if 'pix' in bandeira_lower: return 'Pix'
-            if tipo_lower == 'crédito': return 'Crédito'
-            if tipo_lower == 'débito': return 'Débito'
-            return 'Outros'
-        df_norm['categoria_pagamento'] = df.apply(categorize_payment_rp, axis=1)
+        df_norm['tipo'] = df[expected_cols_map['tipo']].astype(str)
+        df_norm['bandeira'] = df[expected_cols_map['bandeira']].astype(str)
+        
+        df_norm['categoria_pagamento'] = df.apply(
+            lambda row: categorize_payment_rp(row, expected_cols_map['tipo'], expected_cols_map['bandeira']), 
+            axis=1
+        )
 
         st.success(f"Maquininha: {len(df_norm)} registros carregados e processados.")
         return df_norm.dropna(subset=['bruto', 'cnpj'])
 
-    except KeyError as e: st.error(f"Erro ao processar Maquininha: {e}")
-    except Exception as e: st.error(f"Erro inesperado ao processar Maquininha: {e}"); st.error(traceback.format_exc())
+    except Exception as e: 
+        st.error(f"Erro inesperado ao processar Maquininha: {e}"); 
+        st.error(traceback.format_exc())
     return pd.DataFrame()
+
+# --- Funções de Consolidação e Insights ---
 
 def consolidate_data(df_bionio, df_maquininha, df_eliq, df_asto):
     """ Concatena todos os DataFrames normalizados. """
@@ -270,7 +300,7 @@ def consolidate_data(df_bionio, df_maquininha, df_eliq, df_asto):
         st.success(f"Dados de {len(all_transactions)} fontes ({len(df_consolidated)} registros totais) consolidados com sucesso!", icon="✅")
         return df_consolidated
     except Exception as e:
-        st.error(f"Erro durante a concatenação dos dados: {e}")
+        st.error(f"Erro during data concatenation: {e}")
         st.error(traceback.format_exc())
         return pd.DataFrame()
 
@@ -287,8 +317,9 @@ def generate_insights(df_filtered, total_gmv, receita_total):
     margem = (receita_total / total_gmv) * 100 if total_gmv > 0 else 0
     insights.append(f"Margem média no período: **{margem:,.2f}%**.")
     if 'categoria_pagamento' in df_filtered.columns and not df_filtered.empty:
-        top_cat = df_filtered['categoria_pagamento'].mode()
-        if not top_cat.empty: insights.append(f"Categoria de pag. mais frequente: **{top_cat.iloc[0]}**.")
+        top_cat_series = df_filtered['categoria_pagamento'].mode()
+        if not top_cat_series.empty: 
+            insights.append(f"Categoria de pag. mais frequente: **{top_cat_series.iloc[0]}**.")
     return insights
 
 # --- Interface Streamlit ---
@@ -300,19 +331,20 @@ with st.sidebar:
     uploaded_bionio = st.file_uploader("1. Arquivo Bionio (.csv)", type=['csv'], key="bionio_upload")
     uploaded_maquininha = st.file_uploader("2. Arquivo Maquininha/Veripag (.csv)", type=['csv'], key="maquininha_upload")
     st.markdown("---")
-    st.header("Configuração das APIs")
-    today = datetime.now().date()
-    default_start_date = today - timedelta(days=30)
-    api_start_date, api_end_date = st.date_input(
-         "Período para APIs", value=(default_start_date, today),
-         min_value=date(2020, 1, 1), max_value=today + timedelta(days=1),
-         key="api_date_range"
-     )
-    st.info("Credenciais das APIs são carregadas de 'secrets.toml'", icon="ℹ️")
-    load_button_pressed = st.button("Carregar e Processar Dados", key="load_data_button")
+    
+    with st.expander("Configuração das APIs", expanded=True):
+        today = datetime.now().date()
+        default_start_date = today - timedelta(days=30)
+        api_start_date, api_end_date = st.date_input(
+             "Período para APIs", value=(default_start_date, today),
+             min_value=date(2020, 1, 1), max_value=today + timedelta(days=1),
+             key="api_date_range"
+         )
+        st.info("Credenciais das APIs são carregadas de 'secrets.toml'", icon="ℹ️")
+        
+    load_button_pressed = st.button("Carregar e Processar Dados", key="load_data_button", use_container_width=True, type="primary")
 
 # --- Carregamento e Processamento Principal ---
-df_consolidated = pd.DataFrame()
 if 'data_loaded' not in st.session_state: st.session_state.data_loaded = False
 if 'df_consolidated' not in st.session_state: st.session_state.df_consolidated = pd.DataFrame()
 
@@ -324,15 +356,23 @@ if load_button_pressed:
         df_maquininha_processed = load_maquininha_csv(uploaded_maquininha) if uploaded_maquininha else pd.DataFrame()
         df_eliq_fetched = pd.DataFrame()
         df_asto_fetched = pd.DataFrame()
+        
         try:
-            if 'eliq_api_token' in st.secrets:
-                df_eliq_fetched = fetch_eliq_data(st.secrets["eliq_api_token"], api_start_date, api_end_date)
-            else: st.sidebar.warning("Token API Eliq não encontrado.", icon="🔑")
-            if 'asto_username' in st.secrets and 'asto_password' in st.secrets:
-                 df_asto_fetched = fetch_asto_data(st.secrets["asto_username"], st.secrets["asto_password"], api_start_date, api_end_date)
-            else: st.sidebar.warning("Credenciais API Asto não encontradas.", icon="🔑")
-        except KeyError as e: st.sidebar.error(f"Erro: Chave '{e}' não encontrada em secrets.toml.", icon="❌")
-        except Exception as e: st.sidebar.error(f"Erro inesperado nas APIs: {e}", icon="❌")
+            # Carrega credenciais do Streamlit Secrets
+            eliq_token = st.secrets.get("eliq_api_token")
+            asto_user = st.secrets.get("asto_username")
+            asto_pass = st.secrets.get("asto_password")
+
+            if eliq_token:
+                df_eliq_fetched = fetch_eliq_data(eliq_token, api_start_date, api_end_date)
+            else: st.sidebar.warning("Token API Eliq (eliq_api_token) não encontrado nos Secrets.", icon="🔑")
+            
+            if asto_user and asto_pass:
+                 df_asto_fetched = fetch_asto_data(asto_user, asto_pass, api_start_date, api_end_date)
+            else: st.sidebar.warning("Credenciais API Asto (asto_username/asto_password) não encontradas nos Secrets.", icon="🔑")
+        
+        except Exception as e: 
+            st.sidebar.error(f"Erro ao ler 'secrets.toml'. Verifique o arquivo. Erro: {e}", icon="❌")
 
         df_consolidated_loaded = consolidate_data(
             df_bionio_processed, df_maquininha_processed,
@@ -340,28 +380,39 @@ if load_button_pressed:
         )
         st.session_state.df_consolidated = df_consolidated_loaded
         df_consolidated = df_consolidated_loaded
-elif not load_button_pressed:
+else:
+    # Usa os dados da sessão se o botão não foi pressionado
     df_consolidated = st.session_state.df_consolidated
 
 # --- Dashboard Principal ---
 if df_consolidated.empty:
-    if st.session_state.data_loaded: st.error("Carregamento falhou ou não retornou dados. Verifique logs/fontes.")
-    else: st.warning("Faça upload dos arquivos e clique em 'Carregar e Processar Dados'.", icon="⚠️")
+    if st.session_state.data_loaded: 
+        st.error("O carregamento falhou ou não retornou dados. Verifique os arquivos de upload e as mensagens de erro.")
+    else: 
+        st.warning("Faça upload dos arquivos (se houver) e clique em 'Carregar e Processar Dados' na barra lateral.", icon="⚠️")
 else:
     # --- FILTROS ---
     st.subheader("Filtros de Análise")
     col_date, col_plataforma, col_bandeira, col_tipo, col_categoria_pgto = st.columns([1.5, 1.5, 1, 1, 1.5])
+    
     with col_date:
         data_min = df_consolidated['venda'].min().date()
         data_max = df_consolidated['venda'].max().date()
-        if 'date_filter_values' not in st.session_state or \
-           st.session_state.date_filter_values[0] < data_min or \
-           st.session_state.date_filter_values[1] > data_max:
-             st.session_state.date_filter_values = (data_min, data_max)
-        current_start, current_end = st.session_state.date_filter_values
-        valid_start = max(data_min, current_start); valid_end = min(data_max, current_end)
-        if valid_start > valid_end: valid_start = data_min; valid_end = data_max
-        data_inicial, data_final = st.date_input("Período", value=(valid_start, valid_end), min_value=data_min, max_value=data_max, key='date_filter')
+        
+        # Lógica para manter o filtro de data do usuário se possível
+        current_start, current_end = st.session_state.get('date_filter_values', (data_min, data_max))
+        valid_start = max(data_min, current_start)
+        valid_end = min(data_max, current_end)
+        if valid_start > valid_end: 
+            valid_start, valid_end = data_min, data_max
+            
+        data_inicial, data_final = st.date_input(
+            "Período", 
+            value=(valid_start, valid_end), 
+            min_value=data_min, 
+            max_value=data_max, 
+            key='date_filter'
+        )
         st.session_state.date_filter_values = (data_inicial, data_final)
 
     with col_plataforma:
@@ -382,11 +433,13 @@ else:
     if data_inicial <= data_final:
         mask_date = (df_consolidated['venda'].dt.date >= data_inicial) & (df_consolidated['venda'].dt.date <= data_final)
         df_filtered = df_consolidated[mask_date].copy()
+        
         if filtro_plataforma != 'Todos': df_filtered = df_filtered[df_filtered['plataforma'] == filtro_plataforma]
         if filtro_bandeira != 'Todos': df_filtered = df_filtered[df_filtered['bandeira'].astype(str).fillna('N/A') == filtro_bandeira]
         if filtro_tipo != 'Todos': df_filtered = df_filtered[df_filtered['tipo'].astype(str).fillna('N/A') == filtro_tipo]
         if filtro_categoria != 'Todos': df_filtered = df_filtered[df_filtered['categoria_pagamento'].astype(str).fillna('N/A') == filtro_categoria]
-    else: st.warning("Data inicial não pode ser posterior à data final.")
+    else: 
+        st.warning("Data inicial não pode ser posterior à data final.")
 
     # --- KPIs ---
     total_gmv = df_filtered['bruto'].sum()
