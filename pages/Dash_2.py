@@ -187,6 +187,7 @@ def load_bionio_csv(uploaded_file):
         st.error(f"Erro inesperado ao processar Bionio: {e}"); st.error(traceback.format_exc())
     return pd.DataFrame(), 0
 
+# --- FUNÇÃO CORRIGIDA ---
 @st.cache_data(show_spinner="Carregando e processando Maquininha/Veripag...")
 def load_maquininha_csv(uploaded_file):
     """ Carrega o CSV/Excel da Maquininha/Veripag e normaliza. """
@@ -218,31 +219,35 @@ def load_maquininha_csv(uploaded_file):
                     errors_log.append(f"Falha no CSV (encoding {encoding}): {str(e)}")
                     continue
         
-        # --- TENTATIVA 2: LER COMO EXCEL (FALLBACK) ---
+        # --- TENTATIVA 2: LER COMO EXCEL (openpyxl) ---
         if df is None:
-            if file_name.lower().endswith('.csv'):
-                # st.write("Maquininha: Falha ao ler como CSV, tentando fallback para Excel...")
-                with st.expander("Ver logs de erro do CSV"):
-                    st.error("\n".join(errors_log))
-            
             try:
+                # st.write("Maquininha: Falha CSV, tentando ler como Excel (openpyxl)...")
                 uploaded_file.seek(0)
-                # --- AQUI ESTÁ A CORREÇÃO ---
-                # Adiciona engine_kwargs={'read_only': True} para ignorar estilos corrompidos
                 df = pd.read_excel(
                     uploaded_file, 
                     engine='openpyxl', 
                     engine_kwargs={'read_only': True}
                 )
-                # --- FIM DA CORREÇÃO ---
+                # st.write("Maquininha: Lido com sucesso como Excel (openpyxl).")
+            
+            # --- TENTATIVA 3: LER COMO EXCEL (xlrd) ---
+            except Exception as e_openpyxl:
+                errors_log.append(f"Falha no Excel (openpyxl): {str(e_openpyxl)}")
+                # st.write("Maquininha: Falha com 'openpyxl', tentando fallback para 'xlrd'...")
+                try:
+                    uploaded_file.seek(0)
+                    df = pd.read_excel(uploaded_file, engine='xlrd')
+                    # st.write("Maquininha: Lido com sucesso como Excel (xlrd).")
                 
-                # st.write("Maquininha: Lido com sucesso como Excel (modo read_only).")
-            except Exception as e_excel:
-                errors_log.append(f"Falha no Excel (read_only=True): {str(e_excel)}")
-                st.error(f"Erro final ao tentar ler o arquivo Maquininha. Falhou como CSV e como Excel.")
-                st.error(f"Erro Excel: {e_excel}")
-                st.error(traceback.format_exc())
-                return pd.DataFrame(), 0
+                # --- FALHA TOTAL ---
+                except Exception as e_xlrd:
+                    errors_log.append(f"Falha no Excel (xlrd): {str(e_xlrd)}")
+                    st.error("Erro final ao tentar ler o arquivo Maquininha.")
+                    st.error("Falhou como CSV, como Excel moderno (openpyxl) e como Excel antigo (xlrd).")
+                    with st.expander("Ver logs de erro detalhados"):
+                        st.error("\n".join(errors_log))
+                    return pd.DataFrame(), 0 # Falha total
 
         if df is None or df.empty:
             st.warning("Maquininha: Arquivo lido, mas está vazio.")
@@ -301,6 +306,7 @@ def load_maquininha_csv(uploaded_file):
         st.error(traceback.format_exc())
     return pd.DataFrame(), 0
 
+
 def consolidate_data(df_bionio, df_maquininha, df_eliq, df_asto):
     """ Concatena todos os DataFrames normalizados. """
     all_transactions = []
@@ -342,7 +348,7 @@ def consolidate_data(df_bionio, df_maquininha, df_eliq, df_asto):
         return df_consolidated
     
     except Exception as e:
-        st.error(f"Erro durante a concatenação dos dados: {e}")
+        st.error(f"Erro during consolidação dos dados: {e}")
         st.error(traceback.format_exc())
         return pd.DataFrame()
 
