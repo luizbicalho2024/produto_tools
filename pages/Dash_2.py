@@ -7,6 +7,7 @@ import numpy as np
 import requests  # Necessário para chamadas de API
 from datetime import datetime, timedelta, date  # Necessário para datas nas APIs e min_value
 import traceback  # Para exibir erros mais detalhados
+import math # Necessário para dividir os chunks
 
 # --- Configurações de Aparência ---
 st.set_page_config(
@@ -15,17 +16,16 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- [MELHORIA 1: SEGURANÇA] ---
+# --- [SEGURANÇA] ---
 # Adiciona a verificação de login (Page Guard)
 if not st.session_state.get('logged_in'):
     st.error("🔒 Você precisa estar logado para acessar esta página.")
     st.info("Por favor, retorne à página de Login e insira suas credenciais.")
     st.stop()
-# --- FIM DA MELHORIA 1 ---
+# --- FIM SEGURANÇA ---
 
 
-# --- [MELHORIA 4: CONSTANTES] ---
-# Define os nomes das colunas esperadas para fácil manutenção
+# --- [CONSTANTES] ---
 BIONIO_COLS = {
     'cnpj': 'cnpj_da_organizao',
     'bruto': 'valor_total_do_pedido',
@@ -44,12 +44,10 @@ MAQUININHA_COLS = {
     'tipo': 'tipo',
     'bandeira': 'bandeira'
 }
-# --- FIM DA MELHORIA 4 ---
+# --- FIM CONSTANTES ---
 
 
 # --- Funções Auxiliares (Categoria de Pagamento) ---
-# Movidas para fora das funções de load para melhor organização
-
 def categorize_payment_bionio(tipo_pgto):
     tipo_pgto_lower = str(tipo_pgto).strip().lower()
     if 'pix' in tipo_pgto_lower or 'transferência' in tipo_pgto_lower: return 'Pix'
@@ -70,48 +68,79 @@ def categorize_payment_rp(row, tipo_col, bandeira_col):
 
 @st.cache_data(show_spinner="Buscando dados da API Eliq/UzziPay...")
 def fetch_eliq_data(api_token, start_date, end_date):
-    """ Busca dados da API Eliq/UzziPay e normaliza. """
+    """ 
+    Busca dados da API Eliq/UzziPay.
+    [NOVO] Divide a consulta em 4 partes para evitar estouro de memória.
+    """
     base_url = "https://sigyo.uzzipay.com/api/transacoes"
     headers = {'Authorization': f'Bearer {api_token}'}
-    start_str = start_date.strftime('%d/%m/%Y')
-    end_str = end_date.strftime('%d/%m/%Y')
-    params = {'TransacaoSearch[data_cadastro]': f'{start_str} - {end_str}'}
+    
+    # --- [CORREÇÃO: DIVISÃO DA CONSULTA] ---
+    total_days = (end_date - start_date).days + 1 # +1 para incluir o último dia
+    num_chunks = 4
+    # math.ceil para garantir que cubra todos os dias
+    chunk_size_days = max(1, int(math.ceil(total_days / num_chunks)))
+    
+    all_dfs = [] # Lista para guardar os DataFrames de cada parte
+    
+    st.info(f"API Eliq: Consulta de {total_days} dias dividida em {num_chunks} partes.")
 
-    all_data = []
-    page = 1
-    max_pages = 50 # Limite de segurança aumentado
-    processed_pages = 0
-
+    current_start = start_date
+    
     try:
-        st.info(f"API Eliq: Buscando dados de {start_str} a {end_str}...")
+        # Loop 1: Itera sobre as partes (chunks) de datas
+        for i in range(num_chunks):
+            if current_start > end_date:
+                break # Para se já tivermos coberto todo o período
+
+            current_end = min(current_start + timedelta(days=chunk_size_days - 1), end_date)
+            
+            start_str = current_start.strftime('%d/%m/%Y')
+            end_str = current_end.strftime('%d/%m/%Y')
+            
+            st.toast(f"Buscando parte {i+1}/{num_chunks}: {start_str} a {end_str}")
+
+            all_data_chunk = [] # Dados desta parte
+            page = 1
+            max_pages = 50 # Limite de páginas por parte
+            
+            params = {'TransacaoSearch[data_cadastro]': f'{start_str} - {end_str}'}
+
+            # Loop 2: Paginação dentro de cada parte
+            while page <= max_pages:
+                params['page'] = page
+                response = requests.get(base_url, headers=headers, params=params, timeout=60)
+                response.raise_for_status()
+                data = response.json()
+                
+                if isinstance(data, list) and data:
+                    all_data_chunk.extend(data)
+                    page += 1
+                else:
+                    break # Fim das páginas desta parte
+            
+            # Processa os dados desta parte
+            if all_data_chunk:
+                df_chunk = pd.json_normalize(all_data_chunk)
+                all_dfs.append(df_chunk)
+            
+            # Prepara para a próxima parte
+            current_start = current_end + timedelta(days=1)
         
-        while page <= max_pages:
-            params['page'] = page
-            response = requests.get(base_url, headers=headers, params=params, timeout=60)
-            response.raise_for_status()
-            data = response.json()
-            processed_pages = page
+        # --- Fim do Loop de Partes ---
 
-            if isinstance(data, list) and data:
-                all_data.extend(data)
-                st.toast(f"API Eliq: Recebidos {len(data)} registros da página {page}.")
-                page += 1
-            else:
-                if page == 1 and not data: 
-                    st.warning(f"API Eliq: Nenhuma transação encontrada para o período {start_str} - {end_str}.", icon="⚠️")
-                elif page > 1: 
-                    st.info(f"API Eliq: Fim dos dados. Total de {processed_pages} página(s) processada(s).")
-                break 
+        if not all_dfs:
+            st.warning(f"API Eliq: Nenhuma transação encontrada para o período total.", icon="⚠️")
+            return pd.DataFrame()
 
-        if not all_data: return pd.DataFrame()
+        # Concatena todos os DataFrames de todas as partes
+        df = pd.concat(all_dfs, ignore_index=True)
+        st.success(f"API Eliq: Total de {len(df)} registros carregados de {num_chunks} partes.")
 
-        df = pd.json_normalize(all_data)
-        if df.empty: return pd.DataFrame()
-
-        # --- Normalização ---
+        # --- Normalização (com correções de formato) ---
         df_norm = pd.DataFrame()
-        # [CORREÇÃO 1] Força o CNPJ a ser string para evitar erros de conversão do Arrow
-        df_norm['cnpj'] = df.get('cliente_cnpj', pd.NA).astype(str).str.strip()
+        # [CORREÇÃO FORMATO] Força CNPJ para string
+        df_norm['cnpj'] = df.get('cliente_cnpj', pd.NA).astype(str).str.strip() 
         df_norm['bruto'] = pd.to_numeric(df.get('valor_total'), errors='coerce').fillna(0)
 
         taxa_column_name = 'cliente_taxa_adm'
@@ -122,7 +151,7 @@ def fetch_eliq_data(api_token, start_date, end_date):
 
         df_norm['receita'] = (df_norm['bruto'] * (taxa_cliente_series / 100)).clip(lower=0)
         
-        # [CORREÇÃO 2] Remove dayfirst=True para evitar o UserWarning, pois a API usa formato YMD
+        # [CORREÇÃO FORMATO] Remove dayfirst=True
         df_norm['venda'] = pd.to_datetime(df.get('data_cadastro', pd.NaT), errors='coerce') 
         
         df_norm = df_norm.dropna(subset=['venda'])
@@ -134,13 +163,12 @@ def fetch_eliq_data(api_token, start_date, end_date):
         df_norm['bandeira'] = df.get('bandeira', 'N/A').astype(str)
         df_norm['categoria_pagamento'] = 'Outros'
 
-        st.success(f"API Eliq: {len(df_norm)} registros carregados e processados.")
-        # Garante que CNPJs "NA" ou "None" sejam tratados como nulos pelo pandas
+        # [CORREÇÃO FORMATO] Limpa CNPJs nulos
         df_norm['cnpj'] = df_norm['cnpj'].replace(['NA', 'None', '<NA>', ''], np.nan) 
         return df_norm.dropna(subset=['bruto', 'cnpj'])
 
     except requests.exceptions.Timeout:
-         st.error(f"Erro API Eliq: Timeout (>60s) na página {page}. Tente período menor.")
+         st.error(f"Erro API Eliq: Timeout (>60s) na parte {i+1}. Tente período menor.")
          return pd.DataFrame()
     except requests.exceptions.RequestException as e:
         st.error(f"Erro de conexão/HTTP na API Eliq: {e}")
@@ -166,10 +194,9 @@ def load_bionio_csv(uploaded_file):
         for encoding in encodings_to_try:
             try:
                 uploaded_file.seek(0)
-                # [CORREÇÃO 1] Adiciona dtype=str para ler colunas problemáticas como texto
+                # [CORREÇÃO FORMATO] Adiciona dtype=str
                 df = pd.read_csv(uploaded_file, encoding=encoding, sep=None, engine='python', thousands='.', decimal=',', dtype=str)
-                # Tenta converter colunas numéricas após a leitura
-                df[BIONIO_COLS['bruto']] = pd.to_numeric(df[BIONIO_COLS['bruto']], errors='coerce')
+                df[BIONIO_COLS['bruto']] = pd.to_numeric(df.get(BIONIO_COLS['bruto']), errors='coerce')
                 break
             except Exception:
                 continue
@@ -191,7 +218,6 @@ def load_bionio_csv(uploaded_file):
             return pd.DataFrame()
 
         df_norm = pd.DataFrame()
-        # [CORREÇÃO 1] Força o CNPJ a ser string
         df_norm['cnpj'] = df[expected_cols_map['cnpj']].astype(str).str.strip()
         df_norm['bruto'] = pd.to_numeric(df[expected_cols_map['bruto']], errors='coerce').fillna(0)
         df_norm['receita'] = df_norm['bruto'] * 0.05
@@ -226,11 +252,10 @@ def load_maquininha_csv(uploaded_file):
         for encoding in encodings_to_try:
             try:
                 uploaded_file.seek(0)
-                # [CORREÇÃO 1] Adiciona dtype=str para ler colunas problemáticas como texto
+                # [CORREÇÃO FORMATO] Adiciona dtype=str
                 df = pd.read_csv(uploaded_file, encoding=encoding, sep=None, engine='python', decimal=',', dtype=str)
-                # Tenta converter colunas numéricas após a leitura
-                df[MAQUININHA_COLS['bruto']] = pd.to_numeric(df[MAQUININHA_COLS['bruto']], errors='coerce')
-                df[MAQUININHA_COLS['liquido']] = pd.to_numeric(df[MAQUININHA_COLS['liquido']], errors='coerce')
+                df[MAQUININHA_COLS['bruto']] = pd.to_numeric(df.get(MAQUININHA_COLS['bruto']), errors='coerce')
+                df[MAQUININHA_COLS['liquido']] = pd.to_numeric(df.get(MAQUININHA_COLS['liquido']), errors='coerce')
                 break
             except Exception:
                 continue
@@ -252,7 +277,6 @@ def load_maquininha_csv(uploaded_file):
             return pd.DataFrame()
 
         df_norm = pd.DataFrame()
-        # [CORREÇÃO 1] Garante que o CNPJ seja string
         df_norm['cnpj'] = df[expected_cols_map['cnpj']].astype(str).str.strip()
         df_norm['bruto'] = pd.to_numeric(df[expected_cols_map['bruto']], errors='coerce').fillna(0)
         df_norm['liquido'] = pd.to_numeric(df[expected_cols_map['liquido']], errors='coerce').fillna(0)
@@ -298,11 +322,10 @@ def consolidate_data(df_bionio, df_maquininha, df_eliq, df_asto):
     try:
         df_consolidated = pd.concat(all_transactions, ignore_index=True)
         
-        # [CORREÇÃO 1] Garante que a coluna CNPJ final seja string
         if 'cnpj' in df_consolidated.columns:
             df_consolidated['cnpj'] = df_consolidated['cnpj'].astype(str)
 
-        if 'responsavel_comercial' not in df_consolidated.columns: df_consolidated['responsavel_comercial'] = 'N/A'
+        if 'responsavel_comercial' not in df_consolidated.columns: df_consolidated['responsavel_comercIAL'] = 'N/A'
         if 'produto' not in df_consolidated.columns: df_consolidated['produto'] = df_consolidated['plataforma']
         
         df_consolidated['bruto'] = pd.to_numeric(df_consolidated['bruto'], errors='coerce').fillna(0)
@@ -531,7 +554,7 @@ else:
         csv_detalhe_cliente = df_display.to_csv(index=False).encode('utf-8')
         st.download_button("Exportar CSV (Det. Cliente)", csv_detalhe_cliente, 'detalhamento_cliente.csv', 'text/csv', key='dl-csv-det-cli')
         
-        # [CORREÇÃO FINAL] Força a coluna CNPJ (maiúsculo) para string ANTES de exibir
+        # [CORREÇÃO FORMATO] Força a coluna CNPJ (maiúsculo) para string ANTES de exibir
         df_display['CNPJ'] = df_display['CNPJ'].astype(str)
         st.dataframe(df_display, hide_index=True, width='stretch')
         
@@ -549,7 +572,7 @@ else:
 
     # --- Tabela Detalhada (Rodapé) ---
     with st.expander("Visualizar Todos os Dados Filtrados (Detalhados)"):
-         # [CORREÇÃO FINAL] Força a coluna cnpj (minúsculo) para string ANTES de exibir
+         # [CORREÇÃO FORMATO] Força a coluna cnpj (minúsculo) para string ANTES de exibir
          df_filtered['cnpj'] = df_filtered['cnpj'].astype(str)
          st.dataframe(df_filtered, width='stretch')
 
