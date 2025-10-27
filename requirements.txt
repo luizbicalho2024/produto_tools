@@ -4,3 +4,4 @@ requests
 openpyxl
 plotly
 numpy
+xlrd
