@@ -179,7 +179,7 @@ def load_bionio_csv(uploaded_file):
         for encoding in encodings_to_try:
             try:
                 uploaded_file.seek(0)
-                # [CORREÇÃO] Lê tudo como string primeiro
+                # [CORREÇÃO] Lê tudo como string primeiro para evitar erros de tipo
                 df = pd.read_csv(uploaded_file, encoding=encoding, sep=None, engine='python', thousands='.', decimal=',', dtype=str)
                 break
             except Exception:
@@ -539,8 +539,14 @@ else:
         csv_detalhe_cliente = df_display.to_csv(index=False).encode('utf-8')
         st.download_button("Exportar CSV (Det. Cliente)", csv_detalhe_cliente, 'detalhamento_cliente.csv', 'text/csv', key='dl-csv-det-cli')
         
+        # [MUDANÇA] Troca st.dataframe por st.data_editor para estabilidade
         df_display['CNPJ'] = df_display['CNPJ'].astype(str)
-        st.dataframe(df_display, hide_index=True, width='stretch')
+        st.data_editor(
+            df_display, 
+            hide_index=True, 
+            width='stretch', 
+            disabled=True # Torna o editor "somente leitura"
+        )
         
         st.markdown(f"**Mostrando {len(df_display)} clientes**")
     else: st.warning("Nenhum dado de cliente para exibir com os filtros atuais.")
@@ -557,7 +563,12 @@ else:
     # --- Tabela Detalhada (Rodapé) ---
     with st.expander("Visualizar Todos os Dados Filtrados (Detalhados)"):
          df_filtered['cnpj'] = df_filtered['cnpj'].astype(str)
-         st.dataframe(df_filtered, width='stretch')
+         # [MUDANÇA] Troca st.dataframe por st.data_editor para estabilidade
+         st.data_editor(
+             df_filtered, 
+             width='stretch',
+             disabled=True # Torna o editor "somente leitura"
+         )
 
     csv_data_filtered = df_filtered.to_csv(index=False).encode('utf-8')
     st.download_button("Exportar CSV (Dados Filtrados)", csv_data_filtered, 'detalhamento_filtrado.csv', 'text/csv', key='dl-csv-filt')
