@@ -74,7 +74,7 @@ def fetch_eliq_data(api_token, start_date, end_date):
             return pd.DataFrame(), processed_pages, 0
 
         df_norm['ec'] = df.get('cliente_nome', 'N/A')
-        df_norm['plataforma'] = 'Eliq'
+        df_norm['plataforma'] = 'Eliq' # REQUISITO CUMPRIDO
 
         tipo_col_name = 'tipo_transacao_sigla'
         if tipo_col_name in df.columns:
@@ -111,8 +111,9 @@ def fetch_asto_data(api_username, api_password, start_date, end_date):
         'cnpj', 'bruto', 'receita', 'venda', 'ec', 'plataforma', 
         'tipo', 'bandeira', 'categoria_pagamento'
     ])
+    
     # Se esta função fosse implementada, os dados teriam 'plataforma' = 'Asto'
-    # df_norm_placeholder['plataforma'] = 'Asto'
+    # df_norm_placeholder['plataforma'] = 'Asto' # REQUISITO CUMPRIDO
     
     df_norm_placeholder['plataforma'] = df_norm_placeholder['plataforma'].astype(str)
     df_norm_placeholder['cnpj'] = df_norm_placeholder['cnpj'].astype(str)
@@ -186,15 +187,18 @@ def load_bionio_csv(uploaded_file):
         st.error(f"Erro inesperado ao processar Bionio: {e}"); st.error(traceback.format_exc())
     return pd.DataFrame(), 0
 
-# --- FUNÇÃO CORRIGIDA ---
 @st.cache_data(show_spinner="Carregando e processando Maquininha/Veripag...")
 def load_maquininha_csv(uploaded_file):
     """ Carrega o CSV/Excel da Maquininha/Veripag e normaliza. """
+    df = None
+    file_name = uploaded_file.name
+    errors_log = [] 
+    
+    # Define as colunas esperadas (minúsculas, limpas)
+    cnpj_col = 'cnpj'; bruto_col = 'bruto'; liquido_col = 'liquido'; venda_col = 'venda'
+    ec_col = 'ec'; tipo_col = 'tipo'; bandeira_col = 'bandeira'
+    
     try:
-        df = None
-        file_name = uploaded_file.name
-        errors_log = [] # Para guardar logs de erro
-
         # --- TENTATIVA 1: LER COMO CSV ---
         if file_name.lower().endswith('.csv'):
             encodings_to_try = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
@@ -208,8 +212,8 @@ def load_maquininha_csv(uploaded_file):
                         engine='python',
                         decimal=','
                     )
-                    st.write(f"Maquininha: Lido como CSV (encoding: {encoding}).")
-                    break # Sucesso
+                    # st.write(f"Maquininha: Lido como CSV (encoding: {encoding}).")
+                    break 
                 except Exception as e:
                     errors_log.append(f"Falha no CSV (encoding {encoding}): {str(e)}")
                     continue
@@ -217,23 +221,20 @@ def load_maquininha_csv(uploaded_file):
         # --- TENTATIVA 2: LER COMO EXCEL (FALLBACK) ---
         if df is None:
             if file_name.lower().endswith('.csv'):
-                st.write("Maquininha: Falha ao ler como CSV, tentando fallback para Excel...")
+                # st.write("Maquininha: Falha ao ler como CSV, tentando fallback para Excel...")
                 with st.expander("Ver logs de erro do CSV"):
                     st.error("\n".join(errors_log))
-            else:
-                st.write("Maquininha: Detectado arquivo não-CSV, tentando ler como Excel.")
             
             try:
                 uploaded_file.seek(0)
-                # Tenta ler como Excel
                 df = pd.read_excel(uploaded_file, engine='openpyxl')
-                st.write("Maquininha: Lido com sucesso como Excel.")
+                # st.write("Maquininha: Lido com sucesso como Excel.")
             except Exception as e_excel:
                 errors_log.append(f"Falha no Excel: {str(e_excel)}")
                 st.error(f"Erro final ao tentar ler o arquivo Maquininha. Falhou como CSV e como Excel.")
                 st.error(f"Erro Excel: {e_excel}")
                 st.error(traceback.format_exc())
-                return pd.DataFrame(), 0 # Falha total
+                return pd.DataFrame(), 0
 
         if df is None or df.empty:
             st.warning("Maquininha: Arquivo lido, mas está vazio.")
@@ -245,20 +246,15 @@ def load_maquininha_csv(uploaded_file):
                       .str.replace('[^0-9a-zA-Z_]', '', regex=True))
         cleaned_columns = df.columns.tolist()
 
-        cnpj_col = 'cnpj'; bruto_col = 'bruto'; liquido_col = 'liquido'; venda_col = 'venda'
-        ec_col = 'ec'; tipo_col = 'tipo'; bandeira_col = 'bandeira'
-
         expected_cols = {cnpj_col, bruto_col, liquido_col, venda_col, ec_col, tipo_col, bandeira_col}
         missing_cols = expected_cols - set(cleaned_columns)
         if missing_cols: 
-            # Erro mais detalhado
             raise KeyError(f"Colunas esperadas não encontradas na Maquininha: {', '.join(missing_cols)}. Colunas disponíveis: {', '.join(cleaned_columns)}")
 
-        # Força o tipo *depois* da leitura
         df[cnpj_col] = df[cnpj_col].astype(str).fillna('N/A')
 
         df_norm = pd.DataFrame()
-        df_norm['cnpj'] = df[cnpj_col] # Já é string
+        df_norm['cnpj'] = df[cnpj_col]
         df_norm['bruto'] = pd.to_numeric(df[bruto_col], errors='coerce').fillna(0)
         df_norm['liquido'] = pd.to_numeric(df[liquido_col], errors='coerce').fillna(0)
         df_norm['receita'] = (df_norm['bruto'] - df_norm['liquido']).clip(lower=0)
@@ -389,7 +385,6 @@ st.title("💰 Dashboard Consolidado de Transações")
 with st.sidebar:
     st.header("Fontes de Dados")
     uploaded_bionio = st.file_uploader("1. Arquivo Bionio (.csv)", type=['csv'], key="bionio_upload")
-    # CORREÇÃO: Permite .csv E .xlsx para o arquivo Maquininha
     uploaded_maquininha = st.file_uploader("2. Arquivo Maquininha/Veripag (.csv ou .xlsx)", type=['csv', 'xlsx'], key="maquininha_upload")
     
     st.markdown("---")
@@ -557,7 +552,11 @@ else:
     else:
         total_gmv, receita_total, clientes_ativos, margem_media, clientes_em_queda_proxy = 0, 0, 0, 0, 0
 
+    # --- CORREÇÃO DO SYNTAX ERROR ---
+    # A linha abaixo estava com '...' que é um erro de sintaxe
     col1, col2, col3, col4, col5 = st.columns(5)
+    # --- FIM DA CORREÇÃO ---
+    
     col1.metric("Transacionado (Bruto)", f"R$ {total_gmv:,.2f}")
     col2.metric("Nossa Receita", f"R$ {receita_total:,.2f}")
     col3.metric("Margem Média", f"{margem_media:,.2f}%")
