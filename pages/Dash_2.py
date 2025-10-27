@@ -227,10 +227,18 @@ def load_maquininha_csv(uploaded_file):
             
             try:
                 uploaded_file.seek(0)
-                df = pd.read_excel(uploaded_file, engine='openpyxl')
-                # st.write("Maquininha: Lido com sucesso como Excel.")
+                # --- AQUI ESTÁ A CORREÇÃO ---
+                # Adiciona engine_kwargs={'read_only': True} para ignorar estilos corrompidos
+                df = pd.read_excel(
+                    uploaded_file, 
+                    engine='openpyxl', 
+                    engine_kwargs={'read_only': True}
+                )
+                # --- FIM DA CORREÇÃO ---
+                
+                # st.write("Maquininha: Lido com sucesso como Excel (modo read_only).")
             except Exception as e_excel:
-                errors_log.append(f"Falha no Excel: {str(e_excel)}")
+                errors_log.append(f"Falha no Excel (read_only=True): {str(e_excel)}")
                 st.error(f"Erro final ao tentar ler o arquivo Maquininha. Falhou como CSV e como Excel.")
                 st.error(f"Erro Excel: {e_excel}")
                 st.error(traceback.format_exc())
@@ -552,10 +560,7 @@ else:
     else:
         total_gmv, receita_total, clientes_ativos, margem_media, clientes_em_queda_proxy = 0, 0, 0, 0, 0
 
-    # --- CORREÇÃO DO SYNTAX ERROR ---
-    # A linha abaixo estava com '...' que é um erro de sintaxe
     col1, col2, col3, col4, col5 = st.columns(5)
-    # --- FIM DA CORREÇÃO ---
     
     col1.metric("Transacionado (Bruto)", f"R$ {total_gmv:,.2f}")
     col2.metric("Nossa Receita", f"R$ {receita_total:,.2f}")
