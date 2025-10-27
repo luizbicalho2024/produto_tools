@@ -42,10 +42,10 @@ def fetch_eliq_data(api_token, start_date, end_date):
             if isinstance(data, list) and data:
                 all_data.extend(data)
                 if len(data) < page_size_assumption:
-                    break  # Fim dos dados
+                    break
                 page += 1
             else:
-                break  # Sai do loop (página vazia ou sem dados)
+                break
 
         if not all_data: 
             return pd.DataFrame(), 0, 0
@@ -54,9 +54,7 @@ def fetch_eliq_data(api_token, start_date, end_date):
         if df.empty: 
             return pd.DataFrame(), processed_pages, 0
 
-        # --- Normalização ---
         df_norm = pd.DataFrame()
-        # CORREÇÃO: Força CNPJ como string desde a origem para evitar erros de tipo
         df_norm['cnpj'] = df.get('cliente_cnpj', pd.NA).astype(str).fillna('N/A')
         bruto_series = pd.to_numeric(df.get('valor_total'), errors='coerce').fillna(0)
         df_norm['bruto'] = bruto_series
@@ -76,7 +74,7 @@ def fetch_eliq_data(api_token, start_date, end_date):
             return pd.DataFrame(), processed_pages, 0
 
         df_norm['ec'] = df.get('cliente_nome', 'N/A')
-        df_norm['plataforma'] = 'Eliq' # Dados da Sygio são 'Eliq'
+        df_norm['plataforma'] = 'Eliq'
 
         tipo_col_name = 'tipo_transacao_sigla'
         if tipo_col_name in df.columns:
@@ -113,9 +111,8 @@ def fetch_asto_data(api_username, api_password, start_date, end_date):
         'cnpj', 'bruto', 'receita', 'venda', 'ec', 'plataforma', 
         'tipo', 'bandeira', 'categoria_pagamento'
     ])
-    # --- REQUERIMENTO DO USUÁRIO ---
-    # Se/quando esta função retornar dados, eles devem ter a plataforma 'Asto'
-    # df_norm_placeholder['plataforma'] = 'Asto' # Exemplo
+    # Se esta função fosse implementada, os dados teriam 'plataforma' = 'Asto'
+    # df_norm_placeholder['plataforma'] = 'Asto'
     
     df_norm_placeholder['plataforma'] = df_norm_placeholder['plataforma'].astype(str)
     df_norm_placeholder['cnpj'] = df_norm_placeholder['cnpj'].astype(str)
@@ -156,7 +153,6 @@ def load_bionio_csv(uploaded_file):
             raise KeyError(f"Colunas esperadas não encontradas no Bionio: {', '.join(missing_cols)}.")
 
         df_norm = pd.DataFrame()
-        # CORREÇÃO: Força CNPJ como string desde a origem
         df_norm['cnpj'] = df[cnpj_col].astype(str).fillna('N/A')
         df_norm['bruto'] = pd.to_numeric(df[bruto_col], errors='coerce').fillna(0)
         df_norm['receita'] = df_norm['bruto'] * 0.05
@@ -190,23 +186,60 @@ def load_bionio_csv(uploaded_file):
         st.error(f"Erro inesperado ao processar Bionio: {e}"); st.error(traceback.format_exc())
     return pd.DataFrame(), 0
 
+# --- FUNÇÃO CORRIGIDA ---
 @st.cache_data(show_spinner="Carregando e processando Maquininha/Veripag...")
 def load_maquininha_csv(uploaded_file):
-    """ Carrega o CSV da Maquininha/Veripag e normaliza. """
+    """ Carrega o CSV/Excel da Maquininha/Veripag e normaliza. """
     try:
         df = None
-        encodings_to_try = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
-        for encoding in encodings_to_try:
+        file_name = uploaded_file.name
+        errors_log = [] # Para guardar logs de erro
+
+        # --- TENTATIVA 1: LER COMO CSV ---
+        if file_name.lower().endswith('.csv'):
+            encodings_to_try = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
+            for encoding in encodings_to_try:
+                try:
+                    uploaded_file.seek(0)
+                    df = pd.read_csv(
+                        uploaded_file,
+                        encoding=encoding,
+                        sep=None, # Autodetecta
+                        engine='python',
+                        decimal=','
+                    )
+                    st.write(f"Maquininha: Lido como CSV (encoding: {encoding}).")
+                    break # Sucesso
+                except Exception as e:
+                    errors_log.append(f"Falha no CSV (encoding {encoding}): {str(e)}")
+                    continue
+        
+        # --- TENTATIVA 2: LER COMO EXCEL (FALLBACK) ---
+        if df is None:
+            if file_name.lower().endswith('.csv'):
+                st.write("Maquininha: Falha ao ler como CSV, tentando fallback para Excel...")
+                with st.expander("Ver logs de erro do CSV"):
+                    st.error("\n".join(errors_log))
+            else:
+                st.write("Maquininha: Detectado arquivo não-CSV, tentando ler como Excel.")
+            
             try:
                 uploaded_file.seek(0)
-                # CORREÇÃO: Força a leitura de 'cnpj' como string
-                df = pd.read_csv(uploaded_file, encoding=encoding, sep=None, engine='python', decimal=',', dtype={cnpj_col: str})
-                break
-            except Exception:
-                continue
-        if df is None: 
-            raise ValueError("Não foi possível ler o arquivo Maquininha.")
+                # Tenta ler como Excel
+                df = pd.read_excel(uploaded_file, engine='openpyxl')
+                st.write("Maquininha: Lido com sucesso como Excel.")
+            except Exception as e_excel:
+                errors_log.append(f"Falha no Excel: {str(e_excel)}")
+                st.error(f"Erro final ao tentar ler o arquivo Maquininha. Falhou como CSV e como Excel.")
+                st.error(f"Erro Excel: {e_excel}")
+                st.error(traceback.format_exc())
+                return pd.DataFrame(), 0 # Falha total
 
+        if df is None or df.empty:
+            st.warning("Maquininha: Arquivo lido, mas está vazio.")
+            return pd.DataFrame(), 0
+            
+        # --- INÍCIO DA NORMALIZAÇÃO ---
         df.columns = (df.columns.str.strip().str.lower()
                       .str.replace(' ', '_', regex=False)
                       .str.replace('[^0-9a-zA-Z_]', '', regex=True))
@@ -218,11 +251,14 @@ def load_maquininha_csv(uploaded_file):
         expected_cols = {cnpj_col, bruto_col, liquido_col, venda_col, ec_col, tipo_col, bandeira_col}
         missing_cols = expected_cols - set(cleaned_columns)
         if missing_cols: 
-            raise KeyError(f"Colunas esperadas não encontradas na Maquininha: {', '.join(missing_cols)}.")
+            # Erro mais detalhado
+            raise KeyError(f"Colunas esperadas não encontradas na Maquininha: {', '.join(missing_cols)}. Colunas disponíveis: {', '.join(cleaned_columns)}")
+
+        # Força o tipo *depois* da leitura
+        df[cnpj_col] = df[cnpj_col].astype(str).fillna('N/A')
 
         df_norm = pd.DataFrame()
-        # CORREÇÃO: Garante que CNPJ permaneça como string
-        df_norm['cnpj'] = df[cnpj_col].astype(str).fillna('N/A')
+        df_norm['cnpj'] = df[cnpj_col] # Já é string
         df_norm['bruto'] = pd.to_numeric(df[bruto_col], errors='coerce').fillna(0)
         df_norm['liquido'] = pd.to_numeric(df[liquido_col], errors='coerce').fillna(0)
         df_norm['receita'] = (df_norm['bruto'] - df_norm['liquido']).clip(lower=0)
@@ -254,9 +290,11 @@ def load_maquininha_csv(uploaded_file):
         return final_df, len(final_df)
 
     except KeyError as e: 
-        st.error(f"Erro ao processar Maquininha: {e}")
+        st.error(f"Erro ao processar Maquininha (coluna faltando?): {e}")
+        st.error(traceback.format_exc())
     except Exception as e: 
-        st.error(f"Erro inesperado ao processar Maquininha: {e}"); st.error(traceback.format_exc())
+        st.error(f"Erro inesperado ao processar Maquininha: {e}")
+        st.error(traceback.format_exc())
     return pd.DataFrame(), 0
 
 def consolidate_data(df_bionio, df_maquininha, df_eliq, df_asto):
@@ -290,7 +328,6 @@ def consolidate_data(df_bionio, df_maquininha, df_eliq, df_asto):
         df_consolidated['receita'] = pd.to_numeric(df_consolidated['receita'], errors='coerce').fillna(0).clip(lower=0)
         df_consolidated['venda'] = pd.to_datetime(df_consolidated['venda'], errors='coerce')
         
-        # CORREÇÃO: Garante que 'cnpj' seja string em todo o DF consolidado
         df_consolidated['cnpj'] = df_consolidated['cnpj'].astype(str).fillna('N/A')
         
         df_consolidated = df_consolidated.dropna(subset=['venda'])
@@ -352,7 +389,8 @@ st.title("💰 Dashboard Consolidado de Transações")
 with st.sidebar:
     st.header("Fontes de Dados")
     uploaded_bionio = st.file_uploader("1. Arquivo Bionio (.csv)", type=['csv'], key="bionio_upload")
-    uploaded_maquininha = st.file_uploader("2. Arquivo Maquininha/Veripag (.csv)", type=['csv'], key="maquininha_upload")
+    # CORREÇÃO: Permite .csv E .xlsx para o arquivo Maquininha
+    uploaded_maquininha = st.file_uploader("2. Arquivo Maquininha/Veripag (.csv ou .xlsx)", type=['csv', 'xlsx'], key="maquininha_upload")
     
     st.markdown("---")
     st.header("Configuração das APIs")
@@ -372,7 +410,7 @@ with st.sidebar:
 if load_button_pressed:
     st.session_state.df_consolidated = pd.DataFrame()
     st.session_state.load_summary = {}
-    st.session_state.date_filter_selection = (None, None) # Reseta filtro de data
+    st.session_state.date_filter_selection = (None, None)
     summary = {}
     
     with st.spinner("Processando fontes de dados... Por favor, aguarde."):
@@ -430,7 +468,7 @@ if st.session_state.load_summary:
     with st.expander("Resumo do Carregamento", expanded=True):
         cols = st.columns(4)
         cols[0].metric("Bionio (CSV)", st.session_state.load_summary.get('bionio', 'N/A'))
-        cols[1].metric("Maquininha (CSV)", st.session_state.load_summary.get('maquininha', 'N/A'))
+        cols[1].metric("Maquininha (CSV/Excel)", st.session_state.load_summary.get('maquininha', 'N/A'))
         cols[2].metric("Eliq/Sygio (API)", st.session_state.load_summary.get('eliq', 'N/A'))
         cols[3].metric("Asto/Logpay (API)", st.session_state.load_summary.get('asto', 'N/A'))
 
@@ -447,13 +485,11 @@ else:
         
         df_filtered = df_consolidated.copy()
         
-        # --- BLOCO DE DATA CORRIGIDO (Mais Robusto) ---
         with col_date:
             data_min = df_consolidated['venda'].min().date()
             data_max = df_consolidated['venda'].max().date()
             date_key = 'date_filter_selection'
 
-            # 1. CORREÇÃO: Validação robusta contra estados inválidos (ex: tuplas vazias)
             valid_state = False
             if (date_key in st.session_state and
                 isinstance(st.session_state[date_key], (list, tuple)) and
@@ -461,24 +497,20 @@ else:
                 
                 saved_start, saved_end = st.session_state[date_key]
                 
-                # 2. Verifica se as datas salvas são válidas e estão dentro dos limites
                 if (saved_start is not None and saved_end is not None and
                     saved_start >= data_min and saved_end <= data_max and
                     saved_start <= saved_end):
                     valid_state = True
             
-            # 3. Se o estado não for válido, reseta para o range máximo
             if not valid_state:
                 st.session_state[date_key] = (data_min, data_max)
 
-            # 4. Renderiza o widget. O Streamlit usará o valor da 'key'
             data_inicial, data_final = st.date_input(
                 "Período",
                 min_value=data_min,
                 max_value=data_max,
                 key=date_key
             )
-        # --- FIM DA CORREÇÃO ---
             
         with col_plataforma:
             plataformas = ['Todos'] + sorted(df_filtered['plataforma'].unique().tolist())
@@ -545,8 +577,7 @@ else:
             fig_evolucao.add_trace(go.Scatter(x=df_evolucao['Data da Venda'], y=df_evolucao['GMV'], mode='lines+markers', name='Valor Bruto', line=dict(color='blue', width=2), marker=dict(size=5)))
             fig_evolucao.add_trace(go.Scatter(x=df_evolucao['Data da Venda'], y=df_evolucao['Receita'], mode='lines+markers', name='Receita', line=dict(color='red', width=2), marker=dict(size=5)))
             fig_evolucao.update_layout(xaxis_title='Data', yaxis_title='Valor (R$)', hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), template="plotly_white", margin=dict(t=20))
-            # CORREÇÃO: `use_container_width` -> `width`
-            st.plotly_chart(fig_evolucao, use_container_width=True) # Mantido por compatibilidade, mas idealmente seria width='stretch' se plotly suportar
+            st.plotly_chart(fig_evolucao, use_container_width=True)
         else: 
             st.info("Nenhum dado agregado para gráfico de evolução.")
         st.markdown("---")
@@ -601,10 +632,8 @@ else:
         csv_detalhe_cliente = df_display.to_csv(index=False).encode('utf-8')
         st.download_button("Exportar CSV (Det. Cliente)", csv_detalhe_cliente, 'detalhamento_cliente.csv', 'text/csv', key='dl-csv-det-cli')
         
-        # CORREÇÃO: Força CNPJ para string ANTES de exibir para evitar erro do Arrow
         df_display['CNPJ'] = df_display['CNPJ'].astype(str)
-        # CORREÇÃO: `use_container_width` -> `width`
-        st.dataframe(df_display, hide_index=True, width=None, use_container_width=True) # Note: st.dataframe usa use_container_width, não 'width'
+        st.dataframe(df_display, hide_index=True, use_container_width=True)
         
         st.markdown(f"**Mostrando {len(df_display)} clientes**")
         st.markdown("---")
@@ -624,11 +653,9 @@ else:
 
         # --- Tabela Detalhada (Rodapé) ---
         with st.expander("Visualizar Todos os Dados Filtrados (Detalhados)"):
-            # CORREÇÃO: Força 'cnpj' como string para exibição segura
             df_filtered_display = df_filtered.copy()
             df_filtered_display['cnpj'] = df_filtered_display['cnpj'].astype(str)
             
-            # CORREÇÃO: `use_container_width` -> `width`
             st.dataframe(df_filtered_display, use_container_width=True, hide_index=True)
             
             csv_data_filtered = df_filtered.to_csv(index=False).encode('utf-8')
