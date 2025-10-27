@@ -187,7 +187,7 @@ def load_bionio_csv(uploaded_file):
         st.error(f"Erro inesperado ao processar Bionio: {e}"); st.error(traceback.format_exc())
     return pd.DataFrame(), 0
 
-# --- FUNÇÃO CORRIGIDA (com engine='calamine') ---
+# --- FUNÇÃO CORRIGIDA (SEM Calamine) ---
 @st.cache_data(show_spinner="Carregando e processando Maquininha/Veripag...")
 def load_maquininha_csv(uploaded_file):
     """ Carrega o CSV/Excel da Maquininha/Veripag e normaliza. """
@@ -219,44 +219,35 @@ def load_maquininha_csv(uploaded_file):
                     errors_log.append(f"Falha no CSV (encoding {encoding}): {str(e)}")
                     continue
         
-        # --- TENTATIVA 2: LER COMO EXCEL (Calamine) - NOVO ---
+        # --- TENTATIVA 2: LER COMO EXCEL (openpyxl) ---
         if df is None:
             try:
-                # st.write("Maquininha: Falha CSV, tentando ler como Excel (calamine)...")
+                # st.write("Maquininha: Falha CSV, tentando ler como Excel (openpyxl)...")
                 uploaded_file.seek(0)
-                df = pd.read_excel(uploaded_file, engine='calamine')
-                # st.write("Maquininha: Lido com sucesso como Excel (calamine).")
+                df = pd.read_excel(
+                    uploaded_file, 
+                    engine='openpyxl', 
+                    engine_kwargs={'read_only': True}
+                )
+                # st.write("Maquininha: Lido com sucesso como Excel (openpyxl).")
             
-            # --- TENTATIVA 3: LER COMO EXCEL (openpyxl) ---
-            except Exception as e_calamine:
-                errors_log.append(f"Falha no Excel (calamine): {str(e_calamine)}")
+            # --- TENTATIVA 3: LER COMO EXCEL (xlrd) ---
+            except Exception as e_openpyxl:
+                errors_log.append(f"Falha no Excel (openpyxl): {str(e_openpyxl)}")
                 try:
-                    # st.write("Maquininha: Falha com 'calamine', tentando 'openpyxl' (read_only)...")
+                    # st.write("Maquininha: Falha com 'openpyxl', tentando 'xlrd'...")
                     uploaded_file.seek(0)
-                    df = pd.read_excel(
-                        uploaded_file, 
-                        engine='openpyxl', 
-                        engine_kwargs={'read_only': True}
-                    )
-                    # st.write("Maquininha: Lido com sucesso como Excel (openpyxl).")
+                    df = pd.read_excel(uploaded_file, engine='xlrd')
+                    # st.write("Maquininha: Lido com sucesso como Excel (xlrd).")
                 
-                # --- TENTATIVA 4: LER COMO EXCEL (xlrd) ---
-                except Exception as e_openpyxl:
-                    errors_log.append(f"Falha no Excel (openpyxl): {str(e_openpyxl)}")
-                    try:
-                        # st.write("Maquininha: Falha com 'openpyxl', tentando 'xlrd'...")
-                        uploaded_file.seek(0)
-                        df = pd.read_excel(uploaded_file, engine='xlrd')
-                        # st.write("Maquininha: Lido com sucesso como Excel (xlrd).")
-                    
-                    # --- FALHA TOTAL ---
-                    except Exception as e_xlrd:
-                        errors_log.append(f"Falha no Excel (xlrd): {str(e_xlrd)}")
-                        st.error("Erro final ao tentar ler o arquivo Maquininha.")
-                        st.error("Falhou como CSV, como Excel (calamine), (openpyxl) e (xlrd).")
-                        with st.expander("Ver logs de erro detalhados"):
-                            st.error("\n".join(errors_log))
-                        return pd.DataFrame(), 0 # Falha total
+                # --- FALHA TOTAL ---
+                except Exception as e_xlrd:
+                    errors_log.append(f"Falha no Excel (xlrd): {str(e_xlrd)}")
+                    st.error("Erro final ao tentar ler o arquivo Maquininha.")
+                    st.error("Falhou como CSV, como Excel (openpyxl) e (xlrd).")
+                    with st.expander("Ver logs de erro detalhados"):
+                        st.error("\n".join(errors_log))
+                    return pd.DataFrame(), 0 # Falha total
 
         if df is None or df.empty:
             st.warning("Maquininha: Arquivo lido, mas está vazio.")
@@ -515,7 +506,8 @@ else:
                 
                 saved_start, saved_end = st.session_state[date_key]
                 
-                if (saved_start is not None and saved_end is not None and
+                # Check if dates are valid date objects before comparing
+                if (isinstance(saved_start, date) and isinstance(saved_end, date) and
                     saved_start >= data_min and saved_end <= data_max and
                     saved_start <= saved_end):
                     valid_state = True
@@ -540,7 +532,7 @@ else:
             
         with col_tipo:
             tipos = ['Todos'] + sorted(df_filtered['tipo'].unique().tolist())
-            filtro_tipo = st.selectbox("Tipo (Detalalhe)", options=tipos)
+            filtro_tipo = st.selectbox("Tipo (Detalhe)", options=tipos) # Corrigido typo
             
         with col_categoria_pgto:
             categorias = ['Todos'] + sorted(df_filtered['categoria_pagamento'].unique().tolist())
