@@ -179,7 +179,7 @@ def load_bionio_csv(uploaded_file):
         for encoding in encodings_to_try:
             try:
                 uploaded_file.seek(0)
-                # [CORREÇÃO] Lê tudo como string primeiro para evitar erros de tipo
+                # [CORREÇÃO] Lê tudo como string primeiro
                 df = pd.read_csv(uploaded_file, encoding=encoding, sep=None, engine='python', thousands='.', decimal=',', dtype=str)
                 break
             except Exception:
@@ -197,14 +197,12 @@ def load_bionio_csv(uploaded_file):
             if col_name not in cleaned_columns:
                 missing_cols.append(f"'{col_name}' (para {key})")
         
-        # A verificação de colunas vem ANTES da conversão
         if missing_cols:
             st.error(f"Erro no arquivo Bionio: Colunas esperadas não encontradas: {', '.join(missing_cols)}. Colunas disponíveis: {', '.join(cleaned_columns)}.")
             return pd.DataFrame()
 
         df_norm = pd.DataFrame()
         df_norm['cnpj'] = df[expected_cols_map['cnpj']].astype(str).str.strip()
-        # [CORREÇÃO] Conversão numérica movida para cá, após a verificação
         df_norm['bruto'] = pd.to_numeric(df[expected_cols_map['bruto']], errors='coerce').fillna(0)
         df_norm['receita'] = df_norm['bruto'] * 0.05
         df_norm['venda'] = pd.to_datetime(df[expected_cols_map['data']], errors='coerce', dayfirst=True, format='%d/%m/%Y %H:%M:%S')
@@ -262,7 +260,6 @@ def load_maquininha_csv(uploaded_file):
 
         df_norm = pd.DataFrame()
         df_norm['cnpj'] = df[expected_cols_map['cnpj']].astype(str).str.strip()
-        # [CORREÇÃO] Conversão numérica movida para cá, após a verificação
         df_norm['bruto'] = pd.to_numeric(df[expected_cols_map['bruto']], errors='coerce').fillna(0)
         df_norm['liquido'] = pd.to_numeric(df[expected_cols_map['liquido']], errors='coerce').fillna(0)
         df_norm['receita'] = (df_norm['bruto'] - df_norm['liquido']).clip(lower=0)
@@ -517,40 +514,66 @@ else:
         else: st.info("Nenhum dado para gráfico de pizza.")
     st.markdown("---")
 
-    # --- Detalhamento por Cliente ---
-    st.subheader("🔍 Detalhamento por Cliente")
-    if not df_filtered.empty:
-        def get_most_frequent(series):
-            if series.empty or series.mode().empty: return 'N/A'
-            return series.mode().iloc[0]
+    
+    # --- [MUDANÇA RADICAL] ---
+    # As seções abaixo são a causa provável dos crashes de memória.
+    # Vamos desativá-las e deixar apenas o botão de download.
+    
+    st.subheader("🔍 Detalhamento e Exportação")
+    st.info("""
+        Para evitar travamentos devido ao alto volume de dados, a exibição das tabelas de 
+        dados brutos foi desativada.
+        
+        Use o botão abaixo para baixar o arquivo CSV com todos os dados filtrados para 
+        análise detalhada no Excel ou outra ferramenta.
+    """)
 
-        df_detalhe_cliente = df_filtered.groupby(['cnpj', 'ec']).agg(
-            Receita=('receita', 'sum'), N_Vendas=('cnpj', 'count'),
-            Categoria_Pag_Principal=('categoria_pagamento', get_most_frequent)
-        ).reset_index()
-        df_detalhe_cliente['Crescimento'] = 'N/A'
-        df_detalhe_cliente['Receita_Formatada'] = df_detalhe_cliente['Receita'].apply(lambda x: f"R$ {x:,.2f}")
-        df_detalhe_cliente = df_detalhe_cliente.sort_values(by='Receita', ascending=False)
-        
-        df_display = df_detalhe_cliente[['cnpj', 'ec', 'Receita_Formatada', 'Crescimento', 'N_Vendas', 'Categoria_Pag_Principal']]
-        df_display.columns = ['CNPJ', 'Cliente', 'Receita', 'Crescimento', 'Nº Vendas', 'Cat. Pag. Principal']
+    # Preparar dados para download
+    csv_data_filtered = df_filtered.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Baixar CSV (Dados Filtrados)",
+        data=csv_data_filtered, 
+        file_name='detalhamento_filtrado.csv', 
+        mime='text/csv', 
+        key='dl-csv-filt'
+    )
 
-        st.info("""**Sobre esta tabela:**\n* **Crescimento:** 'N/A' - Requer dados de período anterior.\n* **Nº Vendas:** Contagem total de transações.\n* **Cat. Pag. Principal:** Categoria de pagamento mais frequente.""", icon="ℹ️")
-        csv_detalhe_cliente = df_display.to_csv(index=False).encode('utf-8')
-        st.download_button("Exportar CSV (Det. Cliente)", csv_detalhe_cliente, 'detalhamento_cliente.csv', 'text/csv', key='dl-csv-det-cli')
+    # --- Seção de Detalhamento por Cliente (REMOVIDA/COMENTADA) ---
+    # st.subheader("🔍 Detalhamento por Cliente")
+    # if not df_filtered.empty:
+    #     def get_most_frequent(series):
+    #         if series.empty or series.mode().empty: return 'N/A'
+    #         return series.mode().iloc[0]
+
+    #     df_detalhe_cliente = df_filtered.groupby(['cnpj', 'ec']).agg(
+    #         Receita=('receita', 'sum'), N_Vendas=('cnpj', 'count'),
+    #         Categoria_Pag_Principal=('categoria_pagamento', get_most_frequent)
+    #     ).reset_index()
+    #     df_detalhe_cliente['Crescimento'] = 'N/A'
+    #     df_detalhe_cliente['Receita_Formatada'] = df_detalhe_cliente['Receita'].apply(lambda x: f"R$ {x:,.2f}")
+    #     df_detalhe_cliente = df_detalhe_cliente.sort_values(by='Receita', ascending=False)
         
-        # [MUDANÇA] Troca st.dataframe por st.data_editor para estabilidade
-        df_display['CNPJ'] = df_display['CNPJ'].astype(str)
-        st.data_editor(
-            df_display, 
-            hide_index=True, 
-            width='stretch', 
-            disabled=True # Torna o editor "somente leitura"
-        )
+    #     df_display = df_detalhe_cliente[['cnpj', 'ec', 'Receita_Formatada', 'Crescimento', 'N_Vendas', 'Categoria_Pag_Principal']]
+    #     df_display.columns = ['CNPJ', 'Cliente', 'Receita', 'Crescimento', 'Nº Vendas', 'Cat. Pag. Principal']
+
+    #     st.info("""**Sobre esta tabela:**\n* **Crescimento:** 'N/A' - Requer dados de período anterior.\n* **Nº Vendas:** Contagem total de transações.\n* **Cat. Pag. Principal:** Categoria de pagamento mais frequente.""", icon="ℹ️")
+    #     csv_detalhe_cliente = df_display.to_csv(index=False).encode('utf-8')
+    #     st.download_button("Exportar CSV (Det. Cliente)", csv_detalhe_cliente, 'detalhamento_cliente.csv', 'text/csv', key='dl-csv-det-cli')
         
-        st.markdown(f"**Mostrando {len(df_display)} clientes**")
-    else: st.warning("Nenhum dado de cliente para exibir com os filtros atuais.")
+    #     df_display['CNPJ'] = df_display['CNPJ'].astype(str)
+    #     st.data_editor(
+    #         df_display, 
+    #         hide_index=True, 
+    #         use_container_width=True, 
+    #         disabled=True
+    #     )
+        
+    #     st.markdown(f"**Mostrando {len(df_display)} clientes**")
+    # else:
+    #     st.warning("Nenhum dado de cliente para exibir com os filtros atuais.")
+    
     st.markdown("---")
+
 
     # --- Insights ---
     st.subheader("💡 Insights Automáticos")
@@ -560,15 +583,12 @@ else:
         cols_insights[i].markdown(f"""<div style="background-color: #e6f7ff; padding: 10px; border-radius: 5px; height: 100%;"><small>Insight {i+1}</small><p style="font-size: 14px; margin: 0;">{insight}</p></div>""", unsafe_allow_html=True)
     st.markdown("---")
 
-    # --- Tabela Detalhada (Rodapé) ---
-    with st.expander("Visualizar Todos os Dados Filtrados (Detalhados)"):
-         df_filtered['cnpj'] = df_filtered['cnpj'].astype(str)
-         # [MUDANÇA] Troca st.dataframe por st.data_editor para estabilidade
-         st.data_editor(
-             df_filtered, 
-             width='stretch',
-             disabled=True # Torna o editor "somente leitura"
-         )
 
-    csv_data_filtered = df_filtered.to_csv(index=False).encode('utf-8')
-    st.download_button("Exportar CSV (Dados Filtrados)", csv_data_filtered, 'detalhamento_filtrado.csv', 'text/csv', key='dl-csv-filt')
+    # --- Tabela Detalhada (REMOVIDA/COMENTADA) ---
+    # with st.expander("Visualizar Todos os Dados Filtrados (Detalhados)"):
+    #      df_filtered['cnpj'] = df_filtered['cnpj'].astype(str)
+    #      st.data_editor(
+    #          df_filtered, 
+    #          use_container_width=True,
+    #          disabled=True
+    #      )
