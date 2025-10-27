@@ -17,7 +17,6 @@ st.set_page_config(
 )
 
 # --- [SEGURANÇA] ---
-# Adiciona a verificação de login (Page Guard)
 if not st.session_state.get('logged_in'):
     st.error("🔒 Você precisa estar logado para acessar esta página.")
     st.info("Por favor, retorne à página de Login e insira suas credenciais.")
@@ -70,28 +69,25 @@ def categorize_payment_rp(row, tipo_col, bandeira_col):
 def fetch_eliq_data(api_token, start_date, end_date):
     """ 
     Busca dados da API Eliq/UzziPay.
-    [NOVO] Divide a consulta em 4 partes para evitar estouro de memória.
+    Divide a consulta em 4 partes para evitar estouro de memória.
     """
     base_url = "https://sigyo.uzzipay.com/api/transacoes"
     headers = {'Authorization': f'Bearer {api_token}'}
     
-    # --- [CORREÇÃO: DIVISÃO DA CONSULTA] ---
-    total_days = (end_date - start_date).days + 1 # +1 para incluir o último dia
+    total_days = (end_date - start_date).days + 1
     num_chunks = 4
-    # math.ceil para garantir que cubra todos os dias
     chunk_size_days = max(1, int(math.ceil(total_days / num_chunks)))
     
-    all_dfs = [] # Lista para guardar os DataFrames de cada parte
+    all_dfs = [] 
     
     st.info(f"API Eliq: Consulta de {total_days} dias dividida em {num_chunks} partes.")
 
     current_start = start_date
     
     try:
-        # Loop 1: Itera sobre as partes (chunks) de datas
         for i in range(num_chunks):
             if current_start > end_date:
-                break # Para se já tivermos coberto todo o período
+                break 
 
             current_end = min(current_start + timedelta(days=chunk_size_days - 1), end_date)
             
@@ -100,13 +96,12 @@ def fetch_eliq_data(api_token, start_date, end_date):
             
             st.toast(f"Buscando parte {i+1}/{num_chunks}: {start_str} a {end_str}")
 
-            all_data_chunk = [] # Dados desta parte
+            all_data_chunk = [] 
             page = 1
-            max_pages = 50 # Limite de páginas por parte
+            max_pages = 50 
             
             params = {'TransacaoSearch[data_cadastro]': f'{start_str} - {end_str}'}
 
-            # Loop 2: Paginação dentro de cada parte
             while page <= max_pages:
                 params['page'] = page
                 response = requests.get(base_url, headers=headers, params=params, timeout=60)
@@ -117,29 +112,23 @@ def fetch_eliq_data(api_token, start_date, end_date):
                     all_data_chunk.extend(data)
                     page += 1
                 else:
-                    break # Fim das páginas desta parte
+                    break 
             
-            # Processa os dados desta parte
             if all_data_chunk:
                 df_chunk = pd.json_normalize(all_data_chunk)
                 all_dfs.append(df_chunk)
             
-            # Prepara para a próxima parte
             current_start = current_end + timedelta(days=1)
         
-        # --- Fim do Loop de Partes ---
-
         if not all_dfs:
             st.warning(f"API Eliq: Nenhuma transação encontrada para o período total.", icon="⚠️")
             return pd.DataFrame()
 
-        # Concatena todos os DataFrames de todas as partes
         df = pd.concat(all_dfs, ignore_index=True)
         st.success(f"API Eliq: Total de {len(df)} registros carregados de {num_chunks} partes.")
 
-        # --- Normalização (com correções de formato) ---
+        # --- Normalização ---
         df_norm = pd.DataFrame()
-        # [CORREÇÃO FORMATO] Força CNPJ para string
         df_norm['cnpj'] = df.get('cliente_cnpj', pd.NA).astype(str).str.strip() 
         df_norm['bruto'] = pd.to_numeric(df.get('valor_total'), errors='coerce').fillna(0)
 
@@ -150,10 +139,7 @@ def fetch_eliq_data(api_token, start_date, end_date):
             taxa_cliente_series = pd.Series(0, index=df.index, dtype=float)
 
         df_norm['receita'] = (df_norm['bruto'] * (taxa_cliente_series / 100)).clip(lower=0)
-        
-        # [CORREÇÃO FORMATO] Remove dayfirst=True
         df_norm['venda'] = pd.to_datetime(df.get('data_cadastro', pd.NaT), errors='coerce') 
-        
         df_norm = df_norm.dropna(subset=['venda'])
         if df_norm.empty: return pd.DataFrame()
 
@@ -163,7 +149,6 @@ def fetch_eliq_data(api_token, start_date, end_date):
         df_norm['bandeira'] = df.get('bandeira', 'N/A').astype(str)
         df_norm['categoria_pagamento'] = 'Outros'
 
-        # [CORREÇÃO FORMATO] Limpa CNPJs nulos
         df_norm['cnpj'] = df_norm['cnpj'].replace(['NA', 'None', '<NA>', ''], np.nan) 
         return df_norm.dropna(subset=['bruto', 'cnpj'])
 
@@ -194,9 +179,8 @@ def load_bionio_csv(uploaded_file):
         for encoding in encodings_to_try:
             try:
                 uploaded_file.seek(0)
-                # [CORREÇÃO FORMATO] Adiciona dtype=str
+                # [CORREÇÃO] Lê tudo como string primeiro
                 df = pd.read_csv(uploaded_file, encoding=encoding, sep=None, engine='python', thousands='.', decimal=',', dtype=str)
-                df[BIONIO_COLS['bruto']] = pd.to_numeric(df.get(BIONIO_COLS['bruto']), errors='coerce')
                 break
             except Exception:
                 continue
@@ -213,12 +197,14 @@ def load_bionio_csv(uploaded_file):
             if col_name not in cleaned_columns:
                 missing_cols.append(f"'{col_name}' (para {key})")
         
+        # A verificação de colunas vem ANTES da conversão
         if missing_cols:
             st.error(f"Erro no arquivo Bionio: Colunas esperadas não encontradas: {', '.join(missing_cols)}. Colunas disponíveis: {', '.join(cleaned_columns)}.")
             return pd.DataFrame()
 
         df_norm = pd.DataFrame()
         df_norm['cnpj'] = df[expected_cols_map['cnpj']].astype(str).str.strip()
+        # [CORREÇÃO] Conversão numérica movida para cá, após a verificação
         df_norm['bruto'] = pd.to_numeric(df[expected_cols_map['bruto']], errors='coerce').fillna(0)
         df_norm['receita'] = df_norm['bruto'] * 0.05
         df_norm['venda'] = pd.to_datetime(df[expected_cols_map['data']], errors='coerce', dayfirst=True, format='%d/%m/%Y %H:%M:%S')
@@ -252,10 +238,8 @@ def load_maquininha_csv(uploaded_file):
         for encoding in encodings_to_try:
             try:
                 uploaded_file.seek(0)
-                # [CORREÇÃO FORMATO] Adiciona dtype=str
+                # [CORREÇÃO] Lê tudo como string primeiro
                 df = pd.read_csv(uploaded_file, encoding=encoding, sep=None, engine='python', decimal=',', dtype=str)
-                df[MAQUININHA_COLS['bruto']] = pd.to_numeric(df.get(MAQUININHA_COLS['bruto']), errors='coerce')
-                df[MAQUININHA_COLS['liquido']] = pd.to_numeric(df.get(MAQUININHA_COLS['liquido']), errors='coerce')
                 break
             except Exception:
                 continue
@@ -278,6 +262,7 @@ def load_maquininha_csv(uploaded_file):
 
         df_norm = pd.DataFrame()
         df_norm['cnpj'] = df[expected_cols_map['cnpj']].astype(str).str.strip()
+        # [CORREÇÃO] Conversão numérica movida para cá, após a verificação
         df_norm['bruto'] = pd.to_numeric(df[expected_cols_map['bruto']], errors='coerce').fillna(0)
         df_norm['liquido'] = pd.to_numeric(df[expected_cols_map['liquido']], errors='coerce').fillna(0)
         df_norm['receita'] = (df_norm['bruto'] - df_norm['liquido']).clip(lower=0)
@@ -325,7 +310,7 @@ def consolidate_data(df_bionio, df_maquininha, df_eliq, df_asto):
         if 'cnpj' in df_consolidated.columns:
             df_consolidated['cnpj'] = df_consolidated['cnpj'].astype(str)
 
-        if 'responsavel_comercial' not in df_consolidated.columns: df_consolidated['responsavel_comercIAL'] = 'N/A'
+        if 'responsavel_comercial' not in df_consolidated.columns: df_consolidated['responsavel_comercial'] = 'N/A'
         if 'produto' not in df_consolidated.columns: df_consolidated['produto'] = df_consolidated['plataforma']
         
         df_consolidated['bruto'] = pd.to_numeric(df_consolidated['bruto'], errors='coerce').fillna(0)
@@ -554,7 +539,6 @@ else:
         csv_detalhe_cliente = df_display.to_csv(index=False).encode('utf-8')
         st.download_button("Exportar CSV (Det. Cliente)", csv_detalhe_cliente, 'detalhamento_cliente.csv', 'text/csv', key='dl-csv-det-cli')
         
-        # [CORREÇÃO FORMATO] Força a coluna CNPJ (maiúsculo) para string ANTES de exibir
         df_display['CNPJ'] = df_display['CNPJ'].astype(str)
         st.dataframe(df_display, hide_index=True, width='stretch')
         
@@ -572,7 +556,6 @@ else:
 
     # --- Tabela Detalhada (Rodapé) ---
     with st.expander("Visualizar Todos os Dados Filtrados (Detalhados)"):
-         # [CORREÇÃO FORMATO] Força a coluna cnpj (minúsculo) para string ANTES de exibir
          df_filtered['cnpj'] = df_filtered['cnpj'].astype(str)
          st.dataframe(df_filtered, width='stretch')
 
