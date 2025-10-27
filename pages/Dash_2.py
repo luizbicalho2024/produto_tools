@@ -92,11 +92,8 @@ def fetch_eliq_data(api_token, start_date, end_date):
             data = response.json()
             processed_pages = page
 
-            # --- [MELHORIA 3: ROBUSTEZ API] ---
-            # A verificação correta é se a API parou de retornar dados
             if isinstance(data, list) and data:
                 all_data.extend(data)
-                # [MELHORIA 5: UX] Usando st.toast para feedback menos intrusivo
                 st.toast(f"API Eliq: Recebidos {len(data)} registros da página {page}.")
                 page += 1
             else:
@@ -104,8 +101,7 @@ def fetch_eliq_data(api_token, start_date, end_date):
                     st.warning(f"API Eliq: Nenhuma transação encontrada para o período {start_str} - {end_str}.", icon="⚠️")
                 elif page > 1: 
                     st.info(f"API Eliq: Fim dos dados. Total de {processed_pages} página(s) processada(s).")
-                break # Sai do loop se 'data' estiver vazio ou não for lista
-            # --- FIM DA MELHORIA 3 ---
+                break 
 
         if not all_data: return pd.DataFrame()
 
@@ -114,7 +110,8 @@ def fetch_eliq_data(api_token, start_date, end_date):
 
         # --- Normalização ---
         df_norm = pd.DataFrame()
-        df_norm['cnpj'] = df.get('cliente_cnpj', pd.NA)
+        # [CORREÇÃO 1] Força o CNPJ a ser string para evitar erros de conversão do Arrow
+        df_norm['cnpj'] = df.get('cliente_cnpj', pd.NA).astype(str).str.strip()
         df_norm['bruto'] = pd.to_numeric(df.get('valor_total'), errors='coerce').fillna(0)
 
         taxa_column_name = 'cliente_taxa_adm'
@@ -124,7 +121,10 @@ def fetch_eliq_data(api_token, start_date, end_date):
             taxa_cliente_series = pd.Series(0, index=df.index, dtype=float)
 
         df_norm['receita'] = (df_norm['bruto'] * (taxa_cliente_series / 100)).clip(lower=0)
-        df_norm['venda'] = pd.to_datetime(df.get('data_cadastro', pd.NaT), errors='coerce', dayfirst=True)
+        
+        # [CORREÇÃO 2] Remove dayfirst=True para evitar o UserWarning, pois a API usa formato YMD
+        df_norm['venda'] = pd.to_datetime(df.get('data_cadastro', pd.NaT), errors='coerce') 
+        
         df_norm = df_norm.dropna(subset=['venda'])
         if df_norm.empty: return pd.DataFrame()
 
@@ -135,6 +135,8 @@ def fetch_eliq_data(api_token, start_date, end_date):
         df_norm['categoria_pagamento'] = 'Outros'
 
         st.success(f"API Eliq: {len(df_norm)} registros carregados e processados.")
+        # Garante que CNPJs "NA" ou "None" sejam tratados como nulos pelo pandas
+        df_norm['cnpj'] = df_norm['cnpj'].replace(['NA', 'None', '<NA>', ''], np.nan) 
         return df_norm.dropna(subset=['bruto', 'cnpj'])
 
     except requests.exceptions.Timeout:
@@ -174,11 +176,8 @@ def load_bionio_csv(uploaded_file):
                       .str.replace(' ', '_', regex=False)
                       .str.replace('[^0-9a-zA-Z_]', '', regex=True))
         
-        # --- [MELHORIA 2: ROBUSTEZ CSV] ---
-        # Verifica colunas ausentes em vez de quebrar
         cleaned_columns = df.columns.tolist()
         missing_cols = []
-        # Usa as constantes definidas no topo
         expected_cols_map = BIONIO_COLS
         for key, col_name in expected_cols_map.items():
             if col_name not in cleaned_columns:
@@ -187,10 +186,10 @@ def load_bionio_csv(uploaded_file):
         if missing_cols:
             st.error(f"Erro no arquivo Bionio: Colunas esperadas não encontradas: {', '.join(missing_cols)}. Colunas disponíveis: {', '.join(cleaned_columns)}.")
             return pd.DataFrame()
-        # --- FIM DA MELHORIA 2 ---
 
         df_norm = pd.DataFrame()
-        df_norm['cnpj'] = df[expected_cols_map['cnpj']]
+        # [CORREÇÃO 1] Força o CNPJ a ser string
+        df_norm['cnpj'] = df[expected_cols_map['cnpj']].astype(str).str.strip()
         df_norm['bruto'] = pd.to_numeric(df[expected_cols_map['bruto']], errors='coerce').fillna(0)
         df_norm['receita'] = df_norm['bruto'] * 0.05
         df_norm['venda'] = pd.to_datetime(df[expected_cols_map['data']], errors='coerce', dayfirst=True, format='%d/%m/%Y %H:%M:%S')
@@ -207,6 +206,7 @@ def load_bionio_csv(uploaded_file):
         df_norm['categoria_pagamento'] = df[expected_cols_map['bandeira']].apply(categorize_payment_bionio)
 
         st.success(f"Bionio: {len(df_norm)} registros carregados e processados.")
+        df_norm['cnpj'] = df_norm['cnpj'].replace(['NA', 'None', '<NA>', ''], np.nan)
         return df_norm.dropna(subset=['bruto', 'cnpj'])
 
     except Exception as e: 
@@ -223,8 +223,12 @@ def load_maquininha_csv(uploaded_file):
         for encoding in encodings_to_try:
             try:
                 uploaded_file.seek(0)
-                df = pd.read_csv(uploaded_file, encoding=encoding, sep=None, engine='python', decimal=',')
-                break
+                # [CORREÇÃO 1] Adiciona dtype=str para ler colunas problemáticas como texto
+                df = pd.read_csv(uploaded_file, encoding=encoding, sep=None, engine='python', decimal=',', dtype=str)
+                # Tenta converter colunas numéricas após a leitura
+                df['bruto'] = pd.to_numeric(df['bruto'], errors='coerce')
+                df['liquido'] = pd.to_numeric(df['liquido'], errors='coerce')
+
             except Exception:
                 continue
         if df is None: raise ValueError("Não foi possível ler o arquivo Maquininha.")
@@ -233,7 +237,6 @@ def load_maquininha_csv(uploaded_file):
                       .str.replace(' ', '_', regex=False)
                       .str.replace('[^0-9a-zA-Z_]', '', regex=True))
         
-        # --- [MELHORIA 2: ROBUSTEZ CSV] ---
         cleaned_columns = df.columns.tolist()
         missing_cols = []
         expected_cols_map = MAQUININHA_COLS
@@ -244,10 +247,10 @@ def load_maquininha_csv(uploaded_file):
         if missing_cols:
             st.error(f"Erro no arquivo Maquininha: Colunas esperadas não encontradas: {', '.join(missing_cols)}. Colunas disponíveis: {', '.join(cleaned_columns)}.")
             return pd.DataFrame()
-        # --- FIM DA MELHORIA 2 ---
 
         df_norm = pd.DataFrame()
-        df_norm['cnpj'] = df[expected_cols_map['cnpj']]
+        # [CORREÇÃO 1] Garante que o CNPJ seja string
+        df_norm['cnpj'] = df[expected_cols_map['cnpj']].astype(str).str.strip()
         df_norm['bruto'] = pd.to_numeric(df[expected_cols_map['bruto']], errors='coerce').fillna(0)
         df_norm['liquido'] = pd.to_numeric(df[expected_cols_map['liquido']], errors='coerce').fillna(0)
         df_norm['receita'] = (df_norm['bruto'] - df_norm['liquido']).clip(lower=0)
@@ -269,6 +272,7 @@ def load_maquininha_csv(uploaded_file):
         )
 
         st.success(f"Maquininha: {len(df_norm)} registros carregados e processados.")
+        df_norm['cnpj'] = df_norm['cnpj'].replace(['NA', 'None', '<NA>', ''], np.nan)
         return df_norm.dropna(subset=['bruto', 'cnpj'])
 
     except Exception as e: 
@@ -290,8 +294,14 @@ def consolidate_data(df_bionio, df_maquininha, df_eliq, df_asto):
 
     try:
         df_consolidated = pd.concat(all_transactions, ignore_index=True)
+        
+        # [CORREÇÃO 1] Garante que a coluna CNPJ final seja string
+        if 'cnpj' in df_consolidated.columns:
+            df_consolidated['cnpj'] = df_consolidated['cnpj'].astype(str)
+
         if 'responsavel_comercial' not in df_consolidated.columns: df_consolidated['responsavel_comercial'] = 'N/A'
         if 'produto' not in df_consolidated.columns: df_consolidated['produto'] = df_consolidated['plataforma']
+        
         df_consolidated['bruto'] = pd.to_numeric(df_consolidated['bruto'], errors='coerce').fillna(0)
         df_consolidated['receita'] = pd.to_numeric(df_consolidated['receita'], errors='coerce').fillna(0).clip(lower=0)
         df_consolidated['venda'] = pd.to_datetime(df_consolidated['venda'], errors='coerce')
@@ -358,7 +368,6 @@ if load_button_pressed:
         df_asto_fetched = pd.DataFrame()
         
         try:
-            # Carrega credenciais do Streamlit Secrets
             eliq_token = st.secrets.get("eliq_api_token")
             asto_user = st.secrets.get("asto_username")
             asto_pass = st.secrets.get("asto_password")
@@ -381,7 +390,6 @@ if load_button_pressed:
         st.session_state.df_consolidated = df_consolidated_loaded
         df_consolidated = df_consolidated_loaded
 else:
-    # Usa os dados da sessão se o botão não foi pressionado
     df_consolidated = st.session_state.df_consolidated
 
 # --- Dashboard Principal ---
@@ -399,7 +407,6 @@ else:
         data_min = df_consolidated['venda'].min().date()
         data_max = df_consolidated['venda'].max().date()
         
-        # Lógica para manter o filtro de data do usuário se possível
         current_start, current_end = st.session_state.get('date_filter_values', (data_min, data_max))
         valid_start = max(data_min, current_start)
         valid_end = min(data_max, current_end)
@@ -513,13 +520,20 @@ else:
         df_detalhe_cliente['Crescimento'] = 'N/A'
         df_detalhe_cliente['Receita_Formatada'] = df_detalhe_cliente['Receita'].apply(lambda x: f"R$ {x:,.2f}")
         df_detalhe_cliente = df_detalhe_cliente.sort_values(by='Receita', ascending=False)
+        
+        # [CORREÇÃO 1] Garante que a coluna CNPJ final seja string
+        df_detalhe_cliente['cnpj'] = df_detalhe_cliente['cnpj'].astype(str)
+        
         df_display = df_detalhe_cliente[['cnpj', 'ec', 'Receita_Formatada', 'Crescimento', 'N_Vendas', 'Categoria_Pag_Principal']]
         df_display.columns = ['CNPJ', 'Cliente', 'Receita', 'Crescimento', 'Nº Vendas', 'Cat. Pag. Principal']
 
         st.info("""**Sobre esta tabela:**\n* **Crescimento:** 'N/A' - Requer dados de período anterior.\n* **Nº Vendas:** Contagem total de transações.\n* **Cat. Pag. Principal:** Categoria de pagamento mais frequente.""", icon="ℹ️")
         csv_detalhe_cliente = df_display.to_csv(index=False).encode('utf-8')
         st.download_button("Exportar CSV (Det. Cliente)", csv_detalhe_cliente, 'detalhamento_cliente.csv', 'text/csv', key='dl-csv-det-cli')
-        st.dataframe(df_display, hide_index=True, use_container_width=True)
+        
+        # [CORREÇÃO 3] Substitui use_container_width por width='stretch'
+        st.dataframe(df_display, hide_index=True, width='stretch')
+        
         st.markdown(f"**Mostrando {len(df_display)} clientes**")
     else: st.warning("Nenhum dado de cliente para exibir com os filtros atuais.")
     st.markdown("---")
@@ -534,7 +548,8 @@ else:
 
     # --- Tabela Detalhada (Rodapé) ---
     with st.expander("Visualizar Todos os Dados Filtrados (Detalhados)"):
-         st.dataframe(df_filtered, use_container_width=True)
+         # [CORREÇÃO 3] Substitui use_container_width por width='stretch'
+         st.dataframe(df_filtered, width='stretch')
 
     csv_data_filtered = df_filtered.to_csv(index=False).encode('utf-8')
     st.download_button("Exportar CSV (Dados Filtrados)", csv_data_filtered, 'detalhamento_filtrado.csv', 'text/csv', key='dl-csv-filt')
