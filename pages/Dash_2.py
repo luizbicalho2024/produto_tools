@@ -28,29 +28,23 @@ def fetch_eliq_data(api_token, start_date, end_date):
 
     all_data = []
     page = 1
-    # NOTA DE DESEMPENHO: Removido 'max_pages = 5'. O loop agora busca *todas* as páginas.
     page_size_assumption = 50
-    processed_pages = 0  # Contador para páginas realmente processadas
+    processed_pages = 0
     
     try:
-        # st.write(f"API Eliq: Buscando dados de {start_str} a {end_str}...") # REMOVIDO: Polui o log
-        while True:  # Loop infinito até quebramos internamente
+        while True:
             params['page'] = page
             response = requests.get(base_url, headers=headers, params=params, timeout=60)
             response.raise_for_status()
             data = response.json()
-            processed_pages = page  # Atualiza contador aqui
+            processed_pages = page
 
             if isinstance(data, list) and data:
                 all_data.extend(data)
-                # st.write(f"API Eliq: Recebidos {len(data)} registros da página {page}.") # REMOVIDO: Polui o log
                 if len(data) < page_size_assumption:
-                    # st.info(f"API Eliq: Fim dos dados (página < {page_size_assumption}) alcançado na página {page}.") # REMOVIDO
                     break  # Fim dos dados
                 page += 1
             else:
-                # if page == 1 and not data: st.warning(f"API Eliq: Nenhuma transação encontrada...", icon="⚠️") # REMOVIDO
-                # elif page > 1: st.info(f"API Eliq: Fim dos dados (página vazia)...") # REMOVIDO
                 break  # Sai do loop (página vazia ou sem dados)
 
         if not all_data: 
@@ -60,7 +54,7 @@ def fetch_eliq_data(api_token, start_date, end_date):
         if df.empty: 
             return pd.DataFrame(), processed_pages, 0
 
-        # --- Normalização REVISADA NOVAMENTE ---
+        # --- Normalização ---
         df_norm = pd.DataFrame()
         df_norm['cnpj'] = df.get('cliente_cnpj', pd.NA)
         bruto_series = pd.to_numeric(df.get('valor_total'), errors='coerce').fillna(0)
@@ -100,7 +94,6 @@ def fetch_eliq_data(api_token, start_date, end_date):
         df_norm['categoria_pagamento'] = 'Outros' # Categoria padrão para Eliq
 
         final_df = df_norm.dropna(subset=['bruto', 'cnpj'])
-        # st.success(f"API Eliq: {len(final_df)} registros carregados...") # REMOVIDO
         return final_df, processed_pages, len(final_df)
 
     except requests.exceptions.Timeout:
@@ -117,7 +110,6 @@ def fetch_eliq_data(api_token, start_date, end_date):
 @st.cache_data(show_spinner="Buscando dados da API Asto/Logpay (Limitado)...")
 def fetch_asto_data(api_username, api_password, start_date, end_date):
     """ Placeholder para API Asto/Logpay. """
-    # st.warning("A API Asto/Logpay não é otimizada para relatórios. Função placeholder ativa.", icon="⚠️") # REMOVIDO
     
     # --- REQUERIMENTO DO USUÁRIO ---
     # Se esta função fosse implementada, os dados teriam 'plataforma' = 'Asto'
@@ -143,7 +135,6 @@ def load_bionio_csv(uploaded_file):
             try:
                 uploaded_file.seek(0)
                 df = pd.read_csv(uploaded_file, encoding=encoding, sep=None, engine='python', thousands='.', decimal=',')
-                # st.write(f"Bionio: Lindo com encoding '{encoding}'...") # REMOVIDO
                 break
             except Exception:
                 continue
@@ -190,11 +181,9 @@ def load_bionio_csv(uploaded_file):
             if 'boleto' in tipo_pgto_lower: return 'Boleto'
             return 'Outros'
         
-        # .apply() em uma única série é rápido (equivalente a .map())
         df_norm['categoria_pagamento'] = df[pagamento_col].apply(categorize_payment_bionio)
 
         final_df = df_norm.dropna(subset=['bruto', 'cnpj'])
-        # st.success(f"Bionio: {len(final_df)} registros carregados.") # REMOVIDO
         return final_df, len(final_df)
 
     except KeyError as e: 
@@ -213,7 +202,6 @@ def load_maquininha_csv(uploaded_file):
             try:
                 uploaded_file.seek(0)
                 df = pd.read_csv(uploaded_file, encoding=encoding, sep=None, engine='python', decimal=',')
-                # st.write(f"Maquininha: Lido com encoding '{encoding}'...") # REMOVIDO
                 break
             except Exception:
                 continue
@@ -251,8 +239,7 @@ def load_maquininha_csv(uploaded_file):
         df_norm['tipo'] = df[tipo_col].astype(str)
         df_norm['bandeira'] = df[bandeira_col].astype(str)
 
-        # --- MELHORIA DE DESEMPENHO ---
-        # Substituído df.apply(axis=1) por np.select (vetorizado)
+        # --- MELHORIA DE DESEMPENHO (Vetorizado) ---
         bandeira_lower = df[bandeira_col].astype(str).str.strip().str.lower()
         tipo_lower = df[tipo_col].astype(str).str.strip().str.lower()
         
@@ -266,7 +253,6 @@ def load_maquininha_csv(uploaded_file):
         # --- FIM DA MELHORIA ---
 
         final_df = df_norm.dropna(subset=['bruto', 'cnpj'])
-        # st.success(f"Maquininha: {len(final_df)} registros carregados.") # REMOVIDO
         return final_df, len(final_df)
 
     except KeyError as e: 
@@ -289,10 +275,9 @@ def consolidate_data(df_bionio, df_maquininha, df_eliq, df_asto):
     try:
         df_consolidated = pd.concat(all_transactions, ignore_index=True)
         
-        # Garante colunas mínimas para evitar erros nos filtros
         cols_to_check = {
             'responsavel_comercial': 'N/A',
-            'produto': df_consolidated.get('plataforma', 'N/A'), # 'produto' herda 'plataforma' se não existir
+            'produto': df_consolidated.get('plataforma', 'N/A'),
             'plataforma': 'N/A',
             'bandeira': 'N/A',
             'tipo': 'N/A',
@@ -302,13 +287,11 @@ def consolidate_data(df_bionio, df_maquininha, df_eliq, df_asto):
             if col not in df_consolidated.columns:
                 df_consolidated[col] = default
 
-        # Limpeza final e normalização de tipos
         df_consolidated['bruto'] = pd.to_numeric(df_consolidated['bruto'], errors='coerce').fillna(0)
         df_consolidated['receita'] = pd.to_numeric(df_consolidated['receita'], errors='coerce').fillna(0).clip(lower=0)
         df_consolidated['venda'] = pd.to_datetime(df_consolidated['venda'], errors='coerce')
         df_consolidated = df_consolidated.dropna(subset=['venda'])
         
-        # Converte colunas de filtro para string para evitar erros com 'Todos' e NaN
         for col in ['plataforma', 'bandeira', 'tipo', 'categoria_pagamento']:
              df_consolidated[col] = df_consolidated[col].astype(str).fillna('N/A')
 
@@ -325,7 +308,6 @@ def generate_insights(df_filtered, total_gmv, receita_total):
     if df_filtered.empty: 
         return [{"label": "Status", "value": "Nenhum dado encontrado para os filtros selecionados."}]
     
-    # Insight 1: Cliente Principal
     if 'ec' in df_filtered.columns:
         df_gmv_cliente = df_filtered.groupby('ec')['bruto'].sum().nlargest(1).reset_index()
         if not df_gmv_cliente.empty:
@@ -334,7 +316,6 @@ def generate_insights(df_filtered, total_gmv, receita_total):
                 "value": f"**{df_gmv_cliente.iloc[0]['ec']}** (R$ {df_gmv_cliente.iloc[0]['bruto']:,.2f})"
             })
             
-    # Insight 2: Plataforma Principal
     if 'plataforma' in df_filtered.columns:
         df_plataforma = df_filtered.groupby('plataforma')['bruto'].sum().nlargest(1).reset_index()
         if not df_plataforma.empty:
@@ -343,11 +324,9 @@ def generate_insights(df_filtered, total_gmv, receita_total):
                 "value": f"**{df_plataforma.iloc[0]['plataforma']}** (R$ {df_plataforma.iloc[0]['bruto']:,.2f})"
             })
             
-    # Insight 3: Margem Média
     margem = (receita_total / total_gmv) * 100 if total_gmv > 0 else 0
     insights.append({"label": "Margem Média no Período", "value": f"**{margem:,.2f}%**"})
 
-    # Insight 4: Categoria Mais Frequente
     if 'categoria_pagamento' in df_filtered.columns:
         top_cat = df_filtered['categoria_pagamento'].mode()
         if not top_cat.empty:
@@ -356,7 +335,6 @@ def generate_insights(df_filtered, total_gmv, receita_total):
     return insights
 
 # --- Inicialização do Session State ---
-# MELHORIA DE UX: Inicializa o estado para que o layout do app apareça antes do carregamento
 if 'df_consolidated' not in st.session_state:
     st.session_state.df_consolidated = pd.DataFrame()
 if 'load_summary' not in st.session_state:
@@ -389,10 +367,10 @@ with st.sidebar:
 
 # --- Carregamento e Processamento Principal ---
 if load_button_pressed:
-    st.session_state.df_consolidated = pd.DataFrame() # Limpa dados antigos
-    st.session_state.load_summary = {} # Limpa resumo antigo
+    st.session_state.df_consolidated = pd.DataFrame()
+    st.session_state.load_summary = {}
     st.session_state.date_filter_selection = (None, None) # Reseta filtro de data
-    summary = {} # Resumo local
+    summary = {}
     
     with st.spinner("Processando fontes de dados... Por favor, aguarde."):
         # 1. Carregar Bionio
@@ -473,26 +451,36 @@ else:
         
         df_filtered = df_consolidated.copy() # Começa com todos os dados
         
+        # --- BLOCO DE DATA CORRIGIDO ---
         with col_date:
             data_min = df_consolidated['venda'].min().date()
             data_max = df_consolidated['venda'].max().date()
+            date_key = 'date_filter_selection' # Usar a key definida no state
 
-            # Lógica de filtro de data simplificada
-            saved_start, saved_end = st.session_state.date_filter_selection
-            
-            # Se o filtro salvo for inválido (pós-recarregamento), reseta
-            if saved_start is None or saved_start < data_min or saved_end > data_max:
-                valid_start, valid_end = (data_min, data_max)
+            # 1. Validar o session_state ANTES de renderizar o widget
+            if date_key in st.session_state:
+                saved_start, saved_end = st.session_state[date_key]
+                
+                # 2. Se o range salvo for inválido (None ou fora dos limites dos novos dados)
+                if (saved_start is None or saved_end is None or
+                    saved_start < data_min or saved_end > data_max or
+                    saved_start > saved_end):
+                    # Reseta o valor no state para o range máximo
+                    st.session_state[date_key] = (data_min, data_max)
             else:
-                valid_start, valid_end = (saved_start, saved_end)
+                # 3. Se a chave não existe, inicializa pela primeira vez
+                st.session_state[date_key] = (data_min, data_max)
 
+            # 4. Renderiza o widget SEM o argumento 'value'.
+            # O Streamlit usará o valor da 'key' (st.session_state[date_key])
             data_inicial, data_final = st.date_input(
-                "Período", 
-                value=(valid_start, valid_end), 
-                min_value=data_min, 
-                max_value=data_max, 
-                key='date_filter_selection' # Chave salva o estado
+                "Período",
+                # value=... é REMOVIDO para evitar o conflito
+                min_value=data_min,
+                max_value=data_max,
+                key=date_key
             )
+        # --- FIM DA CORREÇÃO ---
             
         with col_plataforma:
             # Filtro de Plataforma (REQ: Eliq, Asto, etc.)
@@ -512,7 +500,6 @@ else:
             filtro_categoria = st.selectbox("Categoria Pagamento", options=categorias)
 
     # --- Aplicação dos Filtros ---
-    # Aplica filtro de data primeiro (o mais custoso)
     if data_inicial and data_final and (data_inicial <= data_final):
         mask_date = (df_filtered['venda'].dt.date >= data_inicial) & (df_filtered['venda'].dt.date <= data_final)
         df_filtered = df_filtered[mask_date]
@@ -520,7 +507,6 @@ else:
         st.warning("Data inicial não pode ser posterior à data final. Nenhum dado será exibido.")
         df_filtered = pd.DataFrame(columns=df_consolidated.columns) # Zera o DF
 
-    # Aplica filtros de categoria (rápidos)
     if filtro_plataforma != 'Todos': 
         df_filtered = df_filtered[df_filtered['plataforma'] == filtro_plataforma]
     if filtro_bandeira != 'Todos': 
@@ -531,7 +517,7 @@ else:
         df_filtered = df_filtered[df_filtered['categoria_pagamento'] == filtro_categoria]
 
 
-    # --- KPIs (Somente se houver dados filtrados) ---
+    # --- KPIs ---
     if not df_filtered.empty:
         total_gmv = df_filtered['bruto'].sum()
         receita_total = df_filtered['receita'].sum()
@@ -540,7 +526,6 @@ else:
         gmv_por_cliente = df_filtered.groupby('cnpj')['bruto'].sum()
         clientes_em_queda_proxy = gmv_por_cliente[gmv_por_cliente < 1000].count()
     else:
-        # Define valores zerados se o filtro não retornar nada
         total_gmv = 0
         receita_total = 0
         clientes_ativos = 0
@@ -555,7 +540,7 @@ else:
     col5.metric("Clientes em Queda (Proxy < R$1k)", f"{clientes_em_queda_proxy:,}")
     st.markdown("---")
     
-    # --- Seção de Gráficos (Somente se houver dados) ---
+    # --- Seção de Gráficos ---
     if df_filtered.empty:
         st.info("Nenhum dado encontrado para os filtros selecionados.")
     else:
@@ -629,12 +614,10 @@ else:
         # --- Insights ---
         st.subheader("💡 Insights Automáticos")
         insights_list = generate_insights(df_filtered, total_gmv, receita_total)
-        # MELHORIA DE UX: Garante que as colunas sejam criadas mesmo se a lista for vazia
         cols_insights = st.columns(len(insights_list) if insights_list else 1) 
         
         for i, insight_data in enumerate(insights_list):
             with cols_insights[i]:
-                # MELHORIA DE UX: Usa o container nativo do Streamlit ao invés de HTML
                 with st.container(border=True):
                     st.markdown(f"<small>{insight_data['label']}</small>", unsafe_allow_html=True)
                     st.markdown(f"{insight_data['value']}")
