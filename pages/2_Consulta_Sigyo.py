@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import json
+import io
 from datetime import date, timedelta
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -22,10 +23,12 @@ with st.sidebar:
     api_token = st.text_input("Token de Acesso (Bearer)", value=default_token, type="password")
     
     st.markdown("---")
+    st.header("Selecione o Relatório")
+    # AQUI VOCÊ ESCOLHE QUAL TABELA QUER VER
     tipo_relatorio = st.radio(
-        "Tipo de Relatório",
-        ["Transações", "Motoristas"],
-        index=1
+        "Qual base deseja consultar?",
+        ["Transações / Credenciados", "Base de Motoristas"],
+        index=0 
     )
 
 # ==============================================================================
@@ -33,10 +36,8 @@ with st.sidebar:
 # ==============================================================================
 
 def get_retry_session():
-    """Cria uma sessão HTTP que tenta reconectar automaticamente em caso de falha."""
+    """Cria uma sessão HTTP blindada que tenta reconectar automaticamente."""
     session = requests.Session()
-    # Configura 3 tentativas extras com espera exponencial (0.5s, 1s, 2s...)
-    # Tenta reconectar em erros 500, 502, 503, 504 e desconexões
     retries = Retry(
         total=3,
         backoff_factor=0.5,
@@ -49,111 +50,76 @@ def get_retry_session():
     return session
 
 # ==============================================================================
-# FUNÇÕES DE BUSCA E PROCESSAMENTO (MOTORISTAS)
+# 1. FUNÇÕES PARA MOTORISTAS
 # ==============================================================================
 
-@st.cache_data(show_spinner="Buscando motoristas...", ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def fetch_motoristas_sigyo(token):
-    """Busca motoristas com tolerância a falhas de rede."""
+    """Busca motoristas via Streaming (para suportar bases grandes)."""
     base_url = "https://sigyo.uzzipay.com/api/motoristas"
-    headers = {'Authorization': f'Bearer {token}'}
-    
-    # Parâmetros de paginação redundantes para tentar forçar lotes pequenos
-    params = {
-        'expand': 'grupos_vinculados,modulos,empresas,empresas.municipio,empresas.municipio.estado',
-        'inline': 'false',
-        'page': 1,
-        'per-page': 100,  # Tenta pedir 100 por vez
-        'limit': 100
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive'
     }
     
-    all_data = []
-    page = 1
-    session = get_retry_session() # Usa a sessão robusta
+    params = {
+        'expand': 'grupos_vinculados,modulos,empresas,empresas.municipio,empresas.municipio.estado',
+        'inline': 'false'
+    }
     
-    progress_text = "Conectando à API..."
-    my_bar = st.progress(0, text=progress_text)
+    status_text = st.empty()
+    progress_bar = st.progress(0)
     
     try:
-        while True:
-            params['page'] = page
-            # Timeout alto (120s) para garantir
-            response = session.get(base_url, headers=headers, params=params, timeout=120)
+        status_text.text("Conectando à API de Motoristas...")
+        
+        # Timeout alto e Stream ativado
+        with requests.get(base_url, headers=headers, params=params, stream=True, timeout=300) as response:
             response.raise_for_status()
             
-            try:
-                data = response.json()
-            except json.JSONDecodeError:
-                # Se falhar no JSON, tenta ler texto cru para ver se é erro HTML
-                st.error(f"Resposta inválida na página {page}. O servidor pode ter cortado a conexão.")
-                break
+            total_size = int(response.headers.get('content-length', 0))
+            data_buffer = io.BytesIO()
+            downloaded_size = 0
+            chunk_size = 100 * 1024 
             
-            # --- Lógica de Paginação ---
-            items = []
-            total_pages = 1
-            
-            if isinstance(data, list):
-                items = data
-                # Tenta ler headers de paginação
-                total_count = int(response.headers.get('X-Pagination-Total-Count', 0))
-                per_page_sent = int(response.headers.get('X-Pagination-Per-Page', 0))
-                
-                # Se a API retornou mais de 1000 itens de uma vez, ela ignorou a paginação
-                if len(items) > 1000:
-                    total_pages = 1 # Considera página única
-                elif per_page_sent > 0:
-                    total_pages = (total_count // per_page_sent) + 1
-                else:
-                    total_pages = 0 # Indefinido
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if chunk:
+                    data_buffer.write(chunk)
+                    downloaded_size += len(chunk)
                     
-            elif isinstance(data, dict) and 'items' in data:
-                items = data['items']
-                total_pages = data.get('_meta', {}).get('pageCount', 1)
+                    mb_downloaded = downloaded_size / (1024 * 1024)
+                    if total_size > 0:
+                        progress = min(downloaded_size / total_size, 1.0)
+                        status_text.text(f"Baixando Motoristas: {mb_downloaded:.2f} MB...")
+                        progress_bar.progress(progress)
+                    else:
+                        status_text.text(f"Baixando Motoristas: {mb_downloaded:.2f} MB recebidos...")
 
-            if not items:
-                break
-                
-            all_data.extend(items)
+            progress_bar.progress(1.0)
+            status_text.text("Download concluído! Processando dados...")
             
-            # Atualiza barra visual
-            if total_pages > 1:
-                percent = min(page / total_pages, 1.0)
-                my_bar.progress(percent, text=f"Baixando página {page} de {total_pages}...")
+            data_buffer.seek(0)
+            json_content = json.load(data_buffer)
+            
+            if isinstance(json_content, dict) and 'items' in json_content:
+                return process_motoristas_data(json_content['items'])
+            elif isinstance(json_content, list):
+                return process_motoristas_data(json_content)
             else:
-                # Se não sabemos o total ou é página única (dump grande)
-                my_bar.progress(1.0, text=f"Processando lote {page} ({len(items)} registros)...")
-            
-            # --- Critérios de Parada ---
-            # 1. Se atingiu a última página conhecida
-            if total_pages > 0 and page >= total_pages:
-                break
-            # 2. Se a lista veio vazia
-            if len(items) == 0:
-                break
-            # 3. Se a API mandou um dump gigante (>5000 itens) na pág 1, assume que acabou
-            if page == 1 and len(items) > 5000:
-                st.info("A API retornou todos os dados em uma única página.")
-                break
-                
-            page += 1
-            
-    except requests.exceptions.ChunkedEncodingError:
-        st.error("Erro de Conexão: O servidor cortou a transmissão dos dados. Tente novamente.")
-        return pd.DataFrame()
-    except requests.exceptions.RetryError:
-        st.error("Falha após várias tentativas de reconexão.")
-        return pd.DataFrame()
+                return pd.DataFrame()
+
     except Exception as e:
-        st.error(f"Erro na comunicação com a API: {e}")
+        st.error(f"Erro ao buscar motoristas: {e}")
         return pd.DataFrame()
     finally:
-        my_bar.empty()
+        status_text.empty()
+        progress_bar.empty()
 
-    if not all_data:
-        return pd.DataFrame()
+def process_motoristas_data(all_data):
+    """Transforma o JSON de motoristas em Tabela."""
+    if not all_data: return pd.DataFrame()
 
-    # --- Processamento dos Dados ---
-    
     def extract_names(item_list):
         if not isinstance(item_list, list): return ""
         return ", ".join([str(i.get('nome', '')) for i in item_list if isinstance(i, dict) and i.get('nome')])
@@ -169,10 +135,9 @@ def fetch_motoristas_sigyo(token):
         return "; ".join(nomes)
 
     processed_rows = []
-    
     for d in all_data:
         if not isinstance(d, dict): continue
-        row = {
+        processed_rows.append({
             'ID': d.get('id'),
             'Nome': d.get('nome'),
             'CPF/CNH': d.get('cnh'),
@@ -187,28 +152,25 @@ def fetch_motoristas_sigyo(token):
             'Grupos Vinculados': extract_names(d.get('grupos_vinculados')),
             'Empresas': extract_empresas(d.get('empresas')),
             'Módulos': extract_names(d.get('modulos'))
-        }
-        processed_rows.append(row)
+        })
 
     output = pd.DataFrame(processed_rows)
-    
-    # Tratamento final de datas
     if 'Validade CNH' in output.columns:
         output['Validade CNH'] = pd.to_datetime(output['Validade CNH'], errors='coerce').dt.strftime('%d/%m/%Y')
     if 'Data Cadastro' in output.columns:
         output['Data Cadastro'] = pd.to_datetime(output['Data Cadastro'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
-    
     return output
 
 # ==============================================================================
-# FUNÇÕES DE BUSCA E PROCESSAMENTO (TRANSAÇÕES)
+# 2. FUNÇÕES PARA TRANSAÇÕES (ANTIGO - DADOS DE CREDENCIADO)
 # ==============================================================================
 
 @st.cache_data(show_spinner="Buscando transações...", ttl=300)
 def fetch_transacoes_sigyo(token, start_date, end_date):
-    """ Busca dados da API de Transações. """
+    """Busca transações (dados de venda e credenciado)."""
     base_url = "https://sigyo.uzzipay.com/api/transacoes"
     headers = {'Authorization': f'Bearer {token}'}
+    
     start_str = start_date.strftime('%d/%m/%Y')
     end_str = end_date.strftime('%d/%m/%Y')
     params = {'TransacaoSearch[data_cadastro]': f'{start_str} - {end_str}'}
@@ -217,9 +179,13 @@ def fetch_transacoes_sigyo(token, start_date, end_date):
     page = 1
     session = get_retry_session()
     
+    status_text = st.empty()
+    
     try:
         while True:
             params['page'] = page
+            status_text.text(f"Buscando página {page} de transações...")
+            
             response = session.get(base_url, headers=headers, params=params, timeout=60)
             
             if response.status_code != 200:
@@ -229,6 +195,7 @@ def fetch_transacoes_sigyo(token, start_date, end_date):
             data = response.json()
             if isinstance(data, list) and data:
                 all_data.extend(data)
+                # Se vier menos que 20 registros, assume que é a última página
                 if len(data) < 20: 
                     break
                 page += 1
@@ -238,22 +205,25 @@ def fetch_transacoes_sigyo(token, start_date, end_date):
     except Exception as e:
         st.error(f"Erro de conexão: {e}")
         return pd.DataFrame()
+    finally:
+        status_text.empty()
 
     if not all_data:
         return pd.DataFrame()
 
     df = pd.json_normalize(all_data)
     
+    # Renomeia colunas para ficar igual à "antiga" consulta
     cols_map = {
         'id': 'ID Transação',
         'data_cadastro': 'Data',
         'valor_total': 'Valor Total',
-        'cliente_nome': 'Cliente',
+        'cliente_nome': 'Cliente (Credenciado)',
         'cliente_cnpj': 'CNPJ Cliente',
-        'nome_fantasia': 'Estabelecimento',
+        'nome_fantasia': 'Nome Fantasia',
         'tipo_transacao_nome': 'Tipo',
         'status_transacao_nome': 'Status',
-        'usuario_nome': 'Usuário/Motorista',
+        'usuario_nome': 'Motorista/Usuário',
         'placa': 'Placa'
     }
     
@@ -262,36 +232,95 @@ def fetch_transacoes_sigyo(token, start_date, end_date):
     
     if 'Data' in df_final.columns:
         df_final['Data'] = pd.to_datetime(df_final['Data']).dt.strftime('%d/%m/%Y %H:%M')
+    
     if 'Valor Total' in df_final.columns:
         df_final['Valor Total'] = pd.to_numeric(df_final['Valor Total'], errors='coerce')
 
     return df_final
 
 # ==============================================================================
-# LÓGICA DA INTERFACE (UI)
+# LÓGICA PRINCIPAL (DISPLAY)
 # ==============================================================================
 
 if not api_token:
     st.warning("⚠️ Por favor, insira o Token da API na barra lateral para continuar.")
     st.stop()
 
-# --- BLOCO DE RELATÓRIO: MOTORISTAS ---
-if tipo_relatorio == "Motoristas":
-    st.subheader("📋 Base de Motoristas")
-    st.info("Este relatório lista todos os motoristas cadastrados, com seus grupos, empresas e status.")
+# ------------------------------------------------------------------------------
+# OPÇÃO 1: TRANSAÇÕES / CREDENCIADOS (ANTIGO)
+# ------------------------------------------------------------------------------
+if tipo_relatorio == "Transações / Credenciados":
+    st.subheader("💲 Relatório de Transações (Credenciados)")
+    st.markdown("Consulta movimentações financeiras, postos e credenciados.")
+    
+    col1, col2 = st.columns(2)
+    today = date.today()
+    default_start = today - timedelta(days=7)
+    
+    with col1:
+        data_inicial = st.date_input("Data Inicial", default_start, format="DD/MM/YYYY")
+    with col2:
+        data_final = st.date_input("Data Final", today, format="DD/MM/YYYY")
 
-    if st.button("🔄 Buscar Dados de Motoristas"):
+    if st.button("🔄 Buscar Transações"):
+        if data_inicial > data_final:
+            st.error("Data inicial não pode ser maior que a final.")
+        else:
+            df_transacoes = fetch_transacoes_sigyo(api_token, data_inicial, data_final)
+            
+            if not df_transacoes.empty:
+                st.session_state['df_transacoes'] = df_transacoes
+                st.success(f"{len(df_transacoes)} transações encontradas!")
+            else:
+                st.warning("Nenhuma transação encontrada para o período selecionado.")
+
+    if 'df_transacoes' in st.session_state and not st.session_state['df_transacoes'].empty:
+        df = st.session_state['df_transacoes']
+        
+        st.markdown("### Selecionar Colunas para Exportação")
+        all_cols = df.columns.tolist()
+        selected_cols = st.multiselect("Colunas:", all_cols, default=all_cols)
+        
+        if not selected_cols:
+            st.error("Selecione pelo menos uma coluna.")
+        else:
+            df_display = df[selected_cols]
+            
+            if 'Valor Total' in df_display.columns:
+                total_val = df_display['Valor Total'].sum()
+                st.metric("Volume Total no Período", f"R$ {total_val:,.2f}")
+
+            st.dataframe(df_display, use_container_width=True)
+            
+            csv = df_display.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig')
+            st.download_button(
+                label="📥 Baixar Planilha (CSV)",
+                data=csv,
+                file_name="relatorio_transacoes_credenciados.csv",
+                mime="text/csv",
+                type="primary"
+            )
+
+# ------------------------------------------------------------------------------
+# OPÇÃO 2: BASE DE MOTORISTAS (NOVO)
+# ------------------------------------------------------------------------------
+elif tipo_relatorio == "Base de Motoristas":
+    st.subheader("📋 Base de Motoristas")
+    st.markdown("Consulta cadastro completo de motoristas, CNH, grupos e empresas vinculadas.")
+
+    if st.button("🔄 Baixar Base Completa de Motoristas"):
         df_motoristas = fetch_motoristas_sigyo(api_token)
         
         if not df_motoristas.empty:
             st.session_state['df_motoristas'] = df_motoristas
             st.success(f"Sucesso! {len(df_motoristas)} motoristas carregados.")
         else:
-            st.warning("A busca não retornou dados. Verifique a conexão ou tente novamente.")
+            st.warning("Não foi possível carregar os motoristas. Verifique logs/token.")
 
     if 'df_motoristas' in st.session_state and not st.session_state['df_motoristas'].empty:
         df = st.session_state['df_motoristas']
         
+        # Filtros para Motoristas
         col_f1, col_f2 = st.columns(2)
         with col_f1:
             status_opts = sorted(df['Status'].astype(str).unique())
@@ -320,7 +349,8 @@ if tipo_relatorio == "Motoristas":
             st.error("Selecione pelo menos uma coluna.")
         else:
             df_display = df_filtered[selected_cols]
-            st.markdown(f"**Total de registros filtrados:** {len(df_display)}")
+            st.markdown(f"**Registros exibidos:** {len(df_display)}")
+            
             st.dataframe(df_display, use_container_width=True)
             
             csv = df_display.to_csv(index=False).encode('utf-8-sig')
@@ -328,57 +358,6 @@ if tipo_relatorio == "Motoristas":
                 label="📥 Baixar Planilha (CSV)",
                 data=csv,
                 file_name="relatorio_motoristas_sigyo.csv",
-                mime="text/csv",
-                type="primary"
-            )
-
-# --- BLOCO DE RELATÓRIO: TRANSAÇÕES ---
-elif tipo_relatorio == "Transações":
-    st.subheader("💲 Relatório de Transações")
-    
-    col1, col2 = st.columns(2)
-    today = date.today()
-    default_start = today - timedelta(days=7)
-    
-    with col1:
-        data_inicial = st.date_input("Data Inicial", default_start, format="DD/MM/YYYY")
-    with col2:
-        data_final = st.date_input("Data Final", today, format="DD/MM/YYYY")
-
-    if st.button("🔄 Buscar Transações"):
-        if data_inicial > data_final:
-            st.error("Data inicial não pode ser maior que a final.")
-        else:
-            df_transacoes = fetch_transacoes_sigyo(api_token, data_inicial, data_final)
-            
-            if not df_transacoes.empty:
-                st.session_state['df_transacoes'] = df_transacoes
-                st.success(f"{len(df_transacoes)} transações encontradas!")
-            else:
-                st.warning("Nenhuma transação encontrada para o período.")
-
-    if 'df_transacoes' in st.session_state and not st.session_state['df_transacoes'].empty:
-        df = st.session_state['df_transacoes']
-        
-        st.markdown("### Selecionar Colunas para Exportação")
-        all_cols = df.columns.tolist()
-        selected_cols = st.multiselect("Colunas:", all_cols, default=all_cols)
-        
-        if not selected_cols:
-            st.error("Selecione pelo menos uma coluna.")
-        else:
-            df_display = df[selected_cols]
-            if 'Valor Total' in df_display.columns:
-                total_val = df_display['Valor Total'].sum()
-                st.metric("Volume Total no Período", f"R$ {total_val:,.2f}")
-
-            st.dataframe(df_display, use_container_width=True)
-            
-            csv = df_display.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig')
-            st.download_button(
-                label="📥 Baixar Planilha (CSV)",
-                data=csv,
-                file_name="relatorio_transacoes_sigyo.csv",
                 mime="text/csv",
                 type="primary"
             )
