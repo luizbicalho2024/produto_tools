@@ -15,7 +15,7 @@ st.set_page_config(
 
 st.title("🔍 Consulta Cadastral Sigyo")
 
-# --- Barra Lateral (Configurações Globais) ---
+# --- Barra Lateral ---
 with st.sidebar:
     st.header("Configurações")
     default_token = st.secrets.get("eliq_api_token", "")
@@ -25,16 +25,16 @@ with st.sidebar:
     st.header("Selecione a Base")
     tipo_relatorio = st.radio(
         "Qual cadastro deseja consultar?",
-        ["Motoristas", "Credenciados"],
+        ["Motoristas", "Credenciados", "Clientes"],
         index=0
     )
 
 # ==============================================================================
-# FUNÇÕES DE REDE ROBUSTA (SESSION COM RETRY)
+# FUNÇÕES DE REDE (BLINDADAS)
 # ==============================================================================
 
 def get_retry_session():
-    """Cria uma sessão HTTP blindada que tenta reconectar automaticamente."""
+    """Cria uma sessão HTTP que tenta reconectar automaticamente em caso de falha."""
     session = requests.Session()
     retries = Retry(
         total=3,
@@ -47,13 +47,10 @@ def get_retry_session():
     session.mount("http://", adapter)
     return session
 
-# ==============================================================================
-# FUNÇÃO GENÉRICA DE DOWNLOAD (STREAMING)
-# ==============================================================================
-
 def fetch_data_streaming(url, token, entity_name, params=None):
     """
-    Função genérica para baixar grandes volumes de dados via JSON Streaming.
+    Função genérica para baixar dados via Streaming.
+    Isso evita erro de 'Unterminated string' em bases grandes.
     """
     headers = {
         'Authorization': f'Bearer {token}',
@@ -61,9 +58,6 @@ def fetch_data_streaming(url, token, entity_name, params=None):
         'Connection': 'keep-alive'
     }
     
-    if params is None:
-        params = {'inline': 'false'} # Padrão para não vir meta-dados envelopando demais
-
     status_text = st.empty()
     progress_bar = st.progress(0)
     session = get_retry_session()
@@ -71,48 +65,54 @@ def fetch_data_streaming(url, token, entity_name, params=None):
     try:
         status_text.text(f"Conectando à API de {entity_name}...")
         
+        # Timeout de 5 minutos (300s) para garantir downloads lentos
         with session.get(url, headers=headers, params=params, stream=True, timeout=300) as response:
-            response.raise_for_status()
+            if response.status_code != 200:
+                st.error(f"Erro na API ({response.status_code}): {response.text[:200]}")
+                return None
             
             total_size = int(response.headers.get('content-length', 0))
             data_buffer = io.BytesIO()
             downloaded_size = 0
-            chunk_size = 100 * 1024 # 100KB chunks
+            chunk_size = 100 * 1024 # 100KB
             
             for chunk in response.iter_content(chunk_size=chunk_size):
                 if chunk:
                     data_buffer.write(chunk)
                     downloaded_size += len(chunk)
                     
-                    mb_downloaded = downloaded_size / (1024 * 1024)
                     if total_size > 0:
                         progress = min(downloaded_size / total_size, 1.0)
-                        status_text.text(f"Baixando {entity_name}: {mb_downloaded:.2f} MB...")
+                        mb = downloaded_size / (1024 * 1024)
+                        total_mb = total_size / (1024 * 1024)
+                        status_text.text(f"Baixando {entity_name}: {mb:.2f} MB de {total_mb:.2f} MB...")
                         progress_bar.progress(progress)
                     else:
-                        status_text.text(f"Baixando {entity_name}: {mb_downloaded:.2f} MB recebidos...")
+                        mb = downloaded_size / (1024 * 1024)
+                        status_text.text(f"Baixando {entity_name}: {mb:.2f} MB recebidos...")
 
             progress_bar.progress(1.0)
-            status_text.text("Download concluído! Processando dados...")
+            status_text.text("Download concluído! Decodificando JSON...")
             
             data_buffer.seek(0)
             try:
                 json_content = json.load(data_buffer)
-            except json.JSONDecodeError:
-                st.error("Erro ao decodificar o arquivo baixado. O download pode ter sido corrompido.")
+            except json.JSONDecodeError as e:
+                st.error(f"Erro ao decodificar JSON. O arquivo pode estar incompleto. Detalhe: {e}")
                 return None
             
-            # Normaliza resposta (algumas vêm como lista, outras como dict com chave 'items')
-            if isinstance(json_content, dict) and 'items' in json_content:
-                return json_content['items']
-            elif isinstance(json_content, list):
+            # Normalização de resposta (pode vir como lista direta ou dict com 'items')
+            if isinstance(json_content, list):
                 return json_content
+            elif isinstance(json_content, dict) and 'items' in json_content:
+                return json_content['items']
             else:
-                st.warning(f"Formato de resposta inesperado para {entity_name}.")
+                # Se for um dict mas não tiver items, pode ser um erro envelopado ou formato desconhecido
+                st.warning(f"Formato de resposta inesperado. Chaves encontradas: {json_content.keys() if isinstance(json_content, dict) else 'N/A'}")
                 return []
 
     except Exception as e:
-        st.error(f"Erro ao buscar {entity_name}: {e}")
+        st.error(f"Erro de conexão/processamento: {e}")
         return None
     finally:
         status_text.empty()
@@ -131,13 +131,13 @@ def process_motoristas(all_data):
 
     def extract_empresas(empresa_list):
         if not isinstance(empresa_list, list): return ""
-        nomes = []
+        items = []
         for emp in empresa_list:
             if isinstance(emp, dict):
                 nome = emp.get('nome_fantasia') or emp.get('razao_social') or 'N/A'
                 cnpj = emp.get('cnpj', '')
-                nomes.append(f"{nome} ({cnpj})")
-        return "; ".join(nomes)
+                items.append(f"{nome} ({cnpj})")
+        return "; ".join(items)
 
     processed_rows = []
     for d in all_data:
@@ -154,71 +154,134 @@ def process_motoristas(all_data):
             'Status': d.get('status'),
             'Ativo': 'Sim' if d.get('ativo') in [True, 1] else 'Não',
             'Data Cadastro': d.get('data_cadastro'),
-            'Grupos Vinculados': extract_names(d.get('grupos_vinculados')),
+            # Campos expandidos
+            'Grupos': extract_names(d.get('grupos_vinculados')),
             'Empresas': extract_empresas(d.get('empresas')),
-            'Módulos': extract_names(d.get('modulos'))
+            'Módulos': extract_names(d.get('modulos')),
+            'Cidade': d.get('empresas', [{}])[0].get('municipio', {}).get('nome', '') if d.get('empresas') else '',
+            'UF': d.get('empresas', [{}])[0].get('municipio', {}).get('estado', {}).get('sigla', '') if d.get('empresas') else ''
         })
 
-    output = pd.DataFrame(processed_rows)
-    # Formatação Datas
-    for col in ['Validade CNH', 'Data Cadastro']:
-        if col in output.columns:
-            output[col] = pd.to_datetime(output[col], errors='coerce')
-            if col == 'Validade CNH': output[col] = output[col].dt.strftime('%d/%m/%Y')
-            else: output[col] = output[col].dt.strftime('%d/%m/%Y %H:%M')
-            
-    return output
+    df = pd.DataFrame(processed_rows)
+    # Formatação
+    if 'Validade CNH' in df.columns:
+        df['Validade CNH'] = pd.to_datetime(df['Validade CNH'], errors='coerce').dt.strftime('%d/%m/%Y')
+    if 'Data Cadastro' in df.columns:
+        df['Data Cadastro'] = pd.to_datetime(df['Data Cadastro'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
+    return df
 
 # ==============================================================================
-# 2. PROCESSAMENTO DE CREDENCIADOS (NOVO)
+# 2. PROCESSAMENTO DE CREDENCIADOS
 # ==============================================================================
 
 def process_credenciados(all_data):
     if not all_data: return pd.DataFrame()
 
-    # Função auxiliar para extrair endereço completo se vier aninhado ou separado
-    def format_address(d):
+    def get_address(d):
+        muni = d.get('municipio') or {}
+        estado = muni.get('estado') or {}
         parts = [
             d.get('logradouro') or d.get('endereco'),
             d.get('numero'),
             d.get('bairro'),
-            d.get('cidade') or (d.get('municipio', {}).get('nome') if isinstance(d.get('municipio'), dict) else ''),
-            d.get('uf') or (d.get('estado', {}).get('sigla') if isinstance(d.get('estado'), dict) else '')
+            muni.get('nome'),
+            estado.get('sigla')
         ]
         return ", ".join([str(p) for p in parts if p])
+
+    def extract_modulos(item_list):
+        if not isinstance(item_list, list): return ""
+        return ", ".join([str(i.get('nome', '')) for i in item_list if isinstance(i, dict)])
 
     processed_rows = []
     for d in all_data:
         if not isinstance(d, dict): continue
         
-        # Mapeamento genérico de campos comuns de credenciados
-        row = {
+        # Dados de Acesso (Login)
+        dados_acesso = d.get('dadosAcesso') or {}
+        
+        processed_rows.append({
             'ID': d.get('id'),
             'Razão Social': d.get('razao_social'),
             'Nome Fantasia': d.get('nome_fantasia'),
             'CNPJ': d.get('cnpj'),
-            'Email': d.get('email') or d.get('email_contato'),
+            'Email': d.get('email'),
             'Telefone': d.get('telefone') or d.get('celular'),
-            'Contato': d.get('nome_contato') or d.get('responsavel'),
+            'Responsável': d.get('responsavel') or d.get('nome_contato'),
             'Status': d.get('status'),
             'Ativo': 'Sim' if d.get('ativo') in [True, 1] else 'Não',
             'Data Cadastro': d.get('data_cadastro'),
-            'Endereço Completo': format_address(d),
-            'Latitude': d.get('latitude'),
-            'Longitude': d.get('longitude'),
-            'Taxa Adm (%)': d.get('taxa_administracao') or d.get('taxa_adm')
-        }
-        processed_rows.append(row)
+            # Campos expandidos
+            'Usuário Acesso': dados_acesso.get('username') or dados_acesso.get('email'),
+            'Cidade': (d.get('municipio') or {}).get('nome'),
+            'UF': ((d.get('municipio') or {}).get('estado') or {}).get('sigla'),
+            'Endereço Completo': get_address(d),
+            'Módulos': extract_modulos(d.get('modulos')),
+            'Taxa Adm (%)': d.get('taxa_administracao')
+        })
 
-    output = pd.DataFrame(processed_rows)
-    
-    if 'Data Cadastro' in output.columns:
-        output['Data Cadastro'] = pd.to_datetime(output['Data Cadastro'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
-        
-    return output
+    df = pd.DataFrame(processed_rows)
+    if 'Data Cadastro' in df.columns:
+        df['Data Cadastro'] = pd.to_datetime(df['Data Cadastro'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
+    return df
 
 # ==============================================================================
-# LÓGICA PRINCIPAL (INTERFACE)
+# 3. PROCESSAMENTO DE CLIENTES
+# ==============================================================================
+
+def process_clientes(all_data):
+    if not all_data: return pd.DataFrame()
+
+    def get_address(d):
+        muni = d.get('municipio') or {}
+        estado = muni.get('estado') or {}
+        parts = [
+            d.get('logradouro'),
+            d.get('numero'),
+            d.get('bairro'),
+            muni.get('nome'),
+            estado.get('sigla')
+        ]
+        return ", ".join([str(p) for p in parts if p])
+
+    def extract_modulos(item_list):
+        if not isinstance(item_list, list): return ""
+        return ", ".join([str(i.get('nome', '')) for i in item_list if isinstance(i, dict)])
+
+    processed_rows = []
+    for d in all_data:
+        if not isinstance(d, dict): continue
+        
+        tipo = d.get('tipo') or {}
+        org = d.get('organizacao') or {}
+
+        processed_rows.append({
+            'ID': d.get('id'),
+            'Razão Social': d.get('razao_social'),
+            'Nome Fantasia': d.get('nome_fantasia'),
+            'CNPJ': d.get('cnpj'),
+            'Email': d.get('email'),
+            'Telefone': d.get('telefone'),
+            'Status': d.get('status'),
+            'Ativo': 'Sim' if d.get('ativo') in [True, 1] else 'Não',
+            'Data Cadastro': d.get('data_cadastro'),
+            # Campos expandidos
+            'Tipo Cliente': tipo.get('nome'),
+            'Organização': org.get('nome_fantasia') or org.get('razao_social'),
+            'Cidade': (d.get('municipio') or {}).get('nome'),
+            'UF': ((d.get('municipio') or {}).get('estado') or {}).get('sigla'),
+            'Endereço Completo': get_address(d),
+            'Módulos': extract_modulos(d.get('modulos')),
+            'Taxa Adm (%)': d.get('taxa_administracao')
+        })
+
+    df = pd.DataFrame(processed_rows)
+    if 'Data Cadastro' in df.columns:
+        df['Data Cadastro'] = pd.to_datetime(df['Data Cadastro'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
+    return df
+
+# ==============================================================================
+# LÓGICA DA INTERFACE (UI)
 # ==============================================================================
 
 if not api_token:
@@ -226,151 +289,124 @@ if not api_token:
     st.stop()
 
 # ------------------------------------------------------------------------------
-# OPÇÃO 1: MOTORISTAS
+# CONTROLE DE FLUXO (SWITCH)
 # ------------------------------------------------------------------------------
-if tipo_relatorio == "Motoristas":
-    st.subheader("📋 Base de Motoristas")
-    st.markdown("Consulta cadastro completo de motoristas, CNH, grupos e empresas vinculadas.")
 
-    if st.button("🔄 Baixar Base de Motoristas"):
-        # URL da API de Motoristas
+df_result = pd.DataFrame()
+entity_title = ""
+filename = ""
+
+if st.button(f"🔄 Consultar {tipo_relatorio}"):
+    if tipo_relatorio == "Motoristas":
         url = "https://sigyo.uzzipay.com/api/motoristas"
         params = {
             'expand': 'grupos_vinculados,modulos,empresas,empresas.municipio,empresas.municipio.estado',
             'inline': 'false'
         }
-        
         raw_data = fetch_data_streaming(url, api_token, "Motoristas", params)
-        
         if raw_data:
-            df_motoristas = process_motoristas(raw_data)
-            st.session_state['df_motoristas'] = df_motoristas
-            st.success(f"Sucesso! {len(df_motoristas)} motoristas carregados.")
-        else:
-            st.warning("Não foi possível carregar os dados.")
+            st.session_state['df_motoristas'] = process_motoristas(raw_data)
+            st.success("Dados de Motoristas atualizados!")
 
-    if 'df_motoristas' in st.session_state and not st.session_state['df_motoristas'].empty:
-        df = st.session_state['df_motoristas']
-        
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            status_opts = sorted(df['Status'].astype(str).unique())
-            filtro_status = st.multiselect("Filtrar por Status:", options=status_opts, default=status_opts)
-        with col_f2:
-            search_term = st.text_input("Buscar por Nome ou CNH:", "")
-
-        mask = df['Status'].isin(filtro_status)
-        if search_term:
-            mask &= (
-                df['Nome'].str.contains(search_term, case=False, na=False) | 
-                df['CPF/CNH'].str.contains(search_term, na=False)
-            )
-        
-        df_filtered = df[mask]
-
-        st.markdown("### Selecionar Colunas para Exportação")
-        all_cols = df_filtered.columns.tolist()
-        cols_default = ['ID', 'Nome', 'CPF/CNH', 'Status', 'Empresas', 'Grupos Vinculados', 'Módulos']
-        cols_default = [c for c in cols_default if c in all_cols]
-        
-        selected_cols = st.multiselect("Colunas:", all_cols, default=cols_default)
-
-        if not selected_cols:
-            st.error("Selecione pelo menos uma coluna.")
-        else:
-            df_display = df_filtered[selected_cols]
-            st.markdown(f"**Registros exibidos:** {len(df_display)}")
-            st.dataframe(df_display, use_container_width=True)
-            
-            csv = df_display.to_csv(index=False).encode('utf-8-sig')
-            st.download_button(
-                label="📥 Baixar Planilha (CSV)",
-                data=csv,
-                file_name="base_motoristas_sigyo.csv",
-                mime="text/csv",
-                type="primary"
-            )
-
-# ------------------------------------------------------------------------------
-# OPÇÃO 2: CREDENCIADOS (NOVO)
-# ------------------------------------------------------------------------------
-elif tipo_relatorio == "Credenciados":
-    st.subheader("🏢 Base de Credenciados")
-    st.markdown("Consulta dados cadastrais de estabelecimentos e credenciados (Razão Social, CNPJ, Email, Endereço).")
-
-    if st.button("🔄 Baixar Base de Credenciados"):
-        # URL da API de Credenciados
-        # NOTA: Se o endpoint for 'clientes' ou 'empresas', ajuste a URL abaixo.
-        # Padrão Sigyo costuma ser 'credenciados' para rede externa ou 'clientes' para B2B.
-        url = "https://sigyo.uzzipay.com/api/credenciados" 
-        
-        # Parâmetros genéricos para trazer o máximo de info cadastral
+    elif tipo_relatorio == "Credenciados":
+        url = "https://sigyo.uzzipay.com/api/credenciados"
         params = {
-            'expand': 'municipio,municipio.estado', # Expansão comum de endereço
+            'expand': 'dadosAcesso,municipio,municipio.estado,modulos',
             'inline': 'false'
         }
-        
         raw_data = fetch_data_streaming(url, api_token, "Credenciados", params)
-        
         if raw_data:
-            df_credenciados = process_credenciados(raw_data)
-            st.session_state['df_credenciados'] = df_credenciados
-            st.success(f"Sucesso! {len(df_credenciados)} credenciados carregados.")
+            st.session_state['df_credenciados'] = process_credenciados(raw_data)
+            st.success("Dados de Credenciados atualizados!")
+
+    elif tipo_relatorio == "Clientes":
+        url = "https://sigyo.uzzipay.com/api/clientes"
+        params = {
+            'expand': 'municipio,municipio.estado,modulos,organizacao,tipo',
+            'inline': 'false'
+        }
+        raw_data = fetch_data_streaming(url, api_token, "Clientes", params)
+        if raw_data:
+            st.session_state['df_clientes'] = process_clientes(raw_data)
+            st.success("Dados de Clientes atualizados!")
+
+# ------------------------------------------------------------------------------
+# EXIBIÇÃO DOS DADOS
+# ------------------------------------------------------------------------------
+
+# Define qual DF mostrar com base na seleção atual
+current_df = pd.DataFrame()
+current_key = ""
+
+if tipo_relatorio == "Motoristas":
+    current_key = 'df_motoristas'
+    entity_title = "Motoristas"
+    filename = "motoristas_sigyo.csv"
+elif tipo_relatorio == "Credenciados":
+    current_key = 'df_credenciados'
+    entity_title = "Credenciados"
+    filename = "credenciados_sigyo.csv"
+elif tipo_relatorio == "Clientes":
+    current_key = 'df_clientes'
+    entity_title = "Clientes"
+    filename = "clientes_sigyo.csv"
+
+# Verifica se existe dados na sessão para a seleção atual
+if current_key in st.session_state and not st.session_state[current_key].empty:
+    df = st.session_state[current_key]
+    
+    st.markdown(f"### 📋 Base de {entity_title}")
+    
+    # Filtros Comuns
+    col1, col2 = st.columns(2)
+    with col1:
+        if 'Status' in df.columns:
+            status_opts = sorted(df['Status'].astype(str).unique())
+            filtro_status = st.multiselect("Filtrar por Status:", options=status_opts, default=status_opts)
         else:
-            st.error("Falha ao buscar dados. Verifique se o endpoint da API é 'credenciados', 'clientes' ou 'estabelecimentos'.")
+            filtro_status = []
+    
+    with col2:
+        search = st.text_input("Busca Rápida (Nome, CNPJ/CPF, Email):")
 
-    if 'df_credenciados' in st.session_state and not st.session_state['df_credenciados'].empty:
-        df = st.session_state['df_credenciados']
-        
-        # Filtros
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            if 'Status' in df.columns:
-                status_opts = sorted(df['Status'].astype(str).unique())
-                filtro_status = st.multiselect("Filtrar por Status:", options=status_opts, default=status_opts)
-            else:
-                filtro_status = []
-        with col_f2:
-            search_term = st.text_input("Buscar por Nome, CNPJ ou Email:", "")
+    # Aplicação dos Filtros
+    mask = pd.Series([True] * len(df))
+    if filtro_status and 'Status' in df.columns:
+        mask &= df['Status'].isin(filtro_status)
+    
+    if search:
+        # Busca genérica em colunas de texto principais
+        search_cols = [c for c in ['Nome', 'Nome Fantasia', 'Razão Social', 'CPF/CNH', 'CNPJ', 'Email'] if c in df.columns]
+        search_mask = pd.Series([False] * len(df))
+        for c in search_cols:
+            search_mask |= df[c].astype(str).str.contains(search, case=False, na=False)
+        mask &= search_mask
 
-        mask = pd.Series([True] * len(df))
-        if filtro_status and 'Status' in df.columns:
-            mask &= df['Status'].isin(filtro_status)
-        
-        if search_term:
-            # Busca em várias colunas de texto
-            text_cols = ['Razão Social', 'Nome Fantasia', 'CNPJ', 'Email']
-            # Filtra colunas que realmente existem no DF
-            text_cols = [c for c in text_cols if c in df.columns]
-            
-            mask_search = pd.Series([False] * len(df))
-            for col in text_cols:
-                mask_search |= df[col].astype(str).str.contains(search_term, case=False, na=False)
-            mask &= mask_search
-        
-        df_filtered = df[mask]
+    df_filtered = df[mask]
 
-        st.markdown("### Selecionar Colunas para Exportação")
-        all_cols = df_filtered.columns.tolist()
-        cols_default = ['ID', 'Nome Fantasia', 'CNPJ', 'Email', 'Telefone', 'Status', 'Endereço Completo']
-        cols_default = [c for c in cols_default if c in all_cols]
-        if not cols_default: cols_default = all_cols[:5]
-        
-        selected_cols = st.multiselect("Colunas:", all_cols, default=cols_default)
+    # Seletor de Colunas
+    st.markdown("#### Seleção de Colunas")
+    all_cols = df_filtered.columns.tolist()
+    # Padrão: Primeiras 7 colunas
+    cols_default = all_cols[:7] if len(all_cols) > 7 else all_cols
+    
+    selected_cols = st.multiselect("Colunas Visíveis:", all_cols, default=cols_default)
 
-        if not selected_cols:
-            st.error("Selecione pelo menos uma coluna.")
-        else:
-            df_display = df_filtered[selected_cols]
-            st.markdown(f"**Registros exibidos:** {len(df_display)}")
-            
-            st.dataframe(df_display, use_container_width=True)
-            
-            csv = df_display.to_csv(index=False).encode('utf-8-sig')
-            st.download_button(
-                label="📥 Baixar Planilha (CSV)",
-                data=csv,
-                file_name="base_credenciados_sigyo.csv",
-                mime="text/csv",
-                type="primary"
-            )
+    if selected_cols:
+        df_display = df_filtered[selected_cols]
+        st.info(f"Mostrando {len(df_display)} registros.")
+        st.dataframe(df_display, use_container_width=True)
+        
+        csv = df_display.to_csv(index=False).encode('utf-8-sig')
+        st.download_button(
+            label=f"📥 Baixar {entity_title} (CSV)",
+            data=csv,
+            file_name=filename,
+            mime="text/csv",
+            type="primary"
+        )
+    else:
+        st.warning("Selecione ao menos uma coluna para visualizar.")
+
+elif current_key not in st.session_state:
+    st.info(f"Clique no botão acima para carregar a base de {entity_title}.")
