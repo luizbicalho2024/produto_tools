@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import io
+import json
 from datetime import date, timedelta
 
 # --- Configuração da Página ---
@@ -24,7 +25,7 @@ with st.sidebar:
     tipo_relatorio = st.radio(
         "Tipo de Relatório",
         ["Transações", "Motoristas"],
-        index=0
+        index=1 # Padrão selecionado: Motoristas
     )
 
 # ==============================================================================
@@ -37,40 +38,45 @@ def fetch_motoristas_sigyo(token):
     base_url = "https://sigyo.uzzipay.com/api/motoristas"
     headers = {'Authorization': f'Bearer {token}'}
     
-    # Parâmetros fixos conforme solicitado
+    # PARAMETROS OTIMIZADOS PARA EVITAR TIMEOUT
+    # 'per-page': 50 -> Reduz o tamanho de cada resposta para evitar corte de conexão
     params = {
         'expand': 'grupos_vinculados,modulos,empresas,empresas.municipio,empresas.municipio.estado',
         'inline': 'false',
-        'page': 1
+        'page': 1,
+        'per-page': 50 
     }
     
     all_data = []
     page = 1
     
-    # Container para barra de progresso
     progress_text = "Iniciando busca de motoristas..."
     my_bar = st.progress(0, text=progress_text)
     
     try:
         while True:
             params['page'] = page
-            response = requests.get(base_url, headers=headers, params=params, timeout=30)
+            # Timeout aumentado para 60s
+            response = requests.get(base_url, headers=headers, params=params, timeout=60)
             response.raise_for_status()
             
-            data = response.json()
+            try:
+                data = response.json()
+            except json.JSONDecodeError:
+                st.error(f"Erro ao decodificar JSON na página {page}. A resposta do servidor pode ter sido cortada.")
+                break
             
-            # Verifica se a resposta é uma lista (padrão Yii2 sem envelope ou com envelope dependendo da config)
-            # Assumindo que a API retorna lista direta ou dicionário com chave de dados
-            if isinstance(data, dict) and 'items' in data:
+            # Lógica de paginação
+            if isinstance(data, list):
+                items = data
+                # Tenta pegar total dos headers para barra de progresso
+                total_count = int(response.headers.get('X-Pagination-Total-Count', 0))
+                per_page = int(response.headers.get('X-Pagination-Per-Page', 50))
+                total_pages = (total_count // per_page) + 1 if per_page > 0 else 1
+            elif isinstance(data, dict) and 'items' in data:
                 items = data['items']
                 meta = data.get('_meta', {})
                 total_pages = meta.get('pageCount', 1)
-            elif isinstance(data, list):
-                items = data
-                # Se retornar lista direta, difícil saber total de páginas sem headers, 
-                # assumiremos que se a lista vier vazia ou menor que o esperado, acabou.
-                # Para segurança, vamos limitar ou verificar headers se disponível.
-                total_pages = int(response.headers.get('X-Pagination-Page-Count', 100)) # Fallback
             else:
                 items = []
                 total_pages = 1
@@ -80,19 +86,22 @@ def fetch_motoristas_sigyo(token):
                 
             all_data.extend(items)
             
-            # Atualiza barra de progresso (estimativa)
+            # Atualiza barra de progresso
             if total_pages > 0:
                 percent = min(page / total_pages, 1.0)
-                my_bar.progress(percent, text=f"Buscando página {page}...")
+                my_bar.progress(percent, text=f"Buscando página {page} de {total_pages}...")
             
-            # Critério de parada (se items vazio ou atingiu ultima pagina conhecida)
-            if isinstance(data, dict) and page >= total_pages:
+            # Critério de parada
+            if page >= total_pages:
                 break
-            if isinstance(data, list) and not items:
+            if len(items) == 0:
                 break
                 
             page += 1
             
+    except requests.exceptions.Timeout:
+        st.error("A conexão com a API excedeu o tempo limite (Timeout). Tente novamente.")
+        return pd.DataFrame()
     except Exception as e:
         st.error(f"Erro na comunicação com a API: {e}")
         return pd.DataFrame()
@@ -102,54 +111,60 @@ def fetch_motoristas_sigyo(token):
     if not all_data:
         return pd.DataFrame()
 
-    # --- Normalização e Processamento ---
-    df = pd.json_normalize(all_data)
+    # --- Processamento dos Dados ---
     
-    # Função auxiliar para extrair listas aninhadas em strings
-    def extract_names(item_list, key='nome'):
+    # Funções auxiliares para extrair dados das listas aninhadas
+    def extract_names(item_list):
+        """Extrai nomes de uma lista de dicionários (ex: grupos, módulos)."""
         if not isinstance(item_list, list):
             return ""
-        return ", ".join([str(i.get(key, '')) for i in item_list if i.get(key)])
+        return ", ".join([str(i.get('nome', '')) for i in item_list if isinstance(i, dict) and i.get('nome')])
 
     def extract_empresas(empresa_list):
+        """Formata lista de empresas como 'Nome (CNPJ)'."""
         if not isinstance(empresa_list, list):
             return ""
         nomes = []
         for emp in empresa_list:
-            # Tenta pegar nome fantasia, se não, razão social
-            nome = emp.get('nome_fantasia') or emp.get('razao_social') or 'N/A'
-            cnpj = emp.get('cnpj', '')
-            nomes.append(f"{nome} ({cnpj})")
+            if isinstance(emp, dict):
+                nome = emp.get('nome_fantasia') or emp.get('razao_social') or 'N/A'
+                cnpj = emp.get('cnpj', '')
+                nomes.append(f"{nome} ({cnpj})")
         return "; ".join(nomes)
 
-    # Processamento das colunas complexas (usando os dados originais 'all_data' para garantir acesso às listas)
-    # Recriamos um DF base para facilitar
-    df_processed = pd.DataFrame(all_data)
+    # Construção do DataFrame Manual (Mais seguro e rápido que json_normalize para listas aninhadas)
+    processed_rows = []
     
-    # Mapeamento e Tratamento
-    output = pd.DataFrame()
-    output['ID'] = df_processed.get('id')
-    output['Nome'] = df_processed.get('nome')
-    output['CPF/CNH'] = df_processed.get('cnh')
-    output['Categoria CNH'] = df_processed.get('cnh_categoria')
-    output['Validade CNH'] = pd.to_datetime(df_processed.get('cnh_validade'), errors='coerce').dt.strftime('%d/%m/%Y')
-    output['Matrícula'] = df_processed.get('matricula')
-    output['Email'] = df_processed.get('email')
-    output['Telefone'] = df_processed.get('telefone')
-    output['Status'] = df_processed.get('status')
-    output['Ativo'] = df_processed.get('ativo').map({True: 'Sim', False: 'Não', 1: 'Sim', 0: 'Não'})
+    for d in all_data:
+        row = {
+            'ID': d.get('id'),
+            'Nome': d.get('nome'),
+            'CPF/CNH': d.get('cnh'),
+            'Categoria CNH': d.get('cnh_categoria'),
+            'Validade CNH': d.get('cnh_validade'),
+            'Matrícula': d.get('matricula'),
+            'Email': d.get('email'),
+            'Telefone': d.get('telefone'),
+            'Status': d.get('status'),
+            'Ativo': 'Sim' if d.get('ativo') in [True, 1] else 'Não',
+            'Data Cadastro': d.get('data_cadastro'),
+            # Dados Aninhados
+            'Grupos Vinculados': extract_names(d.get('grupos_vinculados')),
+            'Empresas': extract_empresas(d.get('empresas')),
+            'Módulos': extract_names(d.get('modulos'))
+        }
+        processed_rows.append(row)
+
+    output = pd.DataFrame(processed_rows)
     
-    # Listas Aninhadas
-    output['Grupos Vinculados'] = df_processed.get('grupos_vinculados').apply(lambda x: extract_names(x, 'nome'))
-    output['Empresas'] = df_processed.get('empresas').apply(extract_empresas)
-    output['Módulos'] = df_processed.get('modulos').apply(lambda x: extract_names(x, 'nome'))
-    
-    output['Data Cadastro'] = pd.to_datetime(df_processed.get('data_cadastro'), errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
+    # Tratamento final de datas
+    output['Validade CNH'] = pd.to_datetime(output['Validade CNH'], errors='coerce').dt.strftime('%d/%m/%Y')
+    output['Data Cadastro'] = pd.to_datetime(output['Data Cadastro'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
     
     return output
 
 # ==============================================================================
-# FUNÇÕES DE BUSCA E PROCESSAMENTO (TRANSAÇÕES - CÓDIGO EXISTENTE)
+# FUNÇÕES DE BUSCA E PROCESSAMENTO (TRANSAÇÕES)
 # ==============================================================================
 
 @st.cache_data(show_spinner="Buscando transações...", ttl=300)
@@ -177,8 +192,7 @@ def fetch_transacoes_sigyo(token, start_date, end_date):
             data = response.json()
             if isinstance(data, list) and data:
                 all_data.extend(data)
-                # Lógica simples de parada: se vier menos de 50 registros (tamanho padrão pag), deve ser a última
-                if len(data) < 20: 
+                if len(data) < 20: # Assumindo fim da paginação se vier pouco
                     break
                 page += 1
             else:
@@ -250,22 +264,25 @@ if tipo_relatorio == "Motoristas":
         # Filtros Rápidos
         col_f1, col_f2 = st.columns(2)
         with col_f1:
-            filtro_status = st.multiselect("Filtrar por Status:", options=df['Status'].unique(), default=df['Status'].unique())
+            status_opts = sorted(df['Status'].astype(str).unique())
+            filtro_status = st.multiselect("Filtrar por Status:", options=status_opts, default=status_opts)
         with col_f2:
             search_term = st.text_input("Buscar por Nome ou CNH:", "")
 
         # Aplica Filtros
-        df_filtered = df[df['Status'].isin(filtro_status)]
+        mask = df['Status'].isin(filtro_status)
         if search_term:
-            df_filtered = df_filtered[
-                df_filtered['Nome'].str.contains(search_term, case=False, na=False) | 
-                df_filtered['CPF/CNH'].str.contains(search_term, na=False)
-            ]
+            mask &= (
+                df['Nome'].str.contains(search_term, case=False, na=False) | 
+                df['CPF/CNH'].str.contains(search_term, na=False)
+            )
+        
+        df_filtered = df[mask]
 
         # Seleção de Colunas
         st.markdown("### Selecionar Colunas para Exportação")
         all_cols = df_filtered.columns.tolist()
-        cols_default = ['ID', 'Nome', 'CPF/CNH', 'Status', 'Empresas', 'Grupos Vinculados']
+        cols_default = ['ID', 'Nome', 'CPF/CNH', 'Status', 'Empresas', 'Grupos Vinculados', 'Módulos']
         # Garante que os defaults existem
         cols_default = [c for c in cols_default if c in all_cols]
         
@@ -279,6 +296,8 @@ if tipo_relatorio == "Motoristas":
             st.error("Selecione pelo menos uma coluna.")
         else:
             df_display = df_filtered[selected_cols]
+            
+            st.markdown(f"**Total de registros filtrados:** {len(df_display)}")
             
             # Mostra Tabela
             st.dataframe(df_display, use_container_width=True)
