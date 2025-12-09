@@ -38,8 +38,8 @@ def get_retry_session():
     """Cria uma sessão HTTP que tenta reconectar automaticamente."""
     session = requests.Session()
     retries = Retry(
-        total=5, # Aumentado para 5 tentativas
-        backoff_factor=1, # Espera mais entre tentativas
+        total=3, 
+        backoff_factor=1, 
         status_forcelist=[500, 502, 503, 504],
         allowed_methods=["GET"]
     )
@@ -100,7 +100,7 @@ def fetch_data_streaming(url, token, entity_name, params=None):
         status_text.empty()
         progress_bar.empty()
 
-# --- NOVA FUNÇÃO ESPECÍFICA PARA MOTORISTAS (COM RETRY DE JSON) ---
+# --- NOVA FUNÇÃO ESPECÍFICA PARA MOTORISTAS (CORRIGIDA) ---
 def fetch_motoristas_heavy(token):
     url = "https://sigyo.uzzipay.com/api/motoristas"
     params = {
@@ -110,66 +110,75 @@ def fetch_motoristas_heavy(token):
     headers = {
         'Authorization': f'Bearer {token}',
         'Accept-Encoding': 'gzip, deflate',
-        'Connection': 'keep-alive' # Mantém conexão aberta
+        'Connection': 'keep-alive'
     }
 
     status_text = st.empty()
     progress_bar = st.progress(0)
     session = get_retry_session()
     
-    # Tenta até 3 vezes se o JSON vier quebrado
     max_attempts = 3
+    result_data = None
     
-    for attempt in range(1, max_attempts + 1):
-        try:
-            status_text.text(f"Tentativa {attempt}/{max_attempts}: Baixando base de Motoristas (Base Grande)...")
-            
-            # Timeout aumentado para 600s (10 minutos)
-            with session.get(url, headers=headers, params=params, stream=True, timeout=600) as response:
-                response.raise_for_status()
+    try:
+        for attempt in range(1, max_attempts + 1):
+            try:
+                status_text.text(f"Tentativa {attempt}/{max_attempts}: Baixando base de Motoristas...")
                 
-                total_size = int(response.headers.get('content-length', 0))
-                data_buffer = io.BytesIO()
-                downloaded_size = 0
-                # Chunk de 1MB para baixar mais rápido
-                chunk_size = 1024 * 1024 
-                
-                for chunk in response.iter_content(chunk_size=chunk_size):
-                    if chunk:
-                        data_buffer.write(chunk)
-                        downloaded_size += len(chunk)
-                        
-                        mb = downloaded_size / (1024 * 1024)
-                        if total_size > 0:
-                            prog = min(downloaded_size / total_size, 1.0)
-                            status_text.text(f"Tentativa {attempt}: Baixando Motoristas - {mb:.2f} MB de {total_size/(1024*1024):.2f} MB...")
-                            progress_bar.progress(prog)
-                        else:
-                            status_text.text(f"Tentativa {attempt}: Baixando Motoristas - {mb:.2f} MB recebidos...")
+                # Timeout alto (60s deve ser suficiente se o arquivo tem 3MB, mas deixo 120s por segurança)
+                with session.get(url, headers=headers, params=params, stream=True, timeout=120) as response:
+                    response.raise_for_status()
+                    
+                    total_size = int(response.headers.get('content-length', 0))
+                    data_buffer = io.BytesIO()
+                    downloaded_size = 0
+                    chunk_size = 64 * 1024 # 64KB chunks
+                    
+                    for chunk in response.iter_content(chunk_size=chunk_size):
+                        if chunk:
+                            data_buffer.write(chunk)
+                            downloaded_size += len(chunk)
+                            
+                            # Atualiza UI a cada pedaço
+                            mb = downloaded_size / (1024 * 1024)
+                            if total_size > 0:
+                                prog = min(downloaded_size / total_size, 1.0)
+                                progress_bar.progress(prog)
+                                status_text.text(f"Baixando: {mb:.2f} MB / {total_size/(1024*1024):.2f} MB")
+                            else:
+                                status_text.text(f"Baixando: {mb:.2f} MB recebidos...")
 
-                progress_bar.progress(1.0)
-                status_text.text("Download finalizado. Validando integridade do JSON...")
-                
-                data_buffer.seek(0)
-                json_content = json.load(data_buffer) # Aqui que costuma dar erro
-                
-                # Se chegou aqui, funcionou!
-                if isinstance(json_content, list): return json_content
-                elif isinstance(json_content, dict) and 'items' in json_content: return json_content['items']
-                else: return []
+                    progress_bar.progress(1.0)
+                    status_text.text("Validando JSON...")
+                    
+                    data_buffer.seek(0)
+                    json_content = json.load(data_buffer)
+                    
+                    if isinstance(json_content, list): 
+                        result_data = json_content
+                        break
+                    elif isinstance(json_content, dict) and 'items' in json_content: 
+                        result_data = json_content['items']
+                        break
+                    else: 
+                        result_data = []
+                        break
 
-        except json.JSONDecodeError:
-            st.warning(f"Tentativa {attempt} falhou: O arquivo foi cortado pelo servidor. Tentando novamente em 5 segundos...")
-            time.sleep(5) # Espera um pouco antes de tentar de novo
-            progress_bar.progress(0)
-            continue # Tenta próxima iteração
-            
-        except Exception as e:
-            st.error(f"Erro fatal na tentativa {attempt}: {e}")
+            except json.JSONDecodeError:
+                st.warning(f"Tentativa {attempt} falhou: Resposta incompleta. Tentando novamente...")
+                time.sleep(2)
+                continue
+            except Exception as e:
+                st.error(f"Erro na tentativa {attempt}: {e}")
+                time.sleep(2)
+                continue
+        
+        if result_data is None:
+            st.error("Não foi possível baixar a base de motoristas após várias tentativas.")
             return None
             
-    st.error("Falha após 3 tentativas. A base de motoristas é muito grande e o servidor está cortando a conexão. Tente novamente mais tarde.")
-    return None
+        return result_data
+
     finally:
         status_text.empty()
         progress_bar.empty()
@@ -322,7 +331,6 @@ if not api_token:
 if st.button(f"🔄 Consultar {tipo_relatorio}"):
     
     if tipo_relatorio == "Motoristas":
-        # Usa a função "heavy" específica
         raw_data = fetch_motoristas_heavy(api_token)
         if raw_data:
             st.session_state['df_motoristas'] = process_motoristas(raw_data)
@@ -367,7 +375,6 @@ if current_key in st.session_state and not st.session_state[current_key].empty:
     
     col1, col2 = st.columns(2)
     with col1:
-        # Tenta encontrar status
         for col in ['Status', 'Situação', 'Ativo']:
             if col in df.columns:
                 status_opts = sorted(df[col].astype(str).unique())
@@ -392,7 +399,6 @@ if current_key in st.session_state and not st.session_state[current_key].empty:
     st.markdown("#### Seleção de Colunas")
     all_cols = df_filtered.columns.tolist()
     
-    # Defaults
     if tipo_relatorio == "Motoristas": default_view = ['ID', 'Nome', 'CPF/CNH', 'Status', 'Empresas']
     elif tipo_relatorio == "Credenciados": default_view = ['ID', 'Nome Fantasia', 'CNPJ', 'Cidade', 'Responsável']
     else: default_view = ['ID', 'Nome Fantasia', 'CNPJ', 'Cidade', 'Organização']
