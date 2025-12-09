@@ -17,7 +17,6 @@ st.title("🔍 Consulta API Sigyo")
 # --- Barra Lateral (Configurações Globais) ---
 with st.sidebar:
     st.header("Configurações")
-    # Tenta pegar do secrets, se não, pede input
     default_token = st.secrets.get("eliq_api_token", "")
     api_token = st.text_input("Token de Acesso (Bearer)", value=default_token, type="password")
     
@@ -25,7 +24,7 @@ with st.sidebar:
     tipo_relatorio = st.radio(
         "Tipo de Relatório",
         ["Transações", "Motoristas"],
-        index=1 # Padrão selecionado: Motoristas
+        index=1
     )
 
 # ==============================================================================
@@ -38,13 +37,14 @@ def fetch_motoristas_sigyo(token):
     base_url = "https://sigyo.uzzipay.com/api/motoristas"
     headers = {'Authorization': f'Bearer {token}'}
     
-    # PARAMETROS OTIMIZADOS PARA EVITAR TIMEOUT
-    # 'per-page': 50 -> Reduz o tamanho de cada resposta para evitar corte de conexão
+    # Tenta forçar paginação pequena com múltiplos nomes de parâmetros comuns
     params = {
         'expand': 'grupos_vinculados,modulos,empresas,empresas.municipio,empresas.municipio.estado',
         'inline': 'false',
         'page': 1,
-        'per-page': 50 
+        'per-page': 20,  # Padrão Yii2
+        'pageSize': 20,  # Comum em outras APIs
+        'limit': 20      # Comum genérico
     }
     
     all_data = []
@@ -56,28 +56,32 @@ def fetch_motoristas_sigyo(token):
     try:
         while True:
             params['page'] = page
-            # Timeout aumentado para 60s
-            response = requests.get(base_url, headers=headers, params=params, timeout=60)
+            # Timeout aumentado para 120s para conexões lentas
+            response = requests.get(base_url, headers=headers, params=params, timeout=120)
             response.raise_for_status()
             
             try:
                 data = response.json()
-            except json.JSONDecodeError:
-                st.error(f"Erro ao decodificar JSON na página {page}. A resposta do servidor pode ter sido cortada.")
+            except json.JSONDecodeError as e:
+                st.error(f"Erro ao ler JSON na página {page}.")
+                st.error(f"Erro técnico: {e}")
+                # Mostra o início da resposta para diagnóstico (pode ser HTML de erro)
+                st.text(f"Conteúdo recebido (início): {response.text[:500]}")
                 break
             
             # Lógica de paginação
             if isinstance(data, list):
                 items = data
-                # Tenta pegar total dos headers para barra de progresso
+                # Tenta descobrir o total para a barra de progresso
                 total_count = int(response.headers.get('X-Pagination-Total-Count', 0))
-                per_page = int(response.headers.get('X-Pagination-Per-Page', 50))
-                total_pages = (total_count // per_page) + 1 if per_page > 0 else 1
+                per_page_header = int(response.headers.get('X-Pagination-Per-Page', 20))
+                total_pages = (total_count // per_page_header) + 1 if per_page_header > 0 else 1
             elif isinstance(data, dict) and 'items' in data:
                 items = data['items']
                 meta = data.get('_meta', {})
                 total_pages = meta.get('pageCount', 1)
             else:
+                # Estrutura desconhecida ou vazia
                 items = []
                 total_pages = 1
 
@@ -89,10 +93,12 @@ def fetch_motoristas_sigyo(token):
             # Atualiza barra de progresso
             if total_pages > 0:
                 percent = min(page / total_pages, 1.0)
-                my_bar.progress(percent, text=f"Buscando página {page} de {total_pages}...")
+                my_bar.progress(percent, text=f"Buscando página {page} de {total_pages} (Total: {len(all_data)} registros)...")
+            else:
+                my_bar.progress(1.0, text=f"Buscando página {page}...")
             
             # Critério de parada
-            if page >= total_pages:
+            if page >= total_pages and total_pages > 0:
                 break
             if len(items) == 0:
                 break
@@ -100,10 +106,13 @@ def fetch_motoristas_sigyo(token):
             page += 1
             
     except requests.exceptions.Timeout:
-        st.error("A conexão com a API excedeu o tempo limite (Timeout). Tente novamente.")
+        st.error("⏳ A conexão com a API demorou demais (Timeout > 120s).")
+        return pd.DataFrame()
+    except requests.exceptions.HTTPError as e:
+        st.error(f"❌ Erro HTTP: {e}")
         return pd.DataFrame()
     except Exception as e:
-        st.error(f"Erro na comunicação com a API: {e}")
+        st.error(f"❌ Erro inesperado: {e}")
         return pd.DataFrame()
     finally:
         my_bar.empty()
@@ -113,17 +122,12 @@ def fetch_motoristas_sigyo(token):
 
     # --- Processamento dos Dados ---
     
-    # Funções auxiliares para extrair dados das listas aninhadas
     def extract_names(item_list):
-        """Extrai nomes de uma lista de dicionários (ex: grupos, módulos)."""
-        if not isinstance(item_list, list):
-            return ""
+        if not isinstance(item_list, list): return ""
         return ", ".join([str(i.get('nome', '')) for i in item_list if isinstance(i, dict) and i.get('nome')])
 
     def extract_empresas(empresa_list):
-        """Formata lista de empresas como 'Nome (CNPJ)'."""
-        if not isinstance(empresa_list, list):
-            return ""
+        if not isinstance(empresa_list, list): return ""
         nomes = []
         for emp in empresa_list:
             if isinstance(emp, dict):
@@ -132,10 +136,10 @@ def fetch_motoristas_sigyo(token):
                 nomes.append(f"{nome} ({cnpj})")
         return "; ".join(nomes)
 
-    # Construção do DataFrame Manual (Mais seguro e rápido que json_normalize para listas aninhadas)
     processed_rows = []
     
     for d in all_data:
+        # Extração segura com .get()
         row = {
             'ID': d.get('id'),
             'Nome': d.get('nome'),
@@ -148,7 +152,6 @@ def fetch_motoristas_sigyo(token):
             'Status': d.get('status'),
             'Ativo': 'Sim' if d.get('ativo') in [True, 1] else 'Não',
             'Data Cadastro': d.get('data_cadastro'),
-            # Dados Aninhados
             'Grupos Vinculados': extract_names(d.get('grupos_vinculados')),
             'Empresas': extract_empresas(d.get('empresas')),
             'Módulos': extract_names(d.get('modulos'))
@@ -192,7 +195,7 @@ def fetch_transacoes_sigyo(token, start_date, end_date):
             data = response.json()
             if isinstance(data, list) and data:
                 all_data.extend(data)
-                if len(data) < 20: # Assumindo fim da paginação se vier pouco
+                if len(data) < 20: 
                     break
                 page += 1
             else:
@@ -205,10 +208,8 @@ def fetch_transacoes_sigyo(token, start_date, end_date):
     if not all_data:
         return pd.DataFrame()
 
-    # Normalização
     df = pd.json_normalize(all_data)
     
-    # Seleção e Renomeação de Colunas
     cols_map = {
         'id': 'ID Transação',
         'data_cadastro': 'Data',
@@ -222,11 +223,9 @@ def fetch_transacoes_sigyo(token, start_date, end_date):
         'placa': 'Placa'
     }
     
-    # Garante que as colunas existem antes de renomear
     available_cols = [c for c in cols_map.keys() if c in df.columns]
     df_final = df[available_cols].rename(columns=cols_map)
     
-    # Tratamento de dados
     if 'Data' in df_final.columns:
         df_final['Data'] = pd.to_datetime(df_final['Data']).dt.strftime('%d/%m/%Y %H:%M')
     
@@ -257,11 +256,9 @@ if tipo_relatorio == "Motoristas":
         else:
             st.warning("Nenhum motorista encontrado ou erro na busca.")
 
-    # Exibição e Exportação (se houver dados na sessão)
     if 'df_motoristas' in st.session_state and not st.session_state['df_motoristas'].empty:
         df = st.session_state['df_motoristas']
         
-        # Filtros Rápidos
         col_f1, col_f2 = st.columns(2)
         with col_f1:
             status_opts = sorted(df['Status'].astype(str).unique())
@@ -269,7 +266,6 @@ if tipo_relatorio == "Motoristas":
         with col_f2:
             search_term = st.text_input("Buscar por Nome ou CNH:", "")
 
-        # Aplica Filtros
         mask = df['Status'].isin(filtro_status)
         if search_term:
             mask &= (
@@ -279,30 +275,20 @@ if tipo_relatorio == "Motoristas":
         
         df_filtered = df[mask]
 
-        # Seleção de Colunas
         st.markdown("### Selecionar Colunas para Exportação")
         all_cols = df_filtered.columns.tolist()
         cols_default = ['ID', 'Nome', 'CPF/CNH', 'Status', 'Empresas', 'Grupos Vinculados', 'Módulos']
-        # Garante que os defaults existem
         cols_default = [c for c in cols_default if c in all_cols]
         
-        selected_cols = st.multiselect(
-            "Colunas:",
-            all_cols,
-            default=cols_default
-        )
+        selected_cols = st.multiselect("Colunas:", all_cols, default=cols_default)
 
         if not selected_cols:
             st.error("Selecione pelo menos uma coluna.")
         else:
             df_display = df_filtered[selected_cols]
-            
             st.markdown(f"**Total de registros filtrados:** {len(df_display)}")
-            
-            # Mostra Tabela
             st.dataframe(df_display, use_container_width=True)
             
-            # Botão de Exportação
             csv = df_display.to_csv(index=False).encode('utf-8-sig')
             st.download_button(
                 label="📥 Baixar Planilha (CSV)",
@@ -316,7 +302,6 @@ if tipo_relatorio == "Motoristas":
 elif tipo_relatorio == "Transações":
     st.subheader("💲 Relatório de Transações")
     
-    # Filtros de Data
     col1, col2 = st.columns(2)
     today = date.today()
     default_start = today - timedelta(days=7)
@@ -338,25 +323,17 @@ elif tipo_relatorio == "Transações":
             else:
                 st.warning("Nenhuma transação encontrada para o período.")
 
-    # Exibição e Exportação
     if 'df_transacoes' in st.session_state and not st.session_state['df_transacoes'].empty:
         df = st.session_state['df_transacoes']
         
-        # Seleção de Colunas
         st.markdown("### Selecionar Colunas para Exportação")
         all_cols = df.columns.tolist()
-        selected_cols = st.multiselect(
-            "Colunas:",
-            all_cols,
-            default=all_cols
-        )
+        selected_cols = st.multiselect("Colunas:", all_cols, default=all_cols)
         
         if not selected_cols:
             st.error("Selecione pelo menos uma coluna.")
         else:
             df_display = df[selected_cols]
-            
-            # KPIs Rápidos
             if 'Valor Total' in df_display.columns:
                 total_val = df_display['Valor Total'].sum()
                 st.metric("Volume Total no Período", f"R$ {total_val:,.2f}")
