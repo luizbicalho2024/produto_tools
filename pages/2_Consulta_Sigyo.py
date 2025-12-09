@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 import requests
 import json
-import io
 from datetime import date, timedelta
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # --- Configuração da Página ---
 st.set_page_config(
@@ -28,101 +29,133 @@ with st.sidebar:
     )
 
 # ==============================================================================
-# FUNÇÕES DE BUSCA E PROCESSAMENTO (MOTORISTAS - MODO ROBUSTO)
+# FUNÇÕES DE REDE ROBUSTA (SESSION COM RETRY)
 # ==============================================================================
 
-@st.cache_data(show_spinner=False, ttl=300)
+def get_retry_session():
+    """Cria uma sessão HTTP que tenta reconectar automaticamente em caso de falha."""
+    session = requests.Session()
+    # Configura 3 tentativas extras com espera exponencial (0.5s, 1s, 2s...)
+    # Tenta reconectar em erros 500, 502, 503, 504 e desconexões
+    retries = Retry(
+        total=3,
+        backoff_factor=0.5,
+        status_forcelist=[500, 502, 503, 504],
+        allowed_methods=["GET"]
+    )
+    adapter = HTTPAdapter(max_retries=retries)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+# ==============================================================================
+# FUNÇÕES DE BUSCA E PROCESSAMENTO (MOTORISTAS)
+# ==============================================================================
+
+@st.cache_data(show_spinner="Buscando motoristas...", ttl=300)
 def fetch_motoristas_sigyo(token):
-    """
-    Busca motoristas usando técnica de Streaming para suportar grandes volumes de dados (40MB+).
-    Ignora paginação pois a API parece retornar tudo de uma vez.
-    """
+    """Busca motoristas com tolerância a falhas de rede."""
     base_url = "https://sigyo.uzzipay.com/api/motoristas"
-    headers = {
-        'Authorization': f'Bearer {token}',
-        'Accept-Encoding': 'gzip, deflate', # Solicita compressão para baixar mais rápido
-        'Connection': 'keep-alive'
-    }
+    headers = {'Authorization': f'Bearer {token}'}
     
-    # Parâmetros
+    # Parâmetros de paginação redundantes para tentar forçar lotes pequenos
     params = {
         'expand': 'grupos_vinculados,modulos,empresas,empresas.municipio,empresas.municipio.estado',
-        'inline': 'false'
+        'inline': 'false',
+        'page': 1,
+        'per-page': 100,  # Tenta pedir 100 por vez
+        'limit': 100
     }
     
-    status_text = st.empty()
-    progress_bar = st.progress(0)
+    all_data = []
+    page = 1
+    session = get_retry_session() # Usa a sessão robusta
+    
+    progress_text = "Conectando à API..."
+    my_bar = st.progress(0, text=progress_text)
     
     try:
-        status_text.text("Iniciando conexão com a API...")
-        
-        # stream=True é CRUCIAL aqui. Ele não baixa tudo de uma vez.
-        # timeout=300 garante que não caia se a internet oscilar em 5 minutos.
-        with requests.get(base_url, headers=headers, params=params, stream=True, timeout=300) as response:
+        while True:
+            params['page'] = page
+            # Timeout alto (120s) para garantir
+            response = session.get(base_url, headers=headers, params=params, timeout=120)
             response.raise_for_status()
             
-            # Tenta pegar o tamanho total do arquivo (nem sempre a API manda)
-            total_size = int(response.headers.get('content-length', 0))
+            try:
+                data = response.json()
+            except json.JSONDecodeError:
+                # Se falhar no JSON, tenta ler texto cru para ver se é erro HTML
+                st.error(f"Resposta inválida na página {page}. O servidor pode ter cortado a conexão.")
+                break
             
-            # Buffer para armazenar os dados binários
-            data_buffer = io.BytesIO()
-            downloaded_size = 0
+            # --- Lógica de Paginação ---
+            items = []
+            total_pages = 1
             
-            # Baixa em blocos de 100KB
-            chunk_size = 100 * 1024 
-            
-            for chunk in response.iter_content(chunk_size=chunk_size):
-                if chunk:
-                    data_buffer.write(chunk)
-                    downloaded_size += len(chunk)
+            if isinstance(data, list):
+                items = data
+                # Tenta ler headers de paginação
+                total_count = int(response.headers.get('X-Pagination-Total-Count', 0))
+                per_page_sent = int(response.headers.get('X-Pagination-Per-Page', 0))
+                
+                # Se a API retornou mais de 1000 itens de uma vez, ela ignorou a paginação
+                if len(items) > 1000:
+                    total_pages = 1 # Considera página única
+                elif per_page_sent > 0:
+                    total_pages = (total_count // per_page_sent) + 1
+                else:
+                    total_pages = 0 # Indefinido
                     
-                    # Atualiza interface
-                    mb_downloaded = downloaded_size / (1024 * 1024)
-                    if total_size > 0:
-                        progress = min(downloaded_size / total_size, 1.0)
-                        status_text.text(f"Baixando dados: {mb_downloaded:.2f} MB de {total_size/(1024*1024):.2f} MB...")
-                        progress_bar.progress(progress)
-                    else:
-                        status_text.text(f"Baixando dados: {mb_downloaded:.2f} MB recebidos...")
+            elif isinstance(data, dict) and 'items' in data:
+                items = data['items']
+                total_pages = data.get('_meta', {}).get('pageCount', 1)
 
-            progress_bar.progress(1.0)
-            status_text.text("Download concluído! Processando JSON...")
+            if not items:
+                break
+                
+            all_data.extend(items)
             
-            # Volta o ponteiro do buffer para o início e lê
-            data_buffer.seek(0)
-            json_content = json.load(data_buffer) # Carrega o JSON da memória
-            
-            # Verifica estrutura
-            if isinstance(json_content, dict) and 'items' in json_content:
-                return process_motoristas_data(json_content['items'])
-            elif isinstance(json_content, list):
-                return process_motoristas_data(json_content)
+            # Atualiza barra visual
+            if total_pages > 1:
+                percent = min(page / total_pages, 1.0)
+                my_bar.progress(percent, text=f"Baixando página {page} de {total_pages}...")
             else:
-                st.error("Formato de JSON desconhecido recebido da API.")
-                return pd.DataFrame()
-
+                # Se não sabemos o total ou é página única (dump grande)
+                my_bar.progress(1.0, text=f"Processando lote {page} ({len(items)} registros)...")
+            
+            # --- Critérios de Parada ---
+            # 1. Se atingiu a última página conhecida
+            if total_pages > 0 and page >= total_pages:
+                break
+            # 2. Se a lista veio vazia
+            if len(items) == 0:
+                break
+            # 3. Se a API mandou um dump gigante (>5000 itens) na pág 1, assume que acabou
+            if page == 1 and len(items) > 5000:
+                st.info("A API retornou todos os dados em uma única página.")
+                break
+                
+            page += 1
+            
     except requests.exceptions.ChunkedEncodingError:
-        st.error("A conexão foi cortada pelo servidor enquanto os dados eram baixados.")
+        st.error("Erro de Conexão: O servidor cortou a transmissão dos dados. Tente novamente.")
         return pd.DataFrame()
-    except json.JSONDecodeError as e:
-        st.error(f"Erro ao ler o JSON final (arquivo corrompido ou incompleto): {e}")
+    except requests.exceptions.RetryError:
+        st.error("Falha após várias tentativas de reconexão.")
         return pd.DataFrame()
     except Exception as e:
-        st.error(f"Erro geral: {e}")
+        st.error(f"Erro na comunicação com a API: {e}")
         return pd.DataFrame()
     finally:
-        status_text.empty()
-        progress_bar.empty()
+        my_bar.empty()
 
-def process_motoristas_data(all_data):
-    """Processa a lista crua de dicionários para um DataFrame formatado."""
     if not all_data:
         return pd.DataFrame()
 
-    # Funções auxiliares para dados aninhados
+    # --- Processamento dos Dados ---
+    
     def extract_names(item_list):
         if not isinstance(item_list, list): return ""
-        # Proteção contra itens nulos na lista
         return ", ".join([str(i.get('nome', '')) for i in item_list if isinstance(i, dict) and i.get('nome')])
 
     def extract_empresas(empresa_list):
@@ -137,10 +170,8 @@ def process_motoristas_data(all_data):
 
     processed_rows = []
     
-    # Iteração manual é mais segura que json_normalize para listas complexas aninhadas
     for d in all_data:
         if not isinstance(d, dict): continue
-        
         row = {
             'ID': d.get('id'),
             'Nome': d.get('nome'),
@@ -153,7 +184,6 @@ def process_motoristas_data(all_data):
             'Status': d.get('status'),
             'Ativo': 'Sim' if d.get('ativo') in [True, 1] else 'Não',
             'Data Cadastro': d.get('data_cadastro'),
-            # Extração dos campos aninhados
             'Grupos Vinculados': extract_names(d.get('grupos_vinculados')),
             'Empresas': extract_empresas(d.get('empresas')),
             'Módulos': extract_names(d.get('modulos'))
@@ -162,7 +192,7 @@ def process_motoristas_data(all_data):
 
     output = pd.DataFrame(processed_rows)
     
-    # Formatação de datas
+    # Tratamento final de datas
     if 'Validade CNH' in output.columns:
         output['Validade CNH'] = pd.to_datetime(output['Validade CNH'], errors='coerce').dt.strftime('%d/%m/%Y')
     if 'Data Cadastro' in output.columns:
@@ -179,18 +209,18 @@ def fetch_transacoes_sigyo(token, start_date, end_date):
     """ Busca dados da API de Transações. """
     base_url = "https://sigyo.uzzipay.com/api/transacoes"
     headers = {'Authorization': f'Bearer {token}'}
-    
     start_str = start_date.strftime('%d/%m/%Y')
     end_str = end_date.strftime('%d/%m/%Y')
     params = {'TransacaoSearch[data_cadastro]': f'{start_str} - {end_str}'}
 
     all_data = []
     page = 1
+    session = get_retry_session()
     
     try:
         while True:
             params['page'] = page
-            response = requests.get(base_url, headers=headers, params=params, timeout=30)
+            response = session.get(base_url, headers=headers, params=params, timeout=60)
             
             if response.status_code != 200:
                 st.error(f"Erro na API: {response.status_code} - {response.text}")
@@ -232,7 +262,6 @@ def fetch_transacoes_sigyo(token, start_date, end_date):
     
     if 'Data' in df_final.columns:
         df_final['Data'] = pd.to_datetime(df_final['Data']).dt.strftime('%d/%m/%Y %H:%M')
-    
     if 'Valor Total' in df_final.columns:
         df_final['Valor Total'] = pd.to_numeric(df_final['Valor Total'], errors='coerce')
 
@@ -249,18 +278,16 @@ if not api_token:
 # --- BLOCO DE RELATÓRIO: MOTORISTAS ---
 if tipo_relatorio == "Motoristas":
     st.subheader("📋 Base de Motoristas")
-    st.info("Este relatório busca a base completa de motoristas cadastrados.")
+    st.info("Este relatório lista todos os motoristas cadastrados, com seus grupos, empresas e status.")
 
     if st.button("🔄 Buscar Dados de Motoristas"):
-        # Limpa cache anterior se necessário para forçar nova busca
-        # fetch_motoristas_sigyo.clear() 
         df_motoristas = fetch_motoristas_sigyo(api_token)
         
         if not df_motoristas.empty:
             st.session_state['df_motoristas'] = df_motoristas
             st.success(f"Sucesso! {len(df_motoristas)} motoristas carregados.")
         else:
-            st.warning("Nenhum dado retornado. Verifique o Token ou tente novamente.")
+            st.warning("A busca não retornou dados. Verifique a conexão ou tente novamente.")
 
     if 'df_motoristas' in st.session_state and not st.session_state['df_motoristas'].empty:
         df = st.session_state['df_motoristas']
@@ -284,9 +311,8 @@ if tipo_relatorio == "Motoristas":
         st.markdown("### Selecionar Colunas para Exportação")
         all_cols = df_filtered.columns.tolist()
         cols_default = ['ID', 'Nome', 'CPF/CNH', 'Status', 'Empresas', 'Grupos Vinculados', 'Módulos']
-        # Validação para garantir que colunas existem
         cols_default = [c for c in cols_default if c in all_cols]
-        if not cols_default and all_cols: cols_default = all_cols[:5]
+        if not cols_default: cols_default = all_cols[:5]
         
         selected_cols = st.multiselect("Colunas:", all_cols, default=cols_default)
 
