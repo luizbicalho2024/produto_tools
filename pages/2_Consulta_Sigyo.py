@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 import requests
-import io
 import json
+import io
 from datetime import date, timedelta
 
 # --- Configuração da Página ---
@@ -28,102 +28,101 @@ with st.sidebar:
     )
 
 # ==============================================================================
-# FUNÇÕES DE BUSCA E PROCESSAMENTO (MOTORISTAS)
+# FUNÇÕES DE BUSCA E PROCESSAMENTO (MOTORISTAS - MODO ROBUSTO)
 # ==============================================================================
 
-@st.cache_data(show_spinner="Buscando motoristas...", ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def fetch_motoristas_sigyo(token):
-    """Busca todos os motoristas paginados e processa os dados aninhados."""
+    """
+    Busca motoristas usando técnica de Streaming para suportar grandes volumes de dados (40MB+).
+    Ignora paginação pois a API parece retornar tudo de uma vez.
+    """
     base_url = "https://sigyo.uzzipay.com/api/motoristas"
-    headers = {'Authorization': f'Bearer {token}'}
-    
-    # Tenta forçar paginação pequena com múltiplos nomes de parâmetros comuns
-    params = {
-        'expand': 'grupos_vinculados,modulos,empresas,empresas.municipio,empresas.municipio.estado',
-        'inline': 'false',
-        'page': 1,
-        'per-page': 20,  # Padrão Yii2
-        'pageSize': 20,  # Comum em outras APIs
-        'limit': 20      # Comum genérico
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Accept-Encoding': 'gzip, deflate', # Solicita compressão para baixar mais rápido
+        'Connection': 'keep-alive'
     }
     
-    all_data = []
-    page = 1
+    # Parâmetros
+    params = {
+        'expand': 'grupos_vinculados,modulos,empresas,empresas.municipio,empresas.municipio.estado',
+        'inline': 'false'
+    }
     
-    progress_text = "Iniciando busca de motoristas..."
-    my_bar = st.progress(0, text=progress_text)
+    status_text = st.empty()
+    progress_bar = st.progress(0)
     
     try:
-        while True:
-            params['page'] = page
-            # Timeout aumentado para 120s para conexões lentas
-            response = requests.get(base_url, headers=headers, params=params, timeout=120)
+        status_text.text("Iniciando conexão com a API...")
+        
+        # stream=True é CRUCIAL aqui. Ele não baixa tudo de uma vez.
+        # timeout=300 garante que não caia se a internet oscilar em 5 minutos.
+        with requests.get(base_url, headers=headers, params=params, stream=True, timeout=300) as response:
             response.raise_for_status()
             
-            try:
-                data = response.json()
-            except json.JSONDecodeError as e:
-                st.error(f"Erro ao ler JSON na página {page}.")
-                st.error(f"Erro técnico: {e}")
-                # Mostra o início da resposta para diagnóstico (pode ser HTML de erro)
-                st.text(f"Conteúdo recebido (início): {response.text[:500]}")
-                break
+            # Tenta pegar o tamanho total do arquivo (nem sempre a API manda)
+            total_size = int(response.headers.get('content-length', 0))
             
-            # Lógica de paginação
-            if isinstance(data, list):
-                items = data
-                # Tenta descobrir o total para a barra de progresso
-                total_count = int(response.headers.get('X-Pagination-Total-Count', 0))
-                per_page_header = int(response.headers.get('X-Pagination-Per-Page', 20))
-                total_pages = (total_count // per_page_header) + 1 if per_page_header > 0 else 1
-            elif isinstance(data, dict) and 'items' in data:
-                items = data['items']
-                meta = data.get('_meta', {})
-                total_pages = meta.get('pageCount', 1)
-            else:
-                # Estrutura desconhecida ou vazia
-                items = []
-                total_pages = 1
+            # Buffer para armazenar os dados binários
+            data_buffer = io.BytesIO()
+            downloaded_size = 0
+            
+            # Baixa em blocos de 100KB
+            chunk_size = 100 * 1024 
+            
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if chunk:
+                    data_buffer.write(chunk)
+                    downloaded_size += len(chunk)
+                    
+                    # Atualiza interface
+                    mb_downloaded = downloaded_size / (1024 * 1024)
+                    if total_size > 0:
+                        progress = min(downloaded_size / total_size, 1.0)
+                        status_text.text(f"Baixando dados: {mb_downloaded:.2f} MB de {total_size/(1024*1024):.2f} MB...")
+                        progress_bar.progress(progress)
+                    else:
+                        status_text.text(f"Baixando dados: {mb_downloaded:.2f} MB recebidos...")
 
-            if not items:
-                break
-                
-            all_data.extend(items)
+            progress_bar.progress(1.0)
+            status_text.text("Download concluído! Processando JSON...")
             
-            # Atualiza barra de progresso
-            if total_pages > 0:
-                percent = min(page / total_pages, 1.0)
-                my_bar.progress(percent, text=f"Buscando página {page} de {total_pages} (Total: {len(all_data)} registros)...")
+            # Volta o ponteiro do buffer para o início e lê
+            data_buffer.seek(0)
+            json_content = json.load(data_buffer) # Carrega o JSON da memória
+            
+            # Verifica estrutura
+            if isinstance(json_content, dict) and 'items' in json_content:
+                return process_motoristas_data(json_content['items'])
+            elif isinstance(json_content, list):
+                return process_motoristas_data(json_content)
             else:
-                my_bar.progress(1.0, text=f"Buscando página {page}...")
-            
-            # Critério de parada
-            if page >= total_pages and total_pages > 0:
-                break
-            if len(items) == 0:
-                break
-                
-            page += 1
-            
-    except requests.exceptions.Timeout:
-        st.error("⏳ A conexão com a API demorou demais (Timeout > 120s).")
+                st.error("Formato de JSON desconhecido recebido da API.")
+                return pd.DataFrame()
+
+    except requests.exceptions.ChunkedEncodingError:
+        st.error("A conexão foi cortada pelo servidor enquanto os dados eram baixados.")
         return pd.DataFrame()
-    except requests.exceptions.HTTPError as e:
-        st.error(f"❌ Erro HTTP: {e}")
+    except json.JSONDecodeError as e:
+        st.error(f"Erro ao ler o JSON final (arquivo corrompido ou incompleto): {e}")
         return pd.DataFrame()
     except Exception as e:
-        st.error(f"❌ Erro inesperado: {e}")
+        st.error(f"Erro geral: {e}")
         return pd.DataFrame()
     finally:
-        my_bar.empty()
+        status_text.empty()
+        progress_bar.empty()
 
+def process_motoristas_data(all_data):
+    """Processa a lista crua de dicionários para um DataFrame formatado."""
     if not all_data:
         return pd.DataFrame()
 
-    # --- Processamento dos Dados ---
-    
+    # Funções auxiliares para dados aninhados
     def extract_names(item_list):
         if not isinstance(item_list, list): return ""
+        # Proteção contra itens nulos na lista
         return ", ".join([str(i.get('nome', '')) for i in item_list if isinstance(i, dict) and i.get('nome')])
 
     def extract_empresas(empresa_list):
@@ -138,8 +137,10 @@ def fetch_motoristas_sigyo(token):
 
     processed_rows = []
     
+    # Iteração manual é mais segura que json_normalize para listas complexas aninhadas
     for d in all_data:
-        # Extração segura com .get()
+        if not isinstance(d, dict): continue
+        
         row = {
             'ID': d.get('id'),
             'Nome': d.get('nome'),
@@ -152,6 +153,7 @@ def fetch_motoristas_sigyo(token):
             'Status': d.get('status'),
             'Ativo': 'Sim' if d.get('ativo') in [True, 1] else 'Não',
             'Data Cadastro': d.get('data_cadastro'),
+            # Extração dos campos aninhados
             'Grupos Vinculados': extract_names(d.get('grupos_vinculados')),
             'Empresas': extract_empresas(d.get('empresas')),
             'Módulos': extract_names(d.get('modulos'))
@@ -160,9 +162,11 @@ def fetch_motoristas_sigyo(token):
 
     output = pd.DataFrame(processed_rows)
     
-    # Tratamento final de datas
-    output['Validade CNH'] = pd.to_datetime(output['Validade CNH'], errors='coerce').dt.strftime('%d/%m/%Y')
-    output['Data Cadastro'] = pd.to_datetime(output['Data Cadastro'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
+    # Formatação de datas
+    if 'Validade CNH' in output.columns:
+        output['Validade CNH'] = pd.to_datetime(output['Validade CNH'], errors='coerce').dt.strftime('%d/%m/%Y')
+    if 'Data Cadastro' in output.columns:
+        output['Data Cadastro'] = pd.to_datetime(output['Data Cadastro'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
     
     return output
 
@@ -245,16 +249,18 @@ if not api_token:
 # --- BLOCO DE RELATÓRIO: MOTORISTAS ---
 if tipo_relatorio == "Motoristas":
     st.subheader("📋 Base de Motoristas")
-    st.info("Este relatório lista todos os motoristas cadastrados, com seus grupos, empresas e status.")
+    st.info("Este relatório busca a base completa de motoristas cadastrados.")
 
     if st.button("🔄 Buscar Dados de Motoristas"):
+        # Limpa cache anterior se necessário para forçar nova busca
+        # fetch_motoristas_sigyo.clear() 
         df_motoristas = fetch_motoristas_sigyo(api_token)
         
         if not df_motoristas.empty:
             st.session_state['df_motoristas'] = df_motoristas
-            st.success(f"{len(df_motoristas)} motoristas encontrados!")
+            st.success(f"Sucesso! {len(df_motoristas)} motoristas carregados.")
         else:
-            st.warning("Nenhum motorista encontrado ou erro na busca.")
+            st.warning("Nenhum dado retornado. Verifique o Token ou tente novamente.")
 
     if 'df_motoristas' in st.session_state and not st.session_state['df_motoristas'].empty:
         df = st.session_state['df_motoristas']
@@ -278,7 +284,9 @@ if tipo_relatorio == "Motoristas":
         st.markdown("### Selecionar Colunas para Exportação")
         all_cols = df_filtered.columns.tolist()
         cols_default = ['ID', 'Nome', 'CPF/CNH', 'Status', 'Empresas', 'Grupos Vinculados', 'Módulos']
+        # Validação para garantir que colunas existem
         cols_default = [c for c in cols_default if c in all_cols]
+        if not cols_default and all_cols: cols_default = all_cols[:5]
         
         selected_cols = st.multiselect("Colunas:", all_cols, default=cols_default)
 
