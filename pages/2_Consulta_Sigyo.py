@@ -2,9 +2,10 @@ import streamlit as st
 import pandas as pd
 import requests
 import json
-import io
 import time
 import gc
+import tempfile
+import os
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -32,16 +33,15 @@ with st.sidebar:
     )
 
 # ==============================================================================
-# FUNÇÕES DE REDE (BLINDADAS)
+# FUNÇÕES DE REDE (BLINDADAS - VERSÃO DISK CACHE)
 # ==============================================================================
 
 def get_retry_session():
-    """Cria uma sessão HTTP que tenta reconectar automaticamente."""
+    """Cria uma sessão HTTP com estratégia agressiva de reconexão."""
     session = requests.Session()
-    # Aumentando o backoff_factor para dar mais tempo entre retries automáticos do requests
     retries = Retry(
         total=5, 
-        backoff_factor=2, 
+        backoff_factor=2, # Espera 2s, 4s, 8s...
         status_forcelist=[500, 502, 503, 504],
         allowed_methods=["GET"]
     )
@@ -52,8 +52,7 @@ def get_retry_session():
 
 def fetch_data_robust(url, token, entity_name, params=None):
     """
-    Função robusta de download (Streaming + Retry) para todas as entidades.
-    Melhorada com User-Agent, Garbage Collection e Timeout estendido.
+    Realiza o download salvando em arquivo temporário (DISCO) para economizar RAM.
     """
     headers = {
         'Authorization': f'Bearer {token}',
@@ -65,65 +64,59 @@ def fetch_data_robust(url, token, entity_name, params=None):
     status_text = st.empty()
     progress_bar = st.progress(0)
     
-    # Session única para reutilizar conexões TCP (Keep-Alive)
     session = get_retry_session()
-    
     max_attempts = 3
     result_data = None
+    temp_file_path = None
     
     try:
         for attempt in range(1, max_attempts + 1):
-            data_buffer = None # Inicializa para garantir limpeza
             try:
-                status_text.markdown(f"⏳ **Tentativa {attempt}/{max_attempts}:** Conectando à API de {entity_name} (Aguarde, pode demorar)...")
+                status_text.markdown(f"⏳ **Tentativa {attempt}/{max_attempts}:** Baixando {entity_name} para disco temporário...")
                 
-                # Timeout aumentado para 900s (15 min) devido à lentidão relatada
-                # stream=True é crucial para evitar travar enquanto baixa headers
+                # Timeout alto para conexões lentas
                 with session.get(url, headers=headers, params=params, stream=True, timeout=900) as response:
                     if response.status_code != 200:
                         st.error(f"Erro na API ({response.status_code}): {response.text[:500]}")
-                        time.sleep(5) # Espera antes de tentar novamente ou sair
+                        time.sleep(5)
                         continue
                     
                     total_size = int(response.headers.get('content-length', 0))
-                    data_buffer = io.BytesIO()
                     downloaded_size = 0
                     chunk_size = 1024 * 1024 # 1MB chunks
                     
-                    status_text.text(f"Recebendo dados de {entity_name}...")
-                    
-                    for chunk in response.iter_content(chunk_size=chunk_size):
-                        if chunk:
-                            data_buffer.write(chunk)
-                            downloaded_size += len(chunk)
-                            
-                            if total_size > 0:
-                                prog = min(downloaded_size / total_size, 1.0)
-                                progress_bar.progress(prog)
-                                mb_down = downloaded_size / (1024 * 1024)
-                                mb_total = total_size / (1024 * 1024)
-                                status_text.text(f"Baixando {entity_name}: {mb_down:.2f} MB / {mb_total:.2f} MB")
-                            else:
-                                mb_down = downloaded_size / (1024 * 1024)
-                                status_text.text(f"Baixando {entity_name}: {mb_down:.2f} MB recebidos...")
+                    # Cria arquivo temporário no disco (não ocupa RAM)
+                    with tempfile.NamedTemporaryFile(delete=False, mode='wb') as tmp_file:
+                        temp_file_path = tmp_file.name
+                        
+                        for chunk in response.iter_content(chunk_size=chunk_size):
+                            if chunk:
+                                tmp_file.write(chunk)
+                                downloaded_size += len(chunk)
+                                
+                                # Atualiza progresso visual
+                                if total_size > 0:
+                                    prog = min(downloaded_size / total_size, 1.0)
+                                    progress_bar.progress(prog)
+                                    mb_down = downloaded_size / (1024 * 1024)
+                                    mb_total = total_size / (1024 * 1024)
+                                    status_text.text(f"Baixando: {mb_down:.2f} MB / {mb_total:.2f} MB")
+                                else:
+                                    mb_down = downloaded_size / (1024 * 1024)
+                                    status_text.text(f"Baixando: {mb_down:.2f} MB recebidos...")
+
+                    # Validação básica de tamanho (se content-length existir)
+                    if total_size > 0 and downloaded_size < total_size:
+                        raise Exception(f"Download incompleto. Esperado: {total_size}, Recebido: {downloaded_size}")
 
                     progress_bar.progress(1.0)
-                    status_text.text("Processando JSON (Isso pode consumir memória)...")
+                    status_text.text("Lendo arquivo do disco e processando JSON...")
                     
-                    data_buffer.seek(0)
+                    # Carrega do disco para evitar pico de memória
+                    with open(temp_file_path, 'r', encoding='utf-8') as f:
+                        json_content = json.load(f)
                     
-                    # Carregamento do JSON
-                    try:
-                        json_content = json.load(data_buffer)
-                    except json.JSONDecodeError as e:
-                        st.error(f"Erro ao decodificar JSON: O download pode ter sido interrompido. ({e})")
-                        continue
-
-                    # Limpeza imediata do buffer binário para liberar RAM
-                    del data_buffer
-                    gc.collect() 
-                    
-                    # Normalização
+                    # Validação e Extração
                     if isinstance(json_content, list): 
                         result_data = json_content
                         break
@@ -135,27 +128,24 @@ def fetch_data_robust(url, token, entity_name, params=None):
                         result_data = []
                         break
 
-            except requests.exceptions.ChunkedEncodingError:
-                st.warning(f"Tentativa {attempt}: Conexão interrompida durante o download. Reconectando...")
-                time.sleep(5)
-                continue
-            except requests.exceptions.ReadTimeout:
-                st.warning(f"Tentativa {attempt}: O servidor demorou muito para responder. Reconectando...")
-                time.sleep(5)
+            except json.JSONDecodeError as e:
+                st.warning(f"Tentativa {attempt}: Arquivo corrompido (JSON inválido). Retentando... Erro: {str(e)[:100]}")
+                time.sleep(3)
                 continue
             except Exception as e:
-                st.error(f"Erro inesperado na tentativa {attempt}: {e}")
+                st.warning(f"Tentativa {attempt} falhou: {str(e)}. Retentando em 5s...")
                 time.sleep(5)
                 continue
             finally:
-                # Garante que memória seja liberada se algo der errado no loop
-                if 'data_buffer' in locals() and data_buffer is not None:
-                    data_buffer.close()
-                    del data_buffer
-                    gc.collect()
+                # Limpa arquivo temporário se existir
+                if temp_file_path and os.path.exists(temp_file_path):
+                    try:
+                        os.remove(temp_file_path)
+                    except:
+                        pass
         
         if result_data is None:
-            st.error(f"❌ Falha ao baixar {entity_name} após {max_attempts} tentativas. Verifique a estabilidade da API.")
+            st.error(f"❌ Não foi possível obter os dados de {entity_name} após {max_attempts} tentativas.")
             return None
             
         return result_data
@@ -164,6 +154,7 @@ def fetch_data_robust(url, token, entity_name, params=None):
         status_text.empty()
         progress_bar.empty()
         session.close()
+        gc.collect()
 
 # ==============================================================================
 # PROCESSADORES DE DADOS
@@ -187,7 +178,7 @@ def process_motoristas(all_data):
         return "; ".join(items)
 
     processed_rows = []
-    # Usando itertuples ou simples iteração, mas mantendo a lógica original
+    # Otimização: List Comprehension para loop mais rápido
     for d in all_data:
         if not isinstance(d, dict): continue
         processed_rows.append({
@@ -207,7 +198,7 @@ def process_motoristas(all_data):
             'Módulos': extract_names(d.get('modulos'))
         })
     
-    # Limpa a lista original para liberar memória antes de criar o DataFrame
+    # Limpeza agressiva
     del all_data
     gc.collect()
 
@@ -336,10 +327,11 @@ if not api_token:
 
 if st.button(f"🔄 Consultar {tipo_relatorio}"):
     
-    # Limpa dados anteriores da memória antes de buscar novos
-    if 'df_motoristas' in st.session_state: del st.session_state['df_motoristas']
-    if 'df_credenciados' in st.session_state: del st.session_state['df_credenciados']
-    if 'df_clientes' in st.session_state: del st.session_state['df_clientes']
+    # Limpa dados anteriores da memória para evitar OOM
+    keys_to_clear = ['df_motoristas', 'df_credenciados', 'df_clientes']
+    for k in keys_to_clear:
+        if k in st.session_state:
+            del st.session_state[k]
     gc.collect()
 
     if tipo_relatorio == "Motoristas":
@@ -348,7 +340,7 @@ if st.button(f"🔄 Consultar {tipo_relatorio}"):
             'expand': 'grupos_vinculados,modulos,empresas,empresas.municipio,empresas.municipio.estado',
             'inline': 'false'
         }
-        with st.spinner("Conectando à API de Motoristas (isso pode levar alguns minutos se a base for grande)..."):
+        with st.spinner("Baixando base de Motoristas..."):
             raw_data = fetch_data_robust(url, api_token, "Motoristas", params)
             if raw_data:
                 st.session_state['df_motoristas'] = process_motoristas(raw_data)
@@ -357,7 +349,7 @@ if st.button(f"🔄 Consultar {tipo_relatorio}"):
     elif tipo_relatorio == "Credenciados":
         url = "https://sigyo.uzzipay.com/api/credenciados"
         params = {'expand': 'dadosAcesso,municipio,municipio.estado,modulos', 'inline': 'false'}
-        with st.spinner("Consultando Credenciados..."):
+        with st.spinner("Baixando base de Credenciados..."):
             raw_data = fetch_data_robust(url, api_token, "Credenciados", params)
             if raw_data:
                 st.session_state['df_credenciados'] = process_credenciados(raw_data)
@@ -366,7 +358,7 @@ if st.button(f"🔄 Consultar {tipo_relatorio}"):
     elif tipo_relatorio == "Clientes":
         url = "https://sigyo.uzzipay.com/api/clientes"
         params = {'expand': 'municipio,municipio.estado,modulos,organizacao,tipo', 'inline': 'false'}
-        with st.spinner("Consultando Clientes..."):
+        with st.spinner("Baixando base de Clientes..."):
             raw_data = fetch_data_robust(url, api_token, "Clientes", params)
             if raw_data:
                 st.session_state['df_clientes'] = process_clientes(raw_data)
@@ -395,13 +387,13 @@ if current_key in st.session_state and isinstance(st.session_state[current_key],
     
     col1, col2 = st.columns(2)
     with col1:
-        # Tenta encontrar status para filtro
-        for col in ['Status', 'Situação', 'Ativo']:
-            if col in df.columns:
-                status_opts = sorted(df[col].astype(str).unique())
-                filtro_status = st.multiselect(f"Filtrar por {col}:", options=status_opts, default=status_opts)
-                mask = df[col].isin(filtro_status)
-                break
+        # Filtros automáticos de Status/Ativo
+        status_cols = [c for c in ['Status', 'Situação', 'Ativo'] if c in df.columns]
+        if status_cols:
+            col_filter = status_cols[0]
+            status_opts = sorted(df[col_filter].astype(str).unique())
+            filtro_status = st.multiselect(f"Filtrar por {col_filter}:", options=status_opts, default=status_opts)
+            mask = df[col_filter].isin(filtro_status)
         else:
             mask = pd.Series([True] * len(df))
     
@@ -420,6 +412,7 @@ if current_key in st.session_state and isinstance(st.session_state[current_key],
     st.markdown("#### Seleção de Colunas")
     all_cols = df_filtered.columns.tolist()
     
+    # Colunas padrão por tipo
     if tipo_relatorio == "Motoristas": 
         default_view = ['ID', 'Nome', 'CPF/CNH', 'Status', 'Empresas']
     elif tipo_relatorio == "Credenciados": 
