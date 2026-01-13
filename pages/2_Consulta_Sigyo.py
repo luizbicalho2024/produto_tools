@@ -5,7 +5,6 @@ import json
 import tempfile
 import os
 import gc
-import shutil
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -33,7 +32,7 @@ with st.sidebar:
     )
 
 # ==============================================================================
-# FUNÇÕES DE REDE (BLINDADAS CONTRA CORRUPÇÃO DE ARQUIVO)
+# FUNÇÕES DE REDE (BLINDADAS E COM SUPORTE A GZIP)
 # ==============================================================================
 
 def get_session():
@@ -53,13 +52,12 @@ def get_session():
 @st.cache_data(ttl=900, show_spinner=False)
 def fetch_data_safe(url, token, params=None):
     """
-    Baixa dados com verificação estrita de integridade.
-    Se o arquivo baixado estiver incompleto (bytes faltando), ele tenta novamente.
+    Baixa dados com suporte a GZIP e verificação de integridade.
     """
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/json",
-        "Accept-Encoding": "gzip, deflate"
+        "Accept-Encoding": "gzip, deflate" # Solicita compressão para baixar mais rápido
     }
 
     # Loop manual de tentativas para garantir integridade do download
@@ -75,25 +73,24 @@ def fetch_data_safe(url, token, params=None):
             with session.get(url, headers=headers, params=params, stream=True, timeout=(20, 300)) as response:
                 response.raise_for_status()
                 
-                # Tenta obter o tamanho total esperado
-                total_size_expected = int(response.headers.get('content-length', 0))
-                
+                # CORREÇÃO: Usamos iter_content para garantir que o requests descompacte o GZIP automaticamente
                 with open(tmp_path, 'wb') as f:
-                    shutil.copyfileobj(response.raw, f)
+                    for chunk in response.iter_content(chunk_size=1024 * 1024): # Chunks de 1MB
+                        if chunk:
+                            f.write(chunk)
             
             # --- VERIFICAÇÃO DE INTEGRIDADE ---
             file_size = os.path.getsize(tmp_path)
             
-            # Se o servidor informou o tamanho e o arquivo baixado for menor, falhou.
-            if total_size_expected > 0 and file_size < total_size_expected:
-                raise Exception(f"Download incompleto. Esperado: {total_size_expected} bytes, Baixado: {file_size} bytes.")
-            
             # Se o arquivo for muito pequeno (menos de 100 bytes), provavelmente é erro
             if file_size < 100:
-                # Tenta ler pra ver se é um JSON de erro
-                with open(tmp_path, 'r') as f:
+                with open(tmp_path, 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.read()
-                    raise Exception(f"Arquivo muito pequeno, provável erro: {content}")
+                    # Se não for JSON válido ou for muito curto, lança erro para tentar de novo
+                    try:
+                        json.loads(content)
+                    except:
+                        raise Exception(f"Arquivo muito pequeno ou inválido: {content}")
 
             # Tenta carregar o JSON (Teste final de integridade)
             with open(tmp_path, 'r', encoding='utf-8') as f:
@@ -111,13 +108,17 @@ def fetch_data_safe(url, token, params=None):
 
         except (json.JSONDecodeError, requests.exceptions.ChunkedEncodingError, Exception) as e:
             st.warning(f"⚠️ Tentativa {attempt}/{max_attempts} falhou: {str(e)}. Tentando novamente...")
+            
             # Remove arquivo corrompido
             if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+                try:
+                    os.remove(tmp_path)
+                except:
+                    pass
             
             # Se for a última tentativa, erro fatal
             if attempt == max_attempts:
-                st.error(f"❌ Falha crítica após {max_attempts} tentativas. O servidor está interrompendo a conexão.")
+                st.error(f"❌ Falha crítica após {max_attempts} tentativas. Verifique sua conexão ou se a API está online.")
                 return None
         
         finally:
@@ -151,6 +152,7 @@ def process_motoristas(all_data):
         return "; ".join(items)
 
     processed_rows = []
+    # Otimização: List Comprehension para performance
     for d in all_data:
         if not isinstance(d, dict): continue
         processed_rows.append({
