@@ -1,14 +1,17 @@
 import streamlit as st
 import pandas as pd
-import requests
 import json
+import csv
+import os
+import tempfile
 import gc
 import time
-# Tenta importar ijson, se não tiver, avisa o usuário
+
+# Tenta importar ijson (obrigatório para arquivos grandes)
 try:
     import ijson
 except ImportError:
-    st.error("Biblioteca 'ijson' não encontrada. Adicione 'ijson' ao seu requirements.txt")
+    st.error("⚠️ Biblioteca 'ijson' não instalada. Adicione 'ijson' ao requirements.txt")
     st.stop()
 
 # --- Configuração da Página ---
@@ -18,30 +21,29 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.title("🔍 Consulta Cadastral Sigyo")
+st.title("🔍 Consulta Cadastral Sigyo (Modo Streaming)")
 
 # --- Barra Lateral ---
 with st.sidebar:
     st.header("📂 Tipo de Dados")
     tipo_relatorio = st.radio(
-        "Qual base você vai carregar?",
+        "Selecione a base:",
         ["Motoristas", "Credenciados", "Clientes"],
         index=0
     )
     
     st.markdown("---")
-    st.header("⚙️ Modo API (Opcional)")
-    default_token = st.secrets.get("eliq_api_token", "")
-    api_token = st.text_input("Token (apenas para busca online)", value=default_token, type="password")
+    st.info("ℹ️ Este modo converte o JSON diretamente para CSV no disco, economizando memória e evitando travamentos.")
 
 # ==============================================================================
-# FUNÇÕES DE PROCESSAMENTO OTIMIZADO (STREAMING)
+# FUNÇÕES DE LIMPEZA (PROCESSADORES)
 # ==============================================================================
 
 def clean_motorista_record(d):
-    """Processa um único registro de motorista para economizar memória."""
+    """Processa registro de motorista."""
     if not isinstance(d, dict): return None
     
+    # Extração segura de listas
     grupos = ", ".join([str(g.get('nome','')) for g in d.get('grupos_vinculados', []) if isinstance(g, dict)])
     modulos = ", ".join([str(m.get('nome','')) for m in d.get('modulos', []) if isinstance(m, dict)])
     
@@ -73,6 +75,7 @@ def clean_motorista_record(d):
     }
 
 def clean_credenciado_record(d):
+    """Processa registro de credenciado."""
     if not isinstance(d, dict): return None
     muni = d.get('municipio') or {}
     estado = muni.get('estado') or {}
@@ -104,6 +107,7 @@ def clean_credenciado_record(d):
     }
 
 def clean_cliente_record(d):
+    """Processa registro de cliente."""
     if not isinstance(d, dict): return None
     muni = d.get('municipio') or {}
     estado = muni.get('estado') or {}
@@ -133,160 +137,126 @@ def clean_cliente_record(d):
         'Data Cadastro': d.get('data_cadastro')
     }
 
-def process_file_with_ijson(uploaded_file, record_processor):
-    """Lê o JSON via streaming (ijson) e processa em chunks para não estourar RAM."""
-    data_buffer = []
-    chunk_size = 5000  # Processa 5000 registros e converte para DF
-    dfs = []
+# ==============================================================================
+# MOTOR DE CONVERSÃO (STREAMING TO CSV)
+# ==============================================================================
+
+def stream_json_to_csv(input_file, processor):
+    """
+    Lê o JSON via stream e escreve imediatamente em um CSV temporário.
+    Isso mantém o uso de RAM próximo de zero.
+    """
+    # Cria arquivo temporário para o CSV
+    temp_csv = tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8-sig', newline='', suffix='.csv')
+    csv_path = temp_csv.name
     
-    # Progresso
-    status_text = st.empty()
-    bar = st.progress(0)
     count = 0
+    writer = None
+    status_text = st.empty()
     
     try:
-        # 'item' itera sobre os itens de uma lista no nível raiz do JSON
-        # Se o JSON for { "items": [...] }, mudar prefixo para 'items.item'
-        # Assumindo lista raiz baseada no seu arquivo: [ ... ]
+        input_file.seek(0)
         
-        # Detecta se é lista raiz ou dicionário com items
-        prefix = 'item' 
-        
-        # Reinicia ponteiro do arquivo
-        uploaded_file.seek(0)
-        
-        # Tenta iterar
-        for record in ijson.items(uploaded_file, prefix):
-            cleaned = record_processor(record)
+        # Tenta detectar a estrutura (Lista Raiz 'item' ou Objeto Wrapper 'items.item')
+        # Vamos tentar primeiro como lista raiz
+        try:
+            parser = ijson.items(input_file, 'item')
+            first_record = next(parser) # Pega o primeiro para testar
+            
+            # Se funcionou, processa o primeiro
+            cleaned = processor(first_record)
             if cleaned:
-                data_buffer.append(cleaned)
+                headers = list(cleaned.keys())
+                writer = csv.DictWriter(temp_csv, fieldnames=headers, delimiter=';')
+                writer.writeheader()
+                writer.writerow(cleaned)
                 count += 1
             
-            # Quando atingir o tamanho do chunk, converte para DataFrame e libera lista
-            if len(data_buffer) >= chunk_size:
-                dfs.append(pd.DataFrame(data_buffer))
-                data_buffer = [] # Esvazia buffer
-                gc.collect() # Força limpeza de RAM
-                status_text.text(f"Processados {count} registros...")
-                
-        # Processa o restante
-        if data_buffer:
-            dfs.append(pd.DataFrame(data_buffer))
-            data_buffer = []
-            
-    except ijson.JSONError as e:
-        st.warning(f"O arquivo terminou inesperadamente ou contém erros, mas recuperamos {count} registros. Erro: {e}")
-    except Exception as e:
-        # Se falhar com 'prefix item', pode ser que o JSON comece com { "items": ... }
-        if count == 0 and prefix == 'item':
-            uploaded_file.seek(0)
+            # Processa o resto
+            for record in parser:
+                cleaned = processor(record)
+                if cleaned:
+                    writer.writerow(cleaned)
+                    count += 1
+                if count % 1000 == 0:
+                    status_text.text(f"Convertendo: {count} registros processados...")
+                    
+        except (StopIteration, ijson.JSONError):
+            # Se falhar logo de cara, reseta e tenta 'items.item' (estrutura {items: [...]})
+            input_file.seek(0)
             try:
-                for record in ijson.items(uploaded_file, 'items.item'):
-                    cleaned = record_processor(record)
+                parser = ijson.items(input_file, 'items.item')
+                for record in parser:
+                    cleaned = processor(record)
                     if cleaned:
-                        data_buffer.append(cleaned)
+                        if writer is None:
+                            headers = list(cleaned.keys())
+                            writer = csv.DictWriter(temp_csv, fieldnames=headers, delimiter=';')
+                            writer.writeheader()
+                        writer.writerow(cleaned)
                         count += 1
-                    if len(data_buffer) >= chunk_size:
-                        dfs.append(pd.DataFrame(data_buffer))
-                        data_buffer = []
-                        gc.collect()
-                        status_text.text(f"Processados {count} registros...")
-                if data_buffer:
-                    dfs.append(pd.DataFrame(data_buffer))
-            except Exception as inner_e:
-                st.error(f"Erro fatal ao ler arquivo: {inner_e}")
-                return pd.DataFrame()
-        else:
-            st.error(f"Erro durante processamento: {e}")
-            return pd.DataFrame()
+                    if count % 1000 == 0:
+                        status_text.text(f"Convertendo: {count} registros processados...")
+            except Exception as e:
+                if count == 0:
+                    st.error(f"Não foi possível ler a estrutura do JSON. Erro: {e}")
+                    temp_csv.close()
+                    return None, 0
 
-    status_text.empty()
-    bar.empty()
-    
-    if not dfs:
-        return pd.DataFrame()
+    except ijson.JSONError as e:
+        st.warning(f"⚠️ O arquivo terminou inesperadamente (JSON corrompido), mas recuperamos {count} registros com sucesso.")
+    except Exception as e:
+        st.error(f"Erro fatal: {e}")
+    finally:
+        temp_csv.close()
+        status_text.empty()
         
-    # Concatena todos os DataFrames parciais
-    with st.spinner("Consolidando dados..."):
-        final_df = pd.concat(dfs, ignore_index=True)
-        del dfs
-        gc.collect()
-        
-    return final_df
+    return csv_path, count
 
 # ==============================================================================
-# LÓGICA PRINCIPAL
+# INTERFACE
 # ==============================================================================
 
-tab_upload, tab_api = st.tabs(["📂 Carregar via Upload (Rápido)", "☁️ Consultar API"])
+st.info("📂 **Instrução:** Faça o upload do JSON. O sistema irá convertê-lo para CSV e permitir o download, mesmo que o arquivo esteja incompleto.")
 
-df_result = None
+uploaded_file = st.file_uploader(f"Upload JSON de **{tipo_relatorio}**", type=['json'])
 
-# --- ABA 1: UPLOAD OTIMIZADO ---
-with tab_upload:
-    st.markdown("### ⚡ Upload de Alta Performance")
-    st.info("Este método usa leitura dinâmica (streaming) para suportar arquivos grandes sem travar.")
+if uploaded_file is not None:
+    # Escolhe o processador
+    processor = None
+    if tipo_relatorio == "Motoristas": processor = clean_motorista_record
+    elif tipo_relatorio == "Credenciados": processor = clean_credenciado_record
+    elif tipo_relatorio == "Clientes": processor = clean_cliente_record
     
-    uploaded_file = st.file_uploader(f"Carregar JSON de **{tipo_relatorio}**", type=['json'])
-    
-    if uploaded_file is not None:
+    if st.button("🚀 Processar Arquivo"):
         start_time = time.time()
-        
-        # Seleciona processador
-        processor = None
-        if tipo_relatorio == "Motoristas": processor = clean_motorista_record
-        elif tipo_relatorio == "Credenciados": processor = clean_credenciado_record
-        elif tipo_relatorio == "Clientes": processor = clean_cliente_record
-        
-        with st.spinner("Lendo arquivo..."):
-            df_result = process_file_with_ijson(uploaded_file, processor)
+        with st.spinner("Lendo JSON e gerando CSV (isso não consome memória)..."):
+            csv_path, total_rows = stream_json_to_csv(uploaded_file, processor)
             
-        if not df_result.empty:
-            # Pós-processamento de datas
-            cols_date = ['Validade CNH', 'Data Cadastro']
-            for col in cols_date:
-                if col in df_result.columns:
-                    df_result[col] = pd.to_datetime(df_result[col], errors='coerce')
-                    if col == 'Validade CNH':
-                        df_result[col] = df_result[col].dt.strftime('%d/%m/%Y')
-                    else:
-                        df_result[col] = df_result[col].dt.strftime('%d/%m/%Y %H:%M')
+        if csv_path and total_rows > 0:
+            st.success(f"✅ Processamento concluído! {total_rows} registros recuperados em {time.time() - start_time:.1f}s")
             
-            st.success(f"✅ {len(df_result)} registros carregados em {time.time() - start_time:.1f}s")
-        else:
-            st.warning("Nenhum dado válido encontrado no arquivo.")
+            # --- Visualização de Amostra (Sem carregar tudo) ---
+            st.subheader("👀 Prévia dos Dados (Primeiros 50 registros)")
+            try:
+                # Lê apenas as primeiras linhas para não travar
+                df_preview = pd.read_csv(csv_path, sep=';', nrows=50)
+                st.dataframe(df_preview, use_container_width=True)
+            except Exception as e:
+                st.warning("Não foi possível gerar a prévia visual, mas o download está disponível abaixo.")
 
-# --- ABA 2: API (MANTER LÓGICA ANTERIOR) ---
-with tab_api:
-    if st.button("Consultar via API"):
-        st.warning("A consulta via API pode ser lenta para muitos registros. Use o Upload se possível.")
-        # ... (Código da API mantido simples ou redirecionado para download, 
-        # mas como o foco é o erro do arquivo, omiti para não poluir, 
-        # já que o usuário deve usar o Upload)
-
-# ==============================================================================
-# VISUALIZAÇÃO
-# ==============================================================================
-
-if df_result is not None and not df_result.empty:
-    st.divider()
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        status_cols = [c for c in ['Status', 'Situação', 'Ativo'] if c in df_result.columns]
-        if status_cols:
-            col_filter = status_cols[0]
-            opts = sorted(df_result[col_filter].astype(str).unique())
-            sel = st.multiselect(f"Filtrar {col_filter}", opts)
-            if sel: df_result = df_result[df_result[col_filter].isin(sel)]
+            # --- Download do Arquivo Completo ---
+            with open(csv_path, "rb") as f:
+                st.download_button(
+                    label=f"📥 Baixar CSV Completo ({total_rows} registros)",
+                    data=f,
+                    file_name=f"{tipo_relatorio.lower()}_convertido.csv",
+                    mime="text/csv",
+                    type="primary"
+                )
             
-    with col2:
-        search = st.text_input("Buscar (Nome, CPF, CNPJ)")
-        if search:
-            mask = df_result.astype(str).apply(lambda x: x.str.contains(search, case=False)).any(axis=1)
-            df_result = df_result[mask]
-
-    st.dataframe(df_result, use_container_width=True)
-    
-    csv = df_result.to_csv(index=False).encode('utf-8-sig')
-    st.download_button("📥 Baixar CSV", csv, f"{tipo_relatorio}.csv", "text/csv", type="primary")
+            # Limpeza do arquivo temporário após uso (opcional, o OS limpa depois)
+            # os.remove(csv_path) 
+            
+        elif total_rows == 0:
+            st.warning("O arquivo foi lido, mas nenhum registro válido foi encontrado.")
