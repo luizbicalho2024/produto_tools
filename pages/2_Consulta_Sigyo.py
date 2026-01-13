@@ -5,6 +5,7 @@ import json
 import tempfile
 import os
 import gc
+import shutil
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -32,75 +33,101 @@ with st.sidebar:
     )
 
 # ==============================================================================
-# FUNÇÕES DE REDE (RETROCOMPATÍVEL E SEGURA PARA MEMÓRIA)
+# FUNÇÕES DE REDE (BLINDADAS CONTRA CORRUPÇÃO DE ARQUIVO)
 # ==============================================================================
 
-@st.cache_data(ttl=900, show_spinner=False)
-def fetch_data_safe(url, token, params=None):
-    """
-    Baixa os dados salvando em disco primeiro para economizar memória RAM.
-    Evita o erro de 'Unterminated string' e timeouts do Streamlit Cloud.
-    """
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/json"
-    }
-
+def get_session():
+    """Cria uma sessão HTTP robusta com retry automático."""
     session = requests.Session()
     adapter = HTTPAdapter(
         max_retries=Retry(
             total=3,
-            backoff_factor=1,
-            status_forcelist=[500, 502, 503, 504],
+            backoff_factor=2,  # Espera 2s, 4s, 8s entre tentativas
+            status_forcelist=[500, 502, 503, 504, 104],
             allowed_methods=["GET"]
         )
     )
     session.mount("https://", adapter)
+    return session
 
-    # Cria um arquivo temporário para armazenar o download
-    fd, tmp_path = tempfile.mkstemp(suffix=".json")
-    os.close(fd)  # Fecha o descritor de arquivo de baixo nível, vamos usar open() depois
+@st.cache_data(ttl=900, show_spinner=False)
+def fetch_data_safe(url, token, params=None):
+    """
+    Baixa dados com verificação estrita de integridade.
+    Se o arquivo baixado estiver incompleto (bytes faltando), ele tenta novamente.
+    """
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip, deflate"
+    }
 
-    try:
-        # Timeout aumentado: (10s conexão, 120s leitura) para suportar arquivos de 40MB+
-        with session.get(url, headers=headers, params=params, stream=True, timeout=(10, 120)) as response:
-            response.raise_for_status()
+    # Loop manual de tentativas para garantir integridade do download
+    max_attempts = 3
+    
+    for attempt in range(1, max_attempts + 1):
+        session = get_session()
+        fd, tmp_path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+
+        try:
+            # Timeout: 20s para conectar, 300s (5 min) para baixar o conteúdo
+            with session.get(url, headers=headers, params=params, stream=True, timeout=(20, 300)) as response:
+                response.raise_for_status()
+                
+                # Tenta obter o tamanho total esperado
+                total_size_expected = int(response.headers.get('content-length', 0))
+                
+                with open(tmp_path, 'wb') as f:
+                    shutil.copyfileobj(response.raw, f)
             
-            # Baixa em pedaços (chunks) para o disco
-            with open(tmp_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
+            # --- VERIFICAÇÃO DE INTEGRIDADE ---
+            file_size = os.path.getsize(tmp_path)
+            
+            # Se o servidor informou o tamanho e o arquivo baixado for menor, falhou.
+            if total_size_expected > 0 and file_size < total_size_expected:
+                raise Exception(f"Download incompleto. Esperado: {total_size_expected} bytes, Baixado: {file_size} bytes.")
+            
+            # Se o arquivo for muito pequeno (menos de 100 bytes), provavelmente é erro
+            if file_size < 100:
+                # Tenta ler pra ver se é um JSON de erro
+                with open(tmp_path, 'r') as f:
+                    content = f.read()
+                    raise Exception(f"Arquivo muito pequeno, provável erro: {content}")
+
+            # Tenta carregar o JSON (Teste final de integridade)
+            with open(tmp_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # Se chegou aqui, sucesso!
+            gc.collect() # Limpeza de memória
+            
+            # Normalização do retorno
+            if isinstance(data, dict) and "items" in data:
+                return data["items"]
+            if isinstance(data, list):
+                return data
+            return []
+
+        except (json.JSONDecodeError, requests.exceptions.ChunkedEncodingError, Exception) as e:
+            st.warning(f"⚠️ Tentativa {attempt}/{max_attempts} falhou: {str(e)}. Tentando novamente...")
+            # Remove arquivo corrompido
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            
+            # Se for a última tentativa, erro fatal
+            if attempt == max_attempts:
+                st.error(f"❌ Falha crítica após {max_attempts} tentativas. O servidor está interrompendo a conexão.")
+                return None
         
-        # Agora carregamos do disco para o JSON (isso é mais estável que carregar da rede direto)
-        with open(tmp_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-
-        # Limpa memória explicitamente
-        gc.collect()
-
-        # Normalização do retorno
-        if isinstance(data, dict) and "items" in data:
-            return data["items"]
-        if isinstance(data, list):
-            return data
-            
-        return []
-
-    except requests.exceptions.Timeout:
-        st.error("⏱️ A API demorou demais para responder (Timeout > 120s).")
-        return None
-    except json.JSONDecodeError as e:
-        st.error(f"❌ Erro ao ler o JSON (Arquivo incompleto ou corrompido): {e}")
-        return None
-    except Exception as e:
-        st.error(f"❌ Erro inesperado: {e}")
-        return None
-    finally:
-        # Remove o arquivo temporário
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-        session.close()
+        finally:
+            session.close()
+            # Limpeza final do arquivo se ainda existir
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except:
+                    pass
 
 # ==============================================================================
 # PROCESSADORES DE DADOS
@@ -124,7 +151,6 @@ def process_motoristas(all_data):
         return "; ".join(items)
 
     processed_rows = []
-    # Otimização: List Comprehension é mais rápida que loop for append
     for d in all_data:
         if not isinstance(d, dict): continue
         processed_rows.append({
@@ -145,12 +171,10 @@ def process_motoristas(all_data):
         })
 
     df = pd.DataFrame(processed_rows)
-    # Conversões otimizadas
     if 'Validade CNH' in df.columns:
         df['Validade CNH'] = pd.to_datetime(df['Validade CNH'], errors='coerce').dt.strftime('%d/%m/%Y')
     if 'Data Cadastro' in df.columns:
         df['Data Cadastro'] = pd.to_datetime(df['Data Cadastro'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
-    
     return df
 
 def process_credenciados(all_data):
@@ -264,7 +288,6 @@ if not api_token:
 # --- AÇÃO DE CONSULTA ---
 
 if st.button(f"🔄 Consultar {tipo_relatorio}"):
-    # Força a limpeza de memória antes de iniciar
     gc.collect()
     
     if tipo_relatorio == "Motoristas":
@@ -273,14 +296,13 @@ if st.button(f"🔄 Consultar {tipo_relatorio}"):
             'expand': 'grupos_vinculados,modulos,empresas,empresas.municipio,empresas.municipio.estado',
             'inline': 'false'
         }
-        with st.spinner("Baixando base de Motoristas... (Isso pode levar de 1 a 2 minutos)"):
+        with st.spinner("Baixando base de Motoristas... (Isso pode demorar alguns minutos)"):
             raw_data = fetch_data_safe(url, api_token, params)
         
         if raw_data is not None:
             with st.spinner("Processando dados..."):
                 st.session_state['df_motoristas'] = process_motoristas(raw_data)
             st.success("Dados de Motoristas atualizados!")
-            # Limpa a variável raw_data da memória
             del raw_data
             gc.collect()
 
