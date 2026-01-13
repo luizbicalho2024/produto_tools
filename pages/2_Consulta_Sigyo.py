@@ -5,7 +5,6 @@ import json
 import tempfile
 import os
 import gc
-import time
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -16,8 +15,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.title("💻 Consulta Sigyo (Versão Local - Blindada)")
-st.caption("Modo de compatibilidade com Postman ativado.")
+st.title("💻 Consulta Sigyo (Versão Local - Final)")
+st.caption("Modo Otimizado: Seleção de Colunas + Download Robusto")
 
 # --- Barra Lateral ---
 with st.sidebar:
@@ -38,21 +37,19 @@ with st.sidebar:
     )
 
 # ==============================================================================
-# FUNÇÕES DE REDE (MIMICANDO POSTMAN)
+# FUNÇÕES DE REDE (BUFFER OTIMIZADO)
 # ==============================================================================
 
 def get_session():
     """Cria uma sessão HTTP que finge ser um navegador."""
     session = requests.Session()
-    
-    # Headers idênticos aos de um navegador moderno para evitar bloqueio
     session.headers.update({
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
         "Connection": "keep-alive"
     })
-
+    
     retry = Retry(
         total=5,
         backoff_factor=1,
@@ -65,15 +62,12 @@ def get_session():
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_data_local(url, token, params=None):
-    # Headers específicos da requisição
     headers = {
         "Authorization": f"Bearer {token}",
-        # Importante: Avisa o servidor que aceitamos GZIP (igual ao Postman)
         "Accept-Encoding": "gzip, deflate, br" 
     }
 
     session = get_session()
-    
     fd, tmp_path = tempfile.mkstemp(suffix=".json")
     os.close(fd)
 
@@ -81,53 +75,44 @@ def fetch_data_local(url, token, params=None):
     print(f"[DEBUG] Arquivo temporário: {tmp_path}")
 
     try:
-        # Timeout aumentado para garantir que não caia por lentidão
-        with session.get(url, headers=headers, params=params, stream=True, timeout=(10, 300)) as response:
+        # Timeout longo para evitar queda
+        with session.get(url, headers=headers, params=params, stream=True, timeout=(10, 600)) as response:
             response.raise_for_status()
             
-            # Tenta pegar o tamanho (pode vir vazio dependendo do servidor)
-            total_size_header = response.headers.get('content-length')
-            total_size = int(total_size_header) if total_size_header else 0
-            
+            total_size = int(response.headers.get('content-length', 0))
             downloaded = 0
+            chunk_count = 0
             
             with open(tmp_path, 'wb') as f:
-                # Chunk size otimizado para downloads rápidos
-                for chunk in response.iter_content(chunk_size=1024 * 1024): # 1MB por chunk
+                # Chunk de 8MB (MUITO mais rápido e estável que 1MB)
+                # Evita que o Python perca tempo em loops e mantém a conexão ativa
+                for chunk in response.iter_content(chunk_size=8 * 1024 * 1024): 
                     if chunk:
                         f.write(chunk)
                         downloaded += len(chunk)
+                        chunk_count += 1
                         
-                        # Log no terminal para acompanhamento
-                        mb_downloaded = downloaded / (1024 * 1024)
-                        if total_size > 0:
-                            percent = (downloaded / total_size) * 100
-                            print(f"\r[DEBUG] Baixando... {percent:.2f}% ({mb_downloaded:.2f} MB)", end="")
-                        else:
-                            print(f"\r[DEBUG] Recebido: {mb_downloaded:.2f} MB (Stream contínuo...)", end="")
-            
-        print(f"\n[DEBUG] Download finalizado. Tamanho final em disco: {downloaded / (1024*1024):.2f} MB")
-        print("[DEBUG] Iniciando leitura e parse do JSON...")
+                        # Atualiza o log apenas a cada 5 chunks para não travar o terminal/conexão
+                        if chunk_count % 5 == 0:
+                            mb_downloaded = downloaded / (1024 * 1024)
+                            if total_size > 0:
+                                percent = (downloaded / total_size) * 100
+                                print(f"\r[DEBUG] Baixando... {percent:.1f}% ({mb_downloaded:.1f} MB)", end="")
+                            else:
+                                print(f"\r[DEBUG] Baixando... {mb_downloaded:.1f} MB", end="")
+
+        print(f"\n[DEBUG] Download finalizado. Tamanho em disco: {downloaded / (1024*1024):.2f} MB")
+        print("[DEBUG] Lendo JSON do disco...")
         
-        # Tenta ler o arquivo
         with open(tmp_path, 'r', encoding='utf-8') as f:
             try:
                 data = json.load(f)
             except json.JSONDecodeError as e:
-                # Debug avançado se falhar
-                print(f"\n[ERRO CRÍTICO] O JSON veio incompleto. Erro: {e}")
-                
-                # Lê os últimos caracteres para ver onde cortou
-                f.seek(0, os.SEEK_END)
-                size = f.tell()
-                f.seek(max(size - 100, 0))
-                tail = f.read()
-                print(f"[DEBUG] Últimos 100 caracteres recebidos: {tail}")
-                st.error("O servidor cortou a conexão antes de enviar o arquivo completo. Tente novamente.")
+                print(f"\n[ERRO FATAL] Arquivo incompleto. Erro: {e}")
+                st.error("O servidor encerrou a conexão antes do fim. Tente novamente.")
                 return None
             
-        print("[DEBUG] JSON carregado com sucesso na memória!")
-        
+        print("[DEBUG] JSON carregado na memória!")
         gc.collect()
 
         if isinstance(data, dict) and "items" in data:
@@ -137,15 +122,14 @@ def fetch_data_local(url, token, params=None):
         return []
 
     except Exception as e:
-        print(f"\n[ERRO] Exceção geral: {e}")
-        st.error(f"Erro local: {e}")
+        print(f"\n[ERRO] {e}")
+        st.error(f"Erro no processo: {e}")
         return None
     finally:
         session.close()
         if os.path.exists(tmp_path):
             try:
                 os.remove(tmp_path)
-                print("[DEBUG] Limpeza concluída.")
             except:
                 pass
 
@@ -156,15 +140,13 @@ def fetch_data_local(url, token, params=None):
 def process_generic(all_data, entity_type):
     if not all_data: return pd.DataFrame()
     
-    print(f"[DEBUG] Processando {len(all_data)} registros de {entity_type}...")
+    print(f"[DEBUG] Processando {len(all_data)} registros...")
     
     def safe_get(d, keys, default=''):
         val = d
         for k in keys:
-            if isinstance(val, dict):
-                val = val.get(k)
-            else:
-                return default
+            if isinstance(val, dict): val = val.get(k)
+            else: return default
         return str(val) if val is not None else default
 
     def extract_names(item_list):
@@ -188,7 +170,6 @@ def process_generic(all_data, entity_type):
             row['Nome'] = d.get('nome')
             row['CPF/CNH'] = d.get('cnh')
             row['Status'] = d.get('status')
-            
             empresas = []
             for emp in d.get('empresas', []):
                 if isinstance(emp, dict):
@@ -214,7 +195,10 @@ def process_generic(all_data, entity_type):
         processed_rows.append(row)
 
     df = pd.DataFrame(processed_rows)
-    print("[DEBUG] DataFrame criado com sucesso.")
+    # Formata data se existir
+    if 'Data Cadastro' in df.columns:
+        df['Data Cadastro'] = pd.to_datetime(df['Data Cadastro'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
+        
     return df
 
 # ==============================================================================
@@ -240,22 +224,17 @@ if st.button(f"🚀 Baixar e Processar {tipo_relatorio}"):
         "Clientes": {'expand': 'municipio,municipio.estado,modulos,organizacao,tipo', 'inline': 'false'}
     }
 
-    url = urls[tipo_relatorio]
-    params = params_map[tipo_relatorio]
-    
-    with st.spinner(f"Baixando dados de {tipo_relatorio}... Acompanhe o Terminal."):
-        raw_data = fetch_data_local(url, api_token, params)
+    with st.spinner(f"Baixando dados... Acompanhe no Terminal (Chunks de 8MB)."):
+        raw_data = fetch_data_local(urls[tipo_relatorio], api_token, params_map[tipo_relatorio])
         
     if raw_data:
-        st.success(f"Download concluído! Total de registros: {len(raw_data)}")
-        
-        with st.spinner("Gerando tabela..."):
+        st.success(f"Sucesso! {len(raw_data)} registros baixados.")
+        with st.spinner("Processando tabela..."):
             df = process_generic(raw_data, tipo_relatorio)
             st.session_state[f'df_{tipo_relatorio}'] = df
-            
-        st.success("Processamento finalizado!")
+            st.rerun() # Recarrega para mostrar os dados limpos
 
-# --- VISUALIZAÇÃO ---
+# --- VISUALIZAÇÃO COM SELEÇÃO DE COLUNAS ---
 
 key_map = {"Motoristas": "df_Motoristas", "Credenciados": "df_Credenciados", "Clientes": "df_Clientes"}
 current_key = key_map.get(tipo_relatorio)
@@ -266,26 +245,57 @@ if current_key in st.session_state:
     st.divider()
     st.subheader(f"📊 Dados de {tipo_relatorio}")
     
-    # Filtro rápido
-    col_filter, col_search = st.columns(2)
+    # 1. Filtro Rápido
+    col_search, _ = st.columns([1, 2])
     with col_search:
-        search = st.text_input("Busca Rápida:", placeholder="Digite para filtrar...")
+        search = st.text_input("🔍 Busca Rápida (Filtrar linhas):", placeholder="Nome, CNPJ, Email...")
         
     if search:
         mask = df.astype(str).apply(lambda x: x.str.contains(search, case=False)).any(axis=1)
-        df = df[mask]
+        df_filtered = df[mask]
+    else:
+        df_filtered = df
 
-    st.dataframe(df, use_container_width=True)
+    # 2. Seleção de Colunas (Recuperado)
+    st.markdown("#### 👁️ Seleção de Colunas")
+    all_cols = df_filtered.columns.tolist()
     
-    col1, col2 = st.columns(2)
-    with col1:
-        st.info(f"Registros exibidos: {len(df)}")
-    with col2:
-        csv = df.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            label="📥 Baixar Excel/CSV",
-            data=csv,
-            file_name=f"{tipo_relatorio}_local.csv",
-            mime="text/csv",
-            type="primary"
-        )
+    # Define padrões de visualização
+    if tipo_relatorio == "Motoristas":
+        default_cols = ['ID', 'Nome', 'CPF/CNH', 'Status', 'Empresas']
+    elif tipo_relatorio == "Credenciados":
+        default_cols = ['ID', 'Nome Fantasia', 'CNPJ', 'Cidade', 'Responsável']
+    else:
+        default_cols = ['ID', 'Nome Fantasia', 'CNPJ', 'Cidade', 'Organização']
+        
+    # Garante que as colunas padrão existam no dataframe
+    default_cols = [c for c in default_cols if c in all_cols]
+    if not default_cols: default_cols = all_cols[:5]
+    
+    selected_cols = st.multiselect(
+        "Escolha as colunas para visualizar e baixar:",
+        options=all_cols,
+        default=default_cols
+    )
+
+    if not selected_cols:
+        st.warning("Selecione pelo menos uma coluna.")
+    else:
+        df_display = df_filtered[selected_cols]
+        
+        # Mostra DataFrame
+        st.dataframe(df_display, use_container_width=True)
+        
+        # Botão de Download
+        col1, col2 = st.columns(2)
+        with col1:
+            st.info(f"Mostrando {len(df_display)} linhas.")
+        with col2:
+            csv = df_display.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 Baixar Seleção (.csv)",
+                data=csv,
+                file_name=f"{tipo_relatorio}_local.csv",
+                mime="text/csv",
+                type="primary"
+            )
