@@ -1,9 +1,6 @@
 import streamlit as st
 import pandas as pd
 import requests
-import json
-import io
-import time
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -31,105 +28,61 @@ with st.sidebar:
     )
 
 # ==============================================================================
-# FUNÇÕES DE REDE (BLINDADAS)
+# FUNÇÕES DE REDE (OTIMIZADAS PARA STREAMLIT CLOUD)
 # ==============================================================================
 
-def get_retry_session():
-    """Cria uma sessão HTTP que tenta reconectar automaticamente."""
-    session = requests.Session()
-    retries = Retry(
-        total=5, 
-        backoff_factor=1, 
-        status_forcelist=[500, 502, 503, 504],
-        allowed_methods=["GET"]
-    )
-    adapter = HTTPAdapter(max_retries=retries)
-    session.mount("https://", adapter)
-    session.mount("http://", adapter)
-    return session
-
-def fetch_data_robust(url, token, entity_name, params=None):
+@st.cache_data(ttl=900, show_spinner=False)  # Cache por 15 minutos para evitar recargas constantes
+def fetch_data_safe(url, token, params=None):
     """
-    Função robusta de download (Streaming + Retry) para todas as entidades.
+    Função de busca otimizada:
+    - Usa cache do Streamlit
+    - Timeout curto para não travar o Cloud
+    - Retry automático via HTTPAdapter
+    - Sem streaming manual (evita travar a UI)
     """
     headers = {
-        'Authorization': f'Bearer {token}',
-        'Accept-Encoding': 'gzip, deflate',
-        'Connection': 'keep-alive'
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json"
     }
-    
-    status_text = st.empty()
-    progress_bar = st.progress(0)
-    session = get_retry_session()
-    
-    max_attempts = 3
-    result_data = None
-    
+
+    session = requests.Session()
+    adapter = HTTPAdapter(
+        max_retries=Retry(
+            total=2,
+            backoff_factor=1,
+            status_forcelist=[500, 502, 503, 504],
+            allowed_methods=["GET"]
+        )
+    )
+    session.mount("https://", adapter)
+
     try:
-        for attempt in range(1, max_attempts + 1):
-            try:
-                status_text.text(f"Tentativa {attempt}/{max_attempts}: Conectando à API de {entity_name}...")
-                
-                # Timeout de 10 minutos (600s)
-                with session.get(url, headers=headers, params=params, stream=True, timeout=600) as response:
-                    if response.status_code != 200:
-                        st.error(f"Erro na API ({response.status_code}): {response.text[:500]}")
-                        return None
-                    
-                    total_size = int(response.headers.get('content-length', 0))
-                    data_buffer = io.BytesIO()
-                    downloaded_size = 0
-                    chunk_size = 1024 * 1024 # 1MB chunks
-                    
-                    for chunk in response.iter_content(chunk_size=chunk_size):
-                        if chunk:
-                            data_buffer.write(chunk)
-                            downloaded_size += len(chunk)
-                            
-                            mb = downloaded_size / (1024 * 1024)
-                            if total_size > 0:
-                                prog = min(downloaded_size / total_size, 1.0)
-                                progress_bar.progress(prog)
-                                status_text.text(f"Baixando {entity_name}: {mb:.2f} MB / {total_size/(1024*1024):.2f} MB")
-                            else:
-                                status_text.text(f"Baixando {entity_name}: {mb:.2f} MB recebidos...")
+        response = session.get(
+            url,
+            headers=headers,
+            params=params,
+            timeout=(5, 25)  # 5s para conectar, 25s para receber resposta
+        )
+        response.raise_for_status()
 
-                    progress_bar.progress(1.0)
-                    status_text.text("Validando JSON...")
-                    
-                    data_buffer.seek(0)
-                    json_content = json.load(data_buffer)
-                    
-                    # Normalização
-                    if isinstance(json_content, list): 
-                        result_data = json_content
-                        break
-                    elif isinstance(json_content, dict) and 'items' in json_content: 
-                        result_data = json_content['items']
-                        break
-                    else:
-                        st.warning(f"Formato inesperado: {type(json_content)}")
-                        result_data = []
-                        break
+        data = response.json()
 
-            except json.JSONDecodeError:
-                st.warning(f"Tentativa {attempt} falhou: Arquivo incompleto. Reconectando em 3s...")
-                time.sleep(3)
-                continue
-            except Exception as e:
-                st.error(f"Erro na tentativa {attempt}: {e}")
-                time.sleep(3)
-                continue
-        
-        if result_data is None:
-            st.error(f"Falha ao baixar {entity_name} após várias tentativas.")
-            return None
-            
-        return result_data
+        # Normalização do retorno (Lista direta ou Dicionário com 'items')
+        if isinstance(data, dict) and "items" in data:
+            return data["items"]
 
-    finally:
-        status_text.empty()
-        progress_bar.empty()
+        if isinstance(data, list):
+            return data
+
+        return []
+
+    except requests.exceptions.Timeout:
+        st.error("⏱️ A API demorou demais para responder (Timeout). Tente novamente mais tarde.")
+        return None
+
+    except requests.exceptions.RequestException as e:
+        st.error(f"❌ Erro ao consultar API: {e}")
+        return None
 
 # ==============================================================================
 # PROCESSADORES DE DADOS
@@ -301,24 +254,30 @@ if st.button(f"🔄 Consultar {tipo_relatorio}"):
             'expand': 'grupos_vinculados,modulos,empresas,empresas.municipio,empresas.municipio.estado',
             'inline': 'false'
         }
-        raw_data = fetch_data_robust(url, api_token, "Motoristas", params)
-        if raw_data:
+        with st.spinner("Consultando API da Sigyo... Isso pode levar alguns segundos"):
+            raw_data = fetch_data_safe(url, api_token, params)
+        
+        if raw_data is not None:
             st.session_state['df_motoristas'] = process_motoristas(raw_data)
             st.success("Dados de Motoristas atualizados!")
 
     elif tipo_relatorio == "Credenciados":
         url = "https://sigyo.uzzipay.com/api/credenciados"
         params = {'expand': 'dadosAcesso,municipio,municipio.estado,modulos', 'inline': 'false'}
-        raw_data = fetch_data_robust(url, api_token, "Credenciados", params)
-        if raw_data:
+        with st.spinner("Consultando API da Sigyo... Isso pode levar alguns segundos"):
+            raw_data = fetch_data_safe(url, api_token, params)
+        
+        if raw_data is not None:
             st.session_state['df_credenciados'] = process_credenciados(raw_data)
             st.success("Dados de Credenciados atualizados!")
 
     elif tipo_relatorio == "Clientes":
         url = "https://sigyo.uzzipay.com/api/clientes"
         params = {'expand': 'municipio,municipio.estado,modulos,organizacao,tipo', 'inline': 'false'}
-        raw_data = fetch_data_robust(url, api_token, "Clientes", params)
-        if raw_data:
+        with st.spinner("Consultando API da Sigyo... Isso pode levar alguns segundos"):
+            raw_data = fetch_data_safe(url, api_token, params)
+        
+        if raw_data is not None:
             st.session_state['df_clientes'] = process_clientes(raw_data)
             st.success("Dados de Clientes atualizados!")
 
