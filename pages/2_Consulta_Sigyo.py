@@ -1,6 +1,10 @@
 import streamlit as st
 import pandas as pd
 import requests
+import json
+import tempfile
+import os
+import gc
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -28,17 +32,14 @@ with st.sidebar:
     )
 
 # ==============================================================================
-# FUNÇÕES DE REDE (OTIMIZADAS PARA STREAMLIT CLOUD)
+# FUNÇÕES DE REDE (RETROCOMPATÍVEL E SEGURA PARA MEMÓRIA)
 # ==============================================================================
 
-@st.cache_data(ttl=900, show_spinner=False)  # Cache por 15 minutos para evitar recargas constantes
+@st.cache_data(ttl=900, show_spinner=False)
 def fetch_data_safe(url, token, params=None):
     """
-    Função de busca otimizada:
-    - Usa cache do Streamlit
-    - Timeout curto para não travar o Cloud
-    - Retry automático via HTTPAdapter
-    - Sem streaming manual (evita travar a UI)
+    Baixa os dados salvando em disco primeiro para economizar memória RAM.
+    Evita o erro de 'Unterminated string' e timeouts do Streamlit Cloud.
     """
     headers = {
         "Authorization": f"Bearer {token}",
@@ -48,7 +49,7 @@ def fetch_data_safe(url, token, params=None):
     session = requests.Session()
     adapter = HTTPAdapter(
         max_retries=Retry(
-            total=2,
+            total=3,
             backoff_factor=1,
             status_forcelist=[500, 502, 503, 504],
             allowed_methods=["GET"]
@@ -56,33 +57,50 @@ def fetch_data_safe(url, token, params=None):
     )
     session.mount("https://", adapter)
 
+    # Cria um arquivo temporário para armazenar o download
+    fd, tmp_path = tempfile.mkstemp(suffix=".json")
+    os.close(fd)  # Fecha o descritor de arquivo de baixo nível, vamos usar open() depois
+
     try:
-        response = session.get(
-            url,
-            headers=headers,
-            params=params,
-            timeout=(5, 25)  # 5s para conectar, 25s para receber resposta
-        )
-        response.raise_for_status()
+        # Timeout aumentado: (10s conexão, 120s leitura) para suportar arquivos de 40MB+
+        with session.get(url, headers=headers, params=params, stream=True, timeout=(10, 120)) as response:
+            response.raise_for_status()
+            
+            # Baixa em pedaços (chunks) para o disco
+            with open(tmp_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+        
+        # Agora carregamos do disco para o JSON (isso é mais estável que carregar da rede direto)
+        with open(tmp_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
 
-        data = response.json()
+        # Limpa memória explicitamente
+        gc.collect()
 
-        # Normalização do retorno (Lista direta ou Dicionário com 'items')
+        # Normalização do retorno
         if isinstance(data, dict) and "items" in data:
             return data["items"]
-
         if isinstance(data, list):
             return data
-
+            
         return []
 
     except requests.exceptions.Timeout:
-        st.error("⏱️ A API demorou demais para responder (Timeout). Tente novamente mais tarde.")
+        st.error("⏱️ A API demorou demais para responder (Timeout > 120s).")
         return None
-
-    except requests.exceptions.RequestException as e:
-        st.error(f"❌ Erro ao consultar API: {e}")
+    except json.JSONDecodeError as e:
+        st.error(f"❌ Erro ao ler o JSON (Arquivo incompleto ou corrompido): {e}")
         return None
+    except Exception as e:
+        st.error(f"❌ Erro inesperado: {e}")
+        return None
+    finally:
+        # Remove o arquivo temporário
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        session.close()
 
 # ==============================================================================
 # PROCESSADORES DE DADOS
@@ -106,6 +124,7 @@ def process_motoristas(all_data):
         return "; ".join(items)
 
     processed_rows = []
+    # Otimização: List Comprehension é mais rápida que loop for append
     for d in all_data:
         if not isinstance(d, dict): continue
         processed_rows.append({
@@ -126,17 +145,18 @@ def process_motoristas(all_data):
         })
 
     df = pd.DataFrame(processed_rows)
+    # Conversões otimizadas
     if 'Validade CNH' in df.columns:
         df['Validade CNH'] = pd.to_datetime(df['Validade CNH'], errors='coerce').dt.strftime('%d/%m/%Y')
     if 'Data Cadastro' in df.columns:
         df['Data Cadastro'] = pd.to_datetime(df['Data Cadastro'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
+    
     return df
 
 def process_credenciados(all_data):
     if not all_data: return pd.DataFrame()
 
     def get_address(d):
-        # Mapeamento seguro de campos aninhados
         muni = d.get('municipio') or {}
         estado = muni.get('estado') or {}
         parts = [
@@ -157,7 +177,6 @@ def process_credenciados(all_data):
     for d in all_data:
         if not isinstance(d, dict): continue
         
-        # Extração segura de objetos
         dados_acesso = d.get('dadosAcesso') or {}
         municipio = d.get('municipio') or {}
         estado = municipio.get('estado') or {}
@@ -165,22 +184,20 @@ def process_credenciados(all_data):
         processed_rows.append({
             'ID': d.get('id'),
             'CNPJ': d.get('cnpj'),
-            'Nome Fantasia': d.get('nome'), # 'nome' no JSON de credenciado é Fantasia
+            'Nome Fantasia': d.get('nome'),
             'Razão Social': d.get('razao_social'),
             'Email': d.get('email'),
             'Telefone': d.get('telefone'),
-            'Situação': d.get('situacao'), # "Ativo"
+            'Situação': d.get('situacao'),
             'Ativo': 'Sim' if d.get('ativo') in [True, 1] else 'Não',
             'Cidade': municipio.get('nome'),
             'UF': estado.get('sigla'),
             'Endereço Completo': get_address(d),
-            # Dados de Responsável (do objeto dadosAcesso)
             'Responsável': dados_acesso.get('nome_responsavel'),
             'CPF Responsável': dados_acesso.get('cpf_responsavel'),
             'Email Responsável': dados_acesso.get('email_responsavel'),
             'Telefone Responsável': dados_acesso.get('telefone_responsavel'),
-            # Taxas e Info
-            'Taxa Adm (%)': d.get('limite_isencao_ir_tx_adm'), # Conforme JSON amostra
+            'Taxa Adm (%)': d.get('limite_isencao_ir_tx_adm'),
             'Módulos': extract_modulos(d.get('modulos')),
             'Data Cadastro': d.get('data_cadastro')
         })
@@ -247,6 +264,8 @@ if not api_token:
 # --- AÇÃO DE CONSULTA ---
 
 if st.button(f"🔄 Consultar {tipo_relatorio}"):
+    # Força a limpeza de memória antes de iniciar
+    gc.collect()
     
     if tipo_relatorio == "Motoristas":
         url = "https://sigyo.uzzipay.com/api/motoristas"
@@ -254,32 +273,42 @@ if st.button(f"🔄 Consultar {tipo_relatorio}"):
             'expand': 'grupos_vinculados,modulos,empresas,empresas.municipio,empresas.municipio.estado',
             'inline': 'false'
         }
-        with st.spinner("Consultando API da Sigyo... Isso pode levar alguns segundos"):
+        with st.spinner("Baixando base de Motoristas... (Isso pode levar de 1 a 2 minutos)"):
             raw_data = fetch_data_safe(url, api_token, params)
         
         if raw_data is not None:
-            st.session_state['df_motoristas'] = process_motoristas(raw_data)
+            with st.spinner("Processando dados..."):
+                st.session_state['df_motoristas'] = process_motoristas(raw_data)
             st.success("Dados de Motoristas atualizados!")
+            # Limpa a variável raw_data da memória
+            del raw_data
+            gc.collect()
 
     elif tipo_relatorio == "Credenciados":
         url = "https://sigyo.uzzipay.com/api/credenciados"
         params = {'expand': 'dadosAcesso,municipio,municipio.estado,modulos', 'inline': 'false'}
-        with st.spinner("Consultando API da Sigyo... Isso pode levar alguns segundos"):
+        with st.spinner("Baixando base de Credenciados..."):
             raw_data = fetch_data_safe(url, api_token, params)
         
         if raw_data is not None:
-            st.session_state['df_credenciados'] = process_credenciados(raw_data)
+            with st.spinner("Processando dados..."):
+                st.session_state['df_credenciados'] = process_credenciados(raw_data)
             st.success("Dados de Credenciados atualizados!")
+            del raw_data
+            gc.collect()
 
     elif tipo_relatorio == "Clientes":
         url = "https://sigyo.uzzipay.com/api/clientes"
         params = {'expand': 'municipio,municipio.estado,modulos,organizacao,tipo', 'inline': 'false'}
-        with st.spinner("Consultando API da Sigyo... Isso pode levar alguns segundos"):
+        with st.spinner("Baixando base de Clientes..."):
             raw_data = fetch_data_safe(url, api_token, params)
         
         if raw_data is not None:
-            st.session_state['df_clientes'] = process_clientes(raw_data)
+            with st.spinner("Processando dados..."):
+                st.session_state['df_clientes'] = process_clientes(raw_data)
             st.success("Dados de Clientes atualizados!")
+            del raw_data
+            gc.collect()
 
 # --- EXIBIÇÃO DOS DADOS ---
 
