@@ -10,13 +10,13 @@ from urllib3.util.retry import Retry
 
 # --- Configuração da Página ---
 st.set_page_config(
-    page_title="Consulta Sigyo (Local)",
+    page_title="Consulta Sigyo (Híbrido)",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-st.title("💻 Consulta Sigyo (Versão Local - Final)")
-st.caption("Modo Otimizado: Seleção de Colunas + Download Robusto")
+st.title("💻 Consulta Sigyo (Versão Híbrida)")
+st.caption("Motoristas via Upload de Arquivo | Credenciados e Clientes via API")
 
 # --- Barra Lateral ---
 with st.sidebar:
@@ -37,7 +37,7 @@ with st.sidebar:
     )
 
 # ==============================================================================
-# FUNÇÕES DE REDE (BUFFER OTIMIZADO)
+# FUNÇÕES DE REDE (PARA CREDENCIADOS E CLIENTES)
 # ==============================================================================
 
 def get_session():
@@ -84,15 +84,13 @@ def fetch_data_local(url, token, params=None):
             chunk_count = 0
             
             with open(tmp_path, 'wb') as f:
-                # Chunk de 8MB (MUITO mais rápido e estável que 1MB)
-                # Evita que o Python perca tempo em loops e mantém a conexão ativa
+                # Chunk de 8MB
                 for chunk in response.iter_content(chunk_size=8 * 1024 * 1024): 
                     if chunk:
                         f.write(chunk)
                         downloaded += len(chunk)
                         chunk_count += 1
                         
-                        # Atualiza o log apenas a cada 5 chunks para não travar o terminal/conexão
                         if chunk_count % 5 == 0:
                             mb_downloaded = downloaded / (1024 * 1024)
                             if total_size > 0:
@@ -140,7 +138,7 @@ def fetch_data_local(url, token, params=None):
 def process_generic(all_data, entity_type):
     if not all_data: return pd.DataFrame()
     
-    print(f"[DEBUG] Processando {len(all_data)} registros...")
+    print(f"[DEBUG] Processando {len(all_data)} registros de {entity_type}...")
     
     def safe_get(d, keys, default=''):
         val = d
@@ -202,37 +200,67 @@ def process_generic(all_data, entity_type):
     return df
 
 # ==============================================================================
-# LÓGICA DA INTERFACE
+# LÓGICA DA INTERFACE (HÍBRIDA)
 # ==============================================================================
 
-if not api_token:
-    st.warning("⚠️ Insira o Token da API na barra lateral.")
-    st.stop()
-
-if st.button(f"🚀 Baixar e Processar {tipo_relatorio}"):
-    gc.collect()
+# --- CASO 1: MOTORISTAS (UPLOAD MANUAL) ---
+if tipo_relatorio == "Motoristas":
+    st.info("📂 **Modo de Upload Manual**: Para Motoristas, carregue o arquivo JSON exportado.")
     
-    urls = {
-        "Motoristas": "https://sigyo.uzzipay.com/api/motoristas",
-        "Credenciados": "https://sigyo.uzzipay.com/api/credenciados",
-        "Clientes": "https://sigyo.uzzipay.com/api/clientes"
-    }
+    uploaded_file = st.file_uploader("Selecione o arquivo JSON de Motoristas", type=["json"])
     
-    params_map = {
-        "Motoristas": {'expand': 'grupos_vinculados,modulos,empresas,empresas.municipio,empresas.municipio.estado', 'inline': 'false'},
-        "Credenciados": {'expand': 'dadosAcesso,municipio,municipio.estado,modulos', 'inline': 'false'},
-        "Clientes": {'expand': 'municipio,municipio.estado,modulos,organizacao,tipo', 'inline': 'false'}
-    }
+    if uploaded_file is not None:
+        try:
+            # Lê e processa o arquivo carregado
+            with st.spinner("Lendo arquivo e processando dados..."):
+                raw_data = json.load(uploaded_file)
+                
+                # Normaliza se vier dentro de 'items' ou direto como lista
+                if isinstance(raw_data, dict) and "items" in raw_data:
+                    raw_data = raw_data["items"]
+                elif not isinstance(raw_data, list):
+                    raw_data = []
 
-    with st.spinner(f"Baixando dados... Acompanhe no Terminal (Chunks de 8MB)."):
-        raw_data = fetch_data_local(urls[tipo_relatorio], api_token, params_map[tipo_relatorio])
+                if raw_data:
+                    df = process_generic(raw_data, "Motoristas")
+                    st.session_state['df_Motoristas'] = df
+                    st.success(f"Arquivo carregado com sucesso! {len(df)} motoristas processados.")
+                else:
+                    st.error("O arquivo JSON não contém uma lista válida de dados.")
+                    
+        except json.JSONDecodeError:
+            st.error("Erro ao ler o arquivo. Verifique se é um JSON válido.")
+        except Exception as e:
+            st.error(f"Erro inesperado ao processar: {e}")
+
+# --- CASO 2: OUTROS RELATÓRIOS (API) ---
+else:
+    if not api_token:
+        st.warning("⚠️ Insira o Token da API na barra lateral para consultar Credenciados ou Clientes.")
+        st.stop()
+
+    if st.button(f"🚀 Baixar e Processar {tipo_relatorio} (API)"):
+        gc.collect()
         
-    if raw_data:
-        st.success(f"Sucesso! {len(raw_data)} registros baixados.")
-        with st.spinner("Processando tabela..."):
-            df = process_generic(raw_data, tipo_relatorio)
-            st.session_state[f'df_{tipo_relatorio}'] = df
-            st.rerun() # Recarrega para mostrar os dados limpos
+        urls = {
+            "Credenciados": "https://sigyo.uzzipay.com/api/credenciados",
+            "Clientes": "https://sigyo.uzzipay.com/api/clientes"
+        }
+        
+        params_map = {
+            "Credenciados": {'expand': 'dadosAcesso,municipio,municipio.estado,modulos', 'inline': 'false'},
+            "Clientes": {'expand': 'municipio,municipio.estado,modulos,organizacao,tipo', 'inline': 'false'}
+        }
+
+        with st.spinner(f"Baixando dados... Acompanhe no Terminal (Chunks de 8MB)."):
+            raw_data = fetch_data_local(urls[tipo_relatorio], api_token, params_map[tipo_relatorio])
+            
+        if raw_data:
+            st.success(f"Sucesso! {len(raw_data)} registros baixados.")
+            with st.spinner("Processando tabela..."):
+                df = process_generic(raw_data, tipo_relatorio)
+                st.session_state[f'df_{tipo_relatorio}'] = df
+                st.rerun()
 
 # --- VISUALIZAÇÃO COM SELEÇÃO DE COLUNAS ---
 
@@ -256,7 +284,7 @@ if current_key in st.session_state:
     else:
         df_filtered = df
 
-    # 2. Seleção de Colunas (Recuperado)
+    # 2. Seleção de Colunas
     st.markdown("#### 👁️ Seleção de Colunas")
     all_cols = df_filtered.columns.tolist()
     
