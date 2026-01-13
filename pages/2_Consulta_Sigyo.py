@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import requests
 import json
-import time
 import gc
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -14,193 +13,46 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.title("🔍 Consulta Cadastral Sigyo (Paginada)")
+st.title("🔍 Consulta Cadastral Sigyo")
 
 # --- Barra Lateral ---
 with st.sidebar:
-    st.header("🔑 Credenciais")
-    default_token = st.secrets.get("eliq_api_token", "")
-    api_token = st.text_input("Token de Acesso (Bearer)", value=default_token, type="password")
-    
-    st.markdown("---")
-    st.header("📂 Selecione a Base")
+    st.header("📂 Tipo de Dados")
     tipo_relatorio = st.radio(
-        "Qual cadastro deseja consultar?",
+        "Qual base você vai carregar?",
         ["Motoristas", "Credenciados", "Clientes"],
         index=0
     )
     
     st.markdown("---")
-    st.header("⚙️ Configurações de Download")
-    st.info("Ajuste estes valores se a consulta falhar ou demorar muito.")
-    
-    use_pagination = st.checkbox("Ativar Paginação (Recomendado)", value=True, help="Divide a consulta em várias partes pequenas para evitar erros de timeout.")
-    batch_size = st.number_input("Tamanho do Lote (Registros por vez)", min_value=100, max_value=5000, value=1000, step=100)
-    
-    with st.expander("🔧 Avançado (Parâmetros da API)"):
-        st.write("Ajuste apenas se souber que a API usa nomes diferentes.")
-        param_limit = st.text_input("Nome do param. Limite", value="limit")
-        param_offset = st.text_input("Nome do param. Pular/Offset", value="offset")
+    st.header("⚙️ Modo API (Opcional)")
+    default_token = st.secrets.get("eliq_api_token", "")
+    api_token = st.text_input("Token (apenas para busca online)", value=default_token, type="password")
 
 # ==============================================================================
-# FUNÇÕES DE REDE (PAGINAÇÃO + RETRY)
+# PROCESSADORES DE DADOS (CACHEADOS E OTIMIZADOS)
 # ==============================================================================
 
-def get_retry_session():
-    """Cria uma sessão HTTP com estratégia agressiva de reconexão."""
-    session = requests.Session()
-    retries = Retry(
-        total=5, 
-        backoff_factor=1, 
-        status_forcelist=[500, 502, 503, 504],
-        allowed_methods=["GET"]
-    )
-    adapter = HTTPAdapter(max_retries=retries)
-    session.mount("https://", adapter)
-    session.mount("http://", adapter)
-    return session
-
-def fetch_data_paginated(url, token, entity_name, base_params=None):
-    """
-    Busca dados da API dividindo em páginas para evitar timeout e estouro de memória.
-    """
-    headers = {
-        'Authorization': f'Bearer {token}',
-        'Accept-Encoding': 'gzip, deflate',
-        'Connection': 'keep-alive',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
-    
-    session = get_retry_session()
-    all_items = []
-    current_offset = 0
-    page_num = 1
-    has_more_data = True
-    
-    # Elementos de UI
-    status_text = st.empty()
-    progress_bar = st.progress(0)
-    metric_col = st.empty()
-    
-    # Se paginação estiver desligada, tenta pegar tudo de uma vez (modo antigo)
-    if not use_pagination:
-        return fetch_single_shot(session, url, headers, base_params, entity_name, status_text)
-
-    # Modo Paginado
-    try:
-        while has_more_data:
-            # Atualiza parâmetros de paginação
-            params = base_params.copy() if base_params else {}
-            params[param_limit] = batch_size
-            params[param_offset] = current_offset
-            
-            status_text.markdown(f"📥 **Página {page_num}:** Baixando registros {current_offset} a {current_offset + batch_size}...")
-            
-            try:
-                # Timeout de 60s por página é suficiente se o lote for pequeno
-                response = session.get(url, headers=headers, params=params, timeout=60)
-                
-                if response.status_code != 200:
-                    st.error(f"Erro na Página {page_num} (Status {response.status_code}): {response.text[:200]}")
-                    break
-                
-                try:
-                    data = response.json()
-                except json.JSONDecodeError:
-                    st.warning(f"Erro ao ler JSON na página {page_num}. Tentando novamente em 5s...")
-                    time.sleep(5)
-                    continue
-
-                # Normalização da resposta (Lista ou Dicionário com 'items')
-                items_in_page = []
-                if isinstance(data, list):
-                    items_in_page = data
-                elif isinstance(data, dict) and 'items' in data:
-                    items_in_page = data['items']
-                else:
-                    # Formato desconhecido, assume que é o dado ou lista vazia
-                    items_in_page = data if isinstance(data, list) else []
-
-                count = len(items_in_page)
-                
-                if count == 0:
-                    status_text.text("✅ Download concluído: Nenhum registro restante.")
-                    has_more_data = False
-                    break
-                
-                # Detecção de API que ignora paginação (evita loop infinito)
-                if page_num > 1 and count > 0 and items_in_page[0] == all_items[0]:
-                    st.warning("⚠️ A API parece estar ignorando a paginação e retornando sempre o início. Interrompendo para evitar duplicidade.")
-                    has_more_data = False
-                    break
-
-                all_items.extend(items_in_page)
-                
-                # Atualiza UI
-                metric_col.metric("Registros Baixados", len(all_items))
-                progress_bar.progress(min(page_num / 50.0, 1.0)) # Barra simbólica pois não sabemos o total exato
-                
-                # Prepara próxima página
-                current_offset += count
-                page_num += 1
-                
-                # Se vieram menos itens que o limite pedido, provavelmente acabou
-                if count < batch_size:
-                    has_more_data = False
-                    status_text.text("✅ Fim da lista detectado.")
-            
-            except Exception as e:
-                st.error(f"Falha de conexão na página {page_num}: {e}")
-                time.sleep(2)
-                # Tenta mais uma vez a mesma página ou aborta? Vamos abortar para não travar
-                break
-                
-    finally:
-        session.close()
-        status_text.empty()
-        progress_bar.empty()
-        metric_col.empty()
-        
-    return all_items
-
-def fetch_single_shot(session, url, headers, params, entity_name, status_text):
-    """Fallback: Tenta baixar tudo de uma vez (código original robusto)."""
-    status_text.text(f"Baixando {entity_name} (Modo Único - Pode demorar)...")
-    try:
-        response = session.get(url, headers=headers, params=params, stream=True, timeout=300)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            st.error(f"Erro {response.status_code}")
-            return None
-    except Exception as e:
-        st.error(f"Erro: {e}")
-        return None
-
-# ==============================================================================
-# PROCESSADORES DE DADOS (OTIMIZADOS)
-# ==============================================================================
-
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=3600)
 def process_motoristas(all_data):
     if not all_data: return pd.DataFrame()
     
-    # Pré-aloca lista para performance
     processed_rows = []
-    
     for d in all_data:
         if not isinstance(d, dict): continue
         
-        # Extração otimizada
+        # Tratamento seguro de campos nulos e listas
         grupos = ", ".join([str(g.get('nome','')) for g in d.get('grupos_vinculados', []) if isinstance(g, dict)])
         modulos = ", ".join([str(m.get('nome','')) for m in d.get('modulos', []) if isinstance(m, dict)])
         
         emp_list = []
-        for emp in d.get('empresas', []):
-            if isinstance(emp, dict):
-                nome = emp.get('nome_fantasia') or emp.get('razao_social') or 'N/A'
-                cnpj = emp.get('cnpj', '')
-                emp_list.append(f"{nome} ({cnpj})")
+        empresas_raw = d.get('empresas')
+        if isinstance(empresas_raw, list):
+            for emp in empresas_raw:
+                if isinstance(emp, dict):
+                    nome = emp.get('nome_fantasia') or emp.get('razao_social') or 'N/A'
+                    cnpj = emp.get('cnpj', '')
+                    emp_list.append(f"{nome} ({cnpj})")
         empresas = "; ".join(emp_list)
 
         processed_rows.append({
@@ -221,7 +73,7 @@ def process_motoristas(all_data):
         })
     
     df = pd.DataFrame(processed_rows)
-    # Conversão de datas segura
+    # Conversão de datas
     for col in ['Validade CNH', 'Data Cadastro']:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors='coerce')
@@ -229,10 +81,9 @@ def process_motoristas(all_data):
                 df[col] = df[col].dt.strftime('%d/%m/%Y')
             else:
                 df[col] = df[col].dt.strftime('%d/%m/%Y %H:%M')
-                
     return df
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=3600)
 def process_credenciados(all_data):
     if not all_data: return pd.DataFrame()
     
@@ -281,7 +132,7 @@ def process_credenciados(all_data):
         df['Data Cadastro'] = pd.to_datetime(df['Data Cadastro'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
     return df
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=3600)
 def process_clientes(all_data):
     if not all_data: return pd.DataFrame()
     
@@ -323,126 +174,145 @@ def process_clientes(all_data):
     return df
 
 # ==============================================================================
-# LÓGICA DA INTERFACE
+# FUNÇÕES DE API (BACKUP)
+# ==============================================================================
+def fetch_from_api(url, token, entity_name, params):
+    headers = {'Authorization': f'Bearer {token}'}
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=120)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        st.error(f"Erro na API: {e}")
+        return None
+
+# ==============================================================================
+# LÓGICA PRINCIPAL (ABAS)
 # ==============================================================================
 
-if not api_token:
-    st.warning("⚠️ Por favor, insira o Token da API na barra lateral para continuar.")
-    st.stop()
+tab_upload, tab_api = st.tabs(["📂 Carregar via Upload (Rápido)", "☁️ Consultar API (Lento)"])
 
-# --- AÇÃO DE CONSULTA ---
+df_result = None
 
-if st.button(f"🔄 Iniciar Consulta de {tipo_relatorio}"):
+# --- ABA 1: UPLOAD ---
+with tab_upload:
+    st.markdown("### 1. Instruções")
+    st.info("""
+    1. Utilize o **Postman** ou navegador para baixar o JSON completo da API.
+    2. Salve o arquivo no seu computador (ex: `motoristas.json`).
+    3. Arraste o arquivo para a área abaixo.
+    """)
     
-    # Limpeza de memória forçada
-    for k in ['df_motoristas', 'df_credenciados', 'df_clientes']:
-        if k in st.session_state: del st.session_state[k]
-    gc.collect()
-
-    base_params = {}
+    uploaded_file = st.file_uploader(f"Faça upload do JSON de **{tipo_relatorio}**", type=['json'])
     
-    if tipo_relatorio == "Motoristas":
-        url = "https://sigyo.uzzipay.com/api/motoristas"
-        base_params = {
-            'expand': 'grupos_vinculados,modulos,empresas,empresas.municipio,empresas.municipio.estado',
-            'inline': 'false'
-        }
-        with st.spinner("Processando..."):
-            raw_data = fetch_data_paginated(url, api_token, "Motoristas", base_params)
-            if raw_data:
-                st.session_state['df_motoristas'] = process_motoristas(raw_data)
-                st.success(f"Sucesso! {len(raw_data)} motoristas carregados.")
+    if uploaded_file is not None:
+        try:
+            with st.spinner("Lendo arquivo e processando dados..."):
+                # Carrega o JSON
+                raw_data = json.load(uploaded_file)
+                
+                # Normaliza (se vier dentro de 'items' ou direto em lista)
+                data_to_process = []
+                if isinstance(raw_data, list):
+                    data_to_process = raw_data
+                elif isinstance(raw_data, dict) and 'items' in raw_data:
+                    data_to_process = raw_data['items']
+                else:
+                    data_to_process = raw_data if isinstance(raw_data, list) else []
 
-    elif tipo_relatorio == "Credenciados":
-        url = "https://sigyo.uzzipay.com/api/credenciados"
-        base_params = {'expand': 'dadosAcesso,municipio,municipio.estado,modulos', 'inline': 'false'}
-        with st.spinner("Processando..."):
-            raw_data = fetch_data_paginated(url, api_token, "Credenciados", base_params)
-            if raw_data:
-                st.session_state['df_credenciados'] = process_credenciados(raw_data)
-                st.success(f"Sucesso! {len(raw_data)} credenciados carregados.")
+                # Processa conforme a seleção
+                if tipo_relatorio == "Motoristas":
+                    df_result = process_motoristas(data_to_process)
+                elif tipo_relatorio == "Credenciados":
+                    df_result = process_credenciados(data_to_process)
+                elif tipo_relatorio == "Clientes":
+                    df_result = process_clientes(data_to_process)
+                
+                # Limpa memória bruta
+                del raw_data
+                del data_to_process
+                gc.collect()
 
-    elif tipo_relatorio == "Clientes":
-        url = "https://sigyo.uzzipay.com/api/clientes"
-        base_params = {'expand': 'municipio,municipio.estado,modulos,organizacao,tipo', 'inline': 'false'}
-        with st.spinner("Processando..."):
-            raw_data = fetch_data_paginated(url, api_token, "Clientes", base_params)
-            if raw_data:
-                st.session_state['df_clientes'] = process_clientes(raw_data)
-                st.success(f"Sucesso! {len(raw_data)} clientes carregados.")
+                if df_result.empty:
+                    st.warning("O arquivo JSON foi lido, mas não continha dados reconhecíveis.")
+                else:
+                    st.success(f"Arquivo carregado com sucesso! {len(df_result)} registros encontrados.")
 
-# --- EXIBIÇÃO DOS DADOS ---
+        except json.JSONDecodeError:
+            st.error("Erro ao ler o arquivo: O JSON parece inválido ou corrompido.")
+        except Exception as e:
+            st.error(f"Erro inesperado ao processar arquivo: {e}")
 
-current_key = ""
-if tipo_relatorio == "Motoristas":
-    current_key = 'df_motoristas'
-    entity_title = "Motoristas"
-    filename = "motoristas_sigyo.csv"
-elif tipo_relatorio == "Credenciados":
-    current_key = 'df_credenciados'
-    entity_title = "Credenciados"
-    filename = "credenciados_sigyo.csv"
-elif tipo_relatorio == "Clientes":
-    current_key = 'df_clientes'
-    entity_title = "Clientes"
-    filename = "clientes_sigyo.csv"
+# --- ABA 2: API ---
+with tab_api:
+    st.warning("⚠️ O modo API pode falhar se a conexão for instável ou a base for muito grande.")
+    if st.button(f"Tentar buscar {tipo_relatorio} via API"):
+        if not api_token:
+            st.error("Insira o token na barra lateral.")
+        else:
+            with st.spinner("Conectando à API..."):
+                url = ""
+                params = {'inline': 'false'}
+                
+                if tipo_relatorio == "Motoristas":
+                    url = "https://sigyo.uzzipay.com/api/motoristas"
+                    params['expand'] = 'grupos_vinculados,modulos,empresas,empresas.municipio'
+                elif tipo_relatorio == "Credenciados":
+                    url = "https://sigyo.uzzipay.com/api/credenciados"
+                    params['expand'] = 'dadosAcesso,municipio,municipio.estado,modulos'
+                elif tipo_relatorio == "Clientes":
+                    url = "https://sigyo.uzzipay.com/api/clientes"
+                    params['expand'] = 'municipio,municipio.estado,modulos,organizacao,tipo'
 
-if current_key in st.session_state and isinstance(st.session_state[current_key], pd.DataFrame) and not st.session_state[current_key].empty:
-    df = st.session_state[current_key]
-    
-    st.markdown(f"### 📋 Base de {entity_title}")
+                api_data_raw = fetch_from_api(url, api_token, tipo_relatorio, params)
+                
+                if api_data_raw:
+                    items = api_data_raw if isinstance(api_data_raw, list) else api_data_raw.get('items', [])
+                    if tipo_relatorio == "Motoristas":
+                        df_result = process_motoristas(items)
+                    elif tipo_relatorio == "Credenciados":
+                        df_result = process_credenciados(items)
+                    elif tipo_relatorio == "Clientes":
+                        df_result = process_clientes(items)
+
+# ==============================================================================
+# EXIBIÇÃO FINAL
+# ==============================================================================
+
+if df_result is not None and not df_result.empty:
+    st.divider()
+    st.header(f"📊 Resultados: {tipo_relatorio}")
     
     col1, col2 = st.columns(2)
     with col1:
-        status_cols = [c for c in ['Status', 'Situação', 'Ativo'] if c in df.columns]
+        status_cols = [c for c in ['Status', 'Situação', 'Ativo'] if c in df_result.columns]
         if status_cols:
             col_filter = status_cols[0]
-            status_opts = sorted(df[col_filter].astype(str).unique())
+            status_opts = sorted(df_result[col_filter].astype(str).unique())
             filtro_status = st.multiselect(f"Filtrar por {col_filter}:", options=status_opts, default=status_opts)
             if filtro_status:
-                mask = df[col_filter].isin(filtro_status)
-                df = df[mask]
+                df_result = df_result[df_result[col_filter].isin(filtro_status)]
     
     with col2:
-        search = st.text_input("Busca Rápida (Nome, CNPJ/CPF, Email):")
+        search = st.text_input("Busca Rápida (Nome, CNPJ, Email):")
         if search:
-            search_cols = [c for c in ['Nome', 'Nome Fantasia', 'Razão Social', 'CPF/CNH', 'CNPJ', 'Email'] if c in df.columns]
-            search_mask = pd.Series([False] * len(df))
+            search_cols = [c for c in ['Nome', 'Nome Fantasia', 'Razão Social', 'CPF/CNH', 'CNPJ', 'Email'] if c in df_result.columns]
+            mask = pd.Series([False] * len(df_result))
             for c in search_cols:
-                search_mask |= df[c].astype(str).str.contains(search, case=False, na=False)
-            df = df[search_mask]
+                mask |= df_result[c].astype(str).str.contains(search, case=False, na=False)
+            df_result = df_result[mask]
 
-    st.markdown("#### Seleção de Colunas")
-    all_cols = df.columns.tolist()
+    st.write(f"Mostrando {len(df_result)} registros.")
     
-    # Configuração de visualização padrão
-    if tipo_relatorio == "Motoristas": 
-        default_view = ['ID', 'Nome', 'CPF/CNH', 'Status', 'Empresas']
-    elif tipo_relatorio == "Credenciados": 
-        default_view = ['ID', 'Nome Fantasia', 'CNPJ', 'Cidade', 'Responsável']
-    else: 
-        default_view = ['ID', 'Nome Fantasia', 'CNPJ', 'Cidade', 'Organização']
-        
-    default_view = [c for c in default_view if c in all_cols]
-    if not default_view: default_view = all_cols[:6]
+    # Seleção de colunas
+    all_cols = df_result.columns.tolist()
+    default_cols = all_cols[:6] # Padrão: 6 primeiras
+    cols_to_show = st.multiselect("Colunas Visíveis", all_cols, default=default_cols)
     
-    selected_cols = st.multiselect("Colunas Visíveis:", all_cols, default=default_view)
-
-    if selected_cols:
-        df_display = df[selected_cols]
-        st.info(f"Mostrando {len(df_display)} registros filtrados.")
-        st.dataframe(df_display, use_container_width=True)
+    if cols_to_show:
+        st.dataframe(df_result[cols_to_show], use_container_width=True)
         
-        csv = df_display.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            label=f"📥 Baixar {entity_title} (CSV)",
-            data=csv,
-            file_name=filename,
-            mime="text/csv",
-            type="primary"
-        )
-    else:
-        st.warning("Selecione ao menos uma coluna.")
-
-elif current_key not in st.session_state:
-    st.info(f"Clique no botão 'Iniciar Consulta' para carregar a base de {entity_title}.")
+        # Botão Download
+        csv = df_result[cols_to_show].to_csv(index=False).encode('utf-8-sig')
+        filename = f"{tipo_relatorio.lower()}_sigyo.csv"
+        st.download_button("📥 Baixar CSV Filtrado", data=csv, file_name=filename, mime="text/csv", type="primary")
