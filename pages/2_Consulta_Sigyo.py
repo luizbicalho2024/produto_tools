@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.title("💻 Consulta Sigyo (Versão Blindada)")
+st.title("💻 Consulta Sigyo")
 st.caption("Modo Auto-Repair: Recupera arquivos JSON cortados ou incompletos.")
 
 # --- Barra Lateral ---
