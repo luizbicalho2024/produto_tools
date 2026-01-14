@@ -10,13 +10,13 @@ from urllib3.util.retry import Retry
 
 # --- Configuração da Página ---
 st.set_page_config(
-    page_title="Consulta Sigyo (Híbrido)",
+    page_title="Consulta Sigyo (Auto-Repair)",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-st.title("💻 Consulta Sigyo (Versão Híbrida)")
-st.caption("Motoristas via Upload de Arquivo | Credenciados e Clientes via API")
+st.title("💻 Consulta Sigyo (Versão Blindada)")
+st.caption("Modo Auto-Repair: Recupera arquivos JSON cortados ou incompletos.")
 
 # --- Barra Lateral ---
 with st.sidebar:
@@ -132,8 +132,45 @@ def fetch_data_local(url, token, params=None):
                 pass
 
 # ==============================================================================
-# PROCESSADORES
+# PROCESSADORES E FUNÇÕES AUXILIARES
 # ==============================================================================
+
+def attempt_repair_json(file_bytes):
+    """
+    Tenta reparar um JSON incompleto fechando estruturas abertas.
+    """
+    encodings = ['utf-8', 'latin-1']
+    
+    for encoding in encodings:
+        try:
+            # Tenta decodificar para string
+            text_content = file_bytes.decode(encoding)
+            
+            # Lista de tentativas de reparo (do mais provável para o menos)
+            # 1. Cortou dentro de uma string (ex: "nome": "Jea...) -> fecha aspas e objetos
+            # 2. Cortou num valor (ex: "idade": 2...) -> fecha objetos
+            # 3. Cortou depois de um objeto -> fecha a lista
+            repair_attempts = [
+                text_content + '"}]',       # Fecha string, objeto e lista
+                text_content + '}]',        # Fecha objeto e lista
+                text_content + ']',         # Fecha lista apenas
+                text_content + '"]',        # Fecha string e lista
+                text_content + '}',         # Fecha objeto raiz (se for dict)
+                text_content + '"}'         # Fecha string e objeto raiz
+            ]
+            
+            for attempt in repair_attempts:
+                try:
+                    data = json.loads(attempt)
+                    # Se chegou aqui, o reparo funcionou!
+                    return data, f"✅ Arquivo recuperado com sucesso! (Encoding: {encoding})"
+                except json.JSONDecodeError:
+                    continue
+                    
+        except UnicodeDecodeError:
+            continue
+            
+    return None, "❌ Não foi possível reparar o arquivo automaticamente. Ele está muito danificado."
 
 def process_generic(all_data, entity_type):
     if not all_data: return pd.DataFrame()
@@ -200,7 +237,7 @@ def process_generic(all_data, entity_type):
     return df
 
 # ==============================================================================
-# LÓGICA DA INTERFACE (HÍBRIDA)
+# LÓGICA DA INTERFACE (HÍBRIDA + AUTO REPAIR)
 # ==============================================================================
 
 # --- CASO 1: MOTORISTAS (UPLOAD MANUAL ROBUSTO) ---
@@ -210,20 +247,33 @@ if tipo_relatorio == "Motoristas":
     uploaded_file = st.file_uploader("Selecione o arquivo JSON de Motoristas", type=["json"])
     
     if uploaded_file is not None:
-        with st.spinner("Lendo arquivo e processando dados..."):
+        with st.spinner("Analisando arquivo..."):
+            # Lê os bytes brutos
+            file_bytes = uploaded_file.getvalue()
+            
+            raw_data = None
             try:
-                # 1. Lê os bytes do arquivo
-                file_bytes = uploaded_file.read()
-                
-                # 2. Tenta decodificar (UTF-8 primeiro, depois Latin-1)
-                try:
-                    json_str = file_bytes.decode('utf-8')
-                except UnicodeDecodeError:
-                    json_str = file_bytes.decode('latin-1')
-                
-                # 3. Faz o parse do JSON
+                # Tentativa 1: Leitura Padrão
+                json_str = file_bytes.decode('utf-8')
                 raw_data = json.loads(json_str)
+                st.success("Arquivo íntegro carregado com sucesso!")
+            
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                # Tentativa 2: Modo de Recuperação
+                st.warning(f"⚠️ O arquivo parece estar truncado/incompleto. Erro: {str(e)[:100]}...")
+                st.info("🛠️ Tentando reparar o final do arquivo automaticamente...")
                 
+                repaired_data, msg = attempt_repair_json(file_bytes)
+                
+                if repaired_data:
+                    raw_data = repaired_data
+                    st.success(msg)
+                    st.warning("⚠️ Nota: O último registro do arquivo pode ter sido perdido ou recuperado parcialmente.")
+                else:
+                    st.error("❌ Falha fatal: O arquivo está muito corrompido e não pôde ser recuperado.")
+            
+            # Processamento
+            if raw_data:
                 # Normaliza se vier dentro de 'items' ou direto como lista
                 if isinstance(raw_data, dict) and "items" in raw_data:
                     raw_data = raw_data["items"]
@@ -233,16 +283,9 @@ if tipo_relatorio == "Motoristas":
                 if raw_data:
                     df = process_generic(raw_data, "Motoristas")
                     st.session_state['df_Motoristas'] = df
-                    st.success(f"Arquivo carregado com sucesso! {len(df)} motoristas processados.")
+                    st.success(f"Processamento concluído! {len(df)} motoristas carregados.")
                 else:
-                    st.error("O arquivo JSON não contém uma lista válida de dados.")
-                    
-            except json.JSONDecodeError as e:
-                st.error(f"❌ O arquivo JSON está corrompido ou incompleto.")
-                st.error(f"Detalhes do erro: {e}")
-                st.warning("Dica: Se você baixou esse arquivo pelo script anterior e deu erro, ele está incompleto. Tente baixar novamente via Postman ou Navegador.")
-            except Exception as e:
-                st.error(f"Erro inesperado ao processar: {e}")
+                    st.error("O JSON é válido, mas não contém uma lista de dados.")
 
 # --- CASO 2: OUTROS RELATÓRIOS (API) ---
 else:
