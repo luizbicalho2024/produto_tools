@@ -10,23 +10,26 @@ from urllib3.util.retry import Retry
 
 # --- Configuração da Página ---
 st.set_page_config(
-    page_title="Consulta Sigyo (Auto-Repair)",
+    page_title="Consulta Sigyo",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 st.title("💻 Consulta Sigyo")
-st.caption("Modo Auto-Repair: Recupera arquivos JSON cortados ou incompletos.")
+st.caption("Versão Segura: Token Manual Obrigatório | Modo Auto-Repair Ativo")
 
 # --- Barra Lateral ---
 with st.sidebar:
-    st.header("Configurações")
-    try:
-        default_token = st.secrets.get("eliq_api_token", "")
-    except:
-        default_token = ""
-        
-    api_token = st.text_input("Token de Acesso (Bearer)", value=default_token, type="password")
+    st.header("Configurações de Acesso")
+    
+    # ALTERAÇÃO AQUI: Token inicia vazio e não busca mais nos secrets
+    api_token = st.text_input(
+        "Token de Acesso (Bearer)", 
+        value="", 
+        type="password",
+        placeholder="Cole seu token aqui...",
+        help="Por segurança, o token não é salvo. Insira-o manualmente."
+    )
     
     st.markdown("---")
     st.header("Selecione a Base")
@@ -147,22 +150,18 @@ def attempt_repair_json(file_bytes):
             text_content = file_bytes.decode(encoding)
             
             # Lista de tentativas de reparo (do mais provável para o menos)
-            # 1. Cortou dentro de uma string (ex: "nome": "Jea...) -> fecha aspas e objetos
-            # 2. Cortou num valor (ex: "idade": 2...) -> fecha objetos
-            # 3. Cortou depois de um objeto -> fecha a lista
             repair_attempts = [
                 text_content + '"}]',       # Fecha string, objeto e lista
                 text_content + '}]',        # Fecha objeto e lista
                 text_content + ']',         # Fecha lista apenas
                 text_content + '"]',        # Fecha string e lista
-                text_content + '}',         # Fecha objeto raiz (se for dict)
+                text_content + '}',         # Fecha objeto raiz
                 text_content + '"}'         # Fecha string e objeto raiz
             ]
             
             for attempt in repair_attempts:
                 try:
                     data = json.loads(attempt)
-                    # Se chegou aqui, o reparo funcionou!
                     return data, f"✅ Arquivo recuperado com sucesso! (Encoding: {encoding})"
                 except json.JSONDecodeError:
                     continue
@@ -230,7 +229,6 @@ def process_generic(all_data, entity_type):
         processed_rows.append(row)
 
     df = pd.DataFrame(processed_rows)
-    # Formata data se existir
     if 'Data Cadastro' in df.columns:
         df['Data Cadastro'] = pd.to_datetime(df['Data Cadastro'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M')
         
@@ -248,10 +246,9 @@ if tipo_relatorio == "Motoristas":
     
     if uploaded_file is not None:
         with st.spinner("Analisando arquivo..."):
-            # Lê os bytes brutos
             file_bytes = uploaded_file.getvalue()
-            
             raw_data = None
+            
             try:
                 # Tentativa 1: Leitura Padrão
                 json_str = file_bytes.decode('utf-8')
@@ -260,21 +257,19 @@ if tipo_relatorio == "Motoristas":
             
             except (json.JSONDecodeError, UnicodeDecodeError) as e:
                 # Tentativa 2: Modo de Recuperação
-                st.warning(f"⚠️ O arquivo parece estar truncado/incompleto. Erro: {str(e)[:100]}...")
+                st.warning(f"⚠️ O arquivo parece estar incompleto/truncado. Erro: {str(e)[:100]}...")
                 st.info("🛠️ Tentando reparar o final do arquivo automaticamente...")
                 
                 repaired_data, msg = attempt_repair_json(file_bytes)
-                
                 if repaired_data:
                     raw_data = repaired_data
                     st.success(msg)
-                    st.warning("⚠️ Nota: O último registro do arquivo pode ter sido perdido ou recuperado parcialmente.")
+                    st.warning("⚠️ Nota: O último registro do arquivo foi recuperado e fechado artificialmente.")
                 else:
                     st.error("❌ Falha fatal: O arquivo está muito corrompido e não pôde ser recuperado.")
             
             # Processamento
             if raw_data:
-                # Normaliza se vier dentro de 'items' ou direto como lista
                 if isinstance(raw_data, dict) and "items" in raw_data:
                     raw_data = raw_data["items"]
                 elif not isinstance(raw_data, list):
@@ -285,12 +280,13 @@ if tipo_relatorio == "Motoristas":
                     st.session_state['df_Motoristas'] = df
                     st.success(f"Processamento concluído! {len(df)} motoristas carregados.")
                 else:
-                    st.error("O JSON é válido, mas não contém uma lista de dados.")
+                    st.error("O JSON é válido, mas não contém dados.")
 
 # --- CASO 2: OUTROS RELATÓRIOS (API) ---
 else:
+    # Validação do Token Manual
     if not api_token:
-        st.warning("⚠️ Insira o Token da API na barra lateral para consultar Credenciados ou Clientes.")
+        st.warning("⚠️ Para consultar a API, por favor insira o Token de Acesso na barra lateral.")
         st.stop()
 
     if st.button(f"🚀 Baixar e Processar {tipo_relatorio} (API)"):
@@ -342,7 +338,6 @@ if current_key in st.session_state:
     st.markdown("#### 👁️ Seleção de Colunas")
     all_cols = df_filtered.columns.tolist()
     
-    # Define padrões de visualização
     if tipo_relatorio == "Motoristas":
         default_cols = ['ID', 'Nome', 'CPF/CNH', 'Status', 'Empresas']
     elif tipo_relatorio == "Credenciados":
@@ -350,7 +345,6 @@ if current_key in st.session_state:
     else:
         default_cols = ['ID', 'Nome Fantasia', 'CNPJ', 'Cidade', 'Organização']
         
-    # Garante que as colunas padrão existam no dataframe
     default_cols = [c for c in default_cols if c in all_cols]
     if not default_cols: default_cols = all_cols[:5]
     
@@ -365,10 +359,8 @@ if current_key in st.session_state:
     else:
         df_display = df_filtered[selected_cols]
         
-        # Mostra DataFrame
         st.dataframe(df_display, use_container_width=True)
         
-        # Botão de Download
         col1, col2 = st.columns(2)
         with col1:
             st.info(f"Mostrando {len(df_display)} linhas.")
