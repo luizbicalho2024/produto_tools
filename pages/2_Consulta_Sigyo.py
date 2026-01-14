@@ -203,17 +203,26 @@ def process_generic(all_data, entity_type):
 # LÓGICA DA INTERFACE (HÍBRIDA)
 # ==============================================================================
 
-# --- CASO 1: MOTORISTAS (UPLOAD MANUAL) ---
+# --- CASO 1: MOTORISTAS (UPLOAD MANUAL ROBUSTO) ---
 if tipo_relatorio == "Motoristas":
     st.info("📂 **Modo de Upload Manual**: Para Motoristas, carregue o arquivo JSON exportado.")
     
     uploaded_file = st.file_uploader("Selecione o arquivo JSON de Motoristas", type=["json"])
     
     if uploaded_file is not None:
-        try:
-            # Lê e processa o arquivo carregado
-            with st.spinner("Lendo arquivo e processando dados..."):
-                raw_data = json.load(uploaded_file)
+        with st.spinner("Lendo arquivo e processando dados..."):
+            try:
+                # 1. Lê os bytes do arquivo
+                file_bytes = uploaded_file.read()
+                
+                # 2. Tenta decodificar (UTF-8 primeiro, depois Latin-1)
+                try:
+                    json_str = file_bytes.decode('utf-8')
+                except UnicodeDecodeError:
+                    json_str = file_bytes.decode('latin-1')
+                
+                # 3. Faz o parse do JSON
+                raw_data = json.loads(json_str)
                 
                 # Normaliza se vier dentro de 'items' ou direto como lista
                 if isinstance(raw_data, dict) and "items" in raw_data:
@@ -228,10 +237,12 @@ if tipo_relatorio == "Motoristas":
                 else:
                     st.error("O arquivo JSON não contém uma lista válida de dados.")
                     
-        except json.JSONDecodeError:
-            st.error("Erro ao ler o arquivo. Verifique se é um JSON válido.")
-        except Exception as e:
-            st.error(f"Erro inesperado ao processar: {e}")
+            except json.JSONDecodeError as e:
+                st.error(f"❌ O arquivo JSON está corrompido ou incompleto.")
+                st.error(f"Detalhes do erro: {e}")
+                st.warning("Dica: Se você baixou esse arquivo pelo script anterior e deu erro, ele está incompleto. Tente baixar novamente via Postman ou Navegador.")
+            except Exception as e:
+                st.error(f"Erro inesperado ao processar: {e}")
 
 # --- CASO 2: OUTROS RELATÓRIOS (API) ---
 else:
