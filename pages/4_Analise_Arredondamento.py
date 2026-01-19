@@ -1,150 +1,181 @@
 import streamlit as st
 import pandas as pd
 import json
-from decimal import Decimal, ROUND_HALF_EVEN, ROUND_HALF_UP, ROUND_DOWN, ROUND_CEILING
+from decimal import Decimal, ROUND_HALF_EVEN, ROUND_HALF_UP, ROUND_DOWN, ROUND_CEILING, ROUND_HALF_DOWN
 
 # --- Configuração da Página ---
 st.set_page_config(
-    page_title="Análise de Arredondamento",
+    page_title="Simulador de Arredondamento",
     page_icon="📐",
     layout="wide"
 )
 
-st.title("📐 Análise de Arredondamento: NBR 5891 vs Outros")
+st.title("📐 Simulador: NBR 5891 vs Outros Métodos")
 st.markdown("""
-Esta ferramenta realiza um 'De-Para' do cálculo de **Desconto** (`valor_total` * `taxa_administrativa`), 
-comparando o valor exato do sistema com simulações de arredondamento em **2 casas decimais**.
-
-**Legenda de Métodos:**
-* **NBR 5891 (Bancário):** Arredonda para o par mais próximo se o dígito for 5 (Ex: 2.5 -> 2, 3.5 -> 4). Padrão Python/C#.
-* **Tradicional (Half Up):** Arredonda para cima se >= 5 (Ex: 2.5 -> 3). Padrão escolar/Excel.
-* **Truncar (Floor):** Simplesmente corta as casas decimais extras.
+Esta ferramenta compara o impacto financeiro da norma **ABNT NBR 5891** (Arredondamento Bancário) 
+contra outros métodos de arredondamento escolhidos por você.
 """)
+
+# --- Sidebar: Configurações e Upload ---
+st.sidebar.header("1. Upload de Dados")
+uploaded_file = st.sidebar.file_uploader("Arquivo JSON (response.json)", type=["json"])
+
+st.sidebar.divider()
+
+st.sidebar.header("2. Configuração da Comparação")
+st.sidebar.info("A referência fixa será sempre a **ABNT NBR 5891** (Round Half to Even). Escolha abaixo o método para duelar com ela.")
+
+# Mapeamento de opções para constantes do Decimal
+opcoes_arredondamento = {
+    "Padrão Escolar (Round Half Up)": ROUND_HALF_UP,
+    "Truncar / Para Baixo (Floor)": ROUND_DOWN,
+    "Sempre para Cima (Ceiling)": ROUND_CEILING,
+    "Padrão Inverso (Round Half Down)": ROUND_HALF_DOWN
+}
+
+metodo_escolhido_nome = st.sidebar.selectbox(
+    "Escolha o Método de Simulação:",
+    options=list(opcoes_arredondamento.keys()),
+    index=0
+)
+
+metodo_escolhido_const = opcoes_arredondamento[metodo_escolhido_nome]
+
+# Descrição visual do método escolhido
+descricoes = {
+    "Padrão Escolar (Round Half Up)": "Se for 0.005, arredonda para cima (0.01). É o mais comum no comércio.",
+    "Truncar / Para Baixo (Floor)": "Simplesmente ignora as casas extras. 0.009 vira 0.00.",
+    "Sempre para Cima (Ceiling)": "Qualquer fração força o valor para cima. 0.001 vira 0.01.",
+    "Padrão Inverso (Round Half Down)": "Se for 0.005, arredonda para baixo. O oposto do escolar."
+}
+st.sidebar.caption(f"ℹ️ **Como funciona:** {descricoes[metodo_escolhido_nome]}")
 
 st.divider()
 
-# --- Upload do Arquivo ---
-uploaded_file = st.file_uploader("Faça o upload do arquivo JSON (ex: response.json)", type=["json"])
-
+# --- Processamento ---
 if uploaded_file is not None:
     try:
-        # Carregar JSON
         data = json.load(uploaded_file)
         
-        # Se o JSON for uma lista de objetos, prosseguimos
         if isinstance(data, list):
             rows = []
             
+            # Precisão monetária de 2 casas
+            TWO_PLACES = Decimal("0.01")
+            
             for item in data:
-                # Extração segura dos dados
                 try:
+                    # Extração segura
                     item_id = item.get("id")
+                    
+                    # Conversão para Decimal para precisão matemática absoluta
                     valor_total = Decimal(str(item.get("valor_total", 0)))
-                    # Taxa pode ser negativa, usamos abs para calcular o valor absoluto do desconto
                     taxa_admin = Decimal(str(item.get("taxa_administrativa", 0)))
+                    
+                    # Usamos módulo (abs) pois o desconto é um valor monetário positivo derivado da taxa
                     taxa_abs = abs(taxa_admin)
                     
-                    # Desconto original do JSON (Referência)
-                    desconto_sistema = Decimal(str(item.get("desconto", 0)))
+                    # 1. Cálculo RAW (Infinitas casas decimais)
+                    desconto_raw = valor_total * (taxa_abs / Decimal("100"))
                     
-                    # Cálculo Puro (Recalculado com precisão total)
-                    # Fórmula: Valor * (Taxa / 100)
-                    desconto_calculado_raw = valor_total * (taxa_abs / Decimal("100"))
+                    # 2. Aplicar ABNT NBR 5891 (Referência Fixa)
+                    val_nbr = desconto_raw.quantize(TWO_PLACES, rounding=ROUND_HALF_EVEN)
                     
-                    # --- APLICAÇÃO DOS ARREDONDAMENTOS (para 2 casas) ---
+                    # 3. Aplicar Método Selecionado pelo Usuário
+                    val_simulado = desconto_raw.quantize(TWO_PLACES, rounding=metodo_escolhido_const)
                     
-                    # 1. NBR 5891 (Round Half To Even)
-                    nbr_5891 = desconto_calculado_raw.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
-                    
-                    # 2. Tradicional (Round Half Up)
-                    tradicional = desconto_calculado_raw.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-                    
-                    # 3. Truncar (Floor) - arredonda para baixo
-                    truncado = desconto_calculado_raw.quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+                    # Diferença
+                    diff = val_simulado - val_nbr
 
                     rows.append({
-                        "ID": item_id,
-                        "Valor Total": float(valor_total),
+                        "ID Transação": item_id,
+                        "Valor Base": float(valor_total),
                         "Taxa (%)": float(taxa_admin),
-                        "Desconto Sistema (Raw)": float(desconto_sistema),
-                        "Desconto Recalculado (Raw)": float(desconto_calculado_raw),
-                        "NBR 5891 (2 casas)": float(nbr_5891),
-                        "Tradicional (2 casas)": float(tradicional),
-                        "Truncado (2 casas)": float(truncado),
-                        # Diferenças (Deltas)
-                        "Dif. NBR vs Sistema": float(nbr_5891 - desconto_sistema),
-                        "Dif. NBR vs Tradicional": float(nbr_5891 - tradicional)
+                        "Cálculo Puro (Raw)": float(desconto_raw),
+                        "ABNT NBR 5891": float(val_nbr),
+                        f"Simulado ({metodo_escolhido_nome})": float(val_simulado),
+                        "Diferença (R$)": float(diff),
+                        "Status": "DIVERGENTE" if abs(diff) > 0 else "IGUAL"
                     })
                     
                 except Exception as e:
-                    st.warning(f"Erro ao processar item ID {item.get('id', 'desconhecido')}: {e}")
+                    # Ignora itens mal formados mas avisa no log se necessário
                     continue
             
             # Criar DataFrame
             df = pd.DataFrame(rows)
             
-            # --- Exibição dos Dados ---
-            
             if not df.empty:
-                # Métricas Gerais
-                st.subheader("Resumo das Diferenças (Total Monetário)")
+                # --- KPI's Superiores ---
+                total_nbr = df["ABNT NBR 5891"].sum()
+                total_simulado = df[f"Simulado ({metodo_escolhido_nome})"].sum()
+                total_diff = total_simulado - total_nbr
+                
                 c1, c2, c3 = st.columns(3)
                 
-                total_nbr = df["NBR 5891 (2 casas)"].sum()
-                total_trad = df["Tradicional (2 casas)"].sum()
-                total_sys = df["Desconto Sistema (Raw)"].sum()
+                c1.metric(
+                    label="Total (Norma ABNT 5891)", 
+                    value=f"R$ {total_nbr:,.2f}",
+                    help="Soma total aplicando arredondamento bancário (par mais próximo)."
+                )
                 
-                c1.metric("Total NBR 5891", f"R$ {total_nbr:,.2f}")
-                c2.metric("Total Tradicional", f"R$ {total_trad:,.2f}", delta=f"{total_trad - total_nbr:,.2f} vs NBR")
-                c3.metric("Total Sistema (Raw)", f"R$ {total_sys:,.2f}", delta=f"{total_sys - total_nbr:,.2f} vs NBR")
+                c2.metric(
+                    label=f"Total ({metodo_escolhido_nome})", 
+                    value=f"R$ {total_simulado:,.2f}",
+                    delta=f"R$ {total_diff:,.2f}",
+                    delta_color="inverse", # Se aumentar o custo (positivo), fica vermelho, se economizar, verde (ou vice-versa dependendo da ótica)
+                    help="Soma total aplicando o método selecionado no menu lateral."
+                )
+                
+                qtd_divergentes = len(df[df["Status"] == "DIVERGENTE"])
+                c3.metric(
+                    label="Itens com Divergência", 
+                    value=f"{qtd_divergentes} de {len(df)}",
+                    help="Número de transações onde o arredondamento resultou em centavos diferentes."
+                )
                 
                 st.divider()
                 
-                # Filtros de Visualização
-                st.subheader("Detalhamento por Transação")
+                # --- Tabela Detalhada ---
+                st.subheader("Detalhamento das Diferenças")
                 
-                ver_apenas_diferencas = st.checkbox("Mostrar apenas linhas onde há divergência entre NBR 5891 e Tradicional", value=True)
+                filtro_divergentes = st.toggle("Ver apenas linhas com diferença de valor", value=True)
                 
-                df_show = df.copy()
-                if ver_apenas_diferencas:
-                    # Filtra onde a diferença não é zero (usando pequena margem para float)
-                    df_show = df_show[abs(df_show["Dif. NBR vs Tradicional"]) > 0.001]
-                    st.caption(f"Exibindo {len(df_show)} registros com divergência de arredondamento.")
-                else:
-                    st.caption(f"Exibindo todos os {len(df_show)} registros.")
-
-                # Estilização do Dataframe
+                df_view = df.copy()
+                if filtro_divergentes:
+                    df_view = df_view[df_view["Status"] == "DIVERGENTE"]
+                
+                # Formatação visual da tabela
                 st.dataframe(
-                    df_show,
+                    df_view,
                     use_container_width=True,
                     hide_index=True,
                     column_config={
-                        "Valor Total": st.column_config.NumberColumn(format="R$ %.2f"),
-                        "Desconto Sistema (Raw)": st.column_config.NumberColumn(format="%.6f", label="Desc. Atual (JSON)"),
-                        "Desconto Recalculado (Raw)": st.column_config.NumberColumn(format="%.6f"),
-                        "NBR 5891 (2 casas)": st.column_config.NumberColumn(format="R$ %.2f"),
-                        "Tradicional (2 casas)": st.column_config.NumberColumn(format="R$ %.2f"),
-                        "Truncado (2 casas)": st.column_config.NumberColumn(format="R$ %.2f"),
-                        "Dif. NBR vs Tradicional": st.column_config.NumberColumn(format="%.2f", label="Δ NBR x Trad.")
+                        "Valor Base": st.column_config.NumberColumn(format="R$ %.2f"),
+                        "Cálculo Puro (Raw)": st.column_config.NumberColumn(format="%.6f"), # Mostrar mais casas para ver o "quebra"
+                        "ABNT NBR 5891": st.column_config.NumberColumn(format="R$ %.2f"),
+                        f"Simulado ({metodo_escolhido_nome})": st.column_config.NumberColumn(format="R$ %.2f"),
+                        "Diferença (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
                     }
                 )
                 
-                # Botão de Download
+                # Download
                 csv = df.to_csv(index=False).encode('utf-8')
                 st.download_button(
-                    label="📥 Baixar Relatório Completo (CSV)",
+                    label="📥 Baixar Resultado da Simulação (CSV)",
                     data=csv,
-                    file_name="analise_arredondamento_nbr5891.csv",
+                    file_name="simulacao_arredondamento.csv",
                     mime="text/csv",
                 )
+                
             else:
-                st.info("Nenhum dado válido encontrado no JSON.")
+                st.warning("O arquivo JSON foi lido, mas não gerou dados válidos para cálculo.")
                 
         else:
-            st.error("O JSON enviado não está no formato de lista esperado.")
+            st.error("O JSON deve ser uma lista de objetos.")
             
     except Exception as e:
-        st.error(f"Erro ao ler o arquivo: {e}")
-
+        st.error(f"Erro ao processar o arquivo: {e}")
 else:
-    st.info("Aguardando upload do arquivo JSON...")
+    # Estado inicial (sem arquivo)
+    st.info("👈 Por favor, faça o upload do arquivo JSON na barra lateral para começar a análise.")
