@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 st.title("💻 Consulta Sigyo")
-st.caption("Versão API Completa | Paginação Automática para Motoristas")
+st.caption("Versão API Completa | Paginação Automática | Seleção de Colunas")
 
 # --- Barra Lateral ---
 with st.sidebar:
@@ -87,7 +87,7 @@ def fetch_paginated_data(url, token, params):
                 
             all_items.extend(items)
             
-            # Cálculo de progresso (baseado no meta da API se disponível, ou loop contínuo)
+            # Cálculo de progresso
             meta = data.get("meta", {})
             total_pages = meta.get("last_page", current_page + 1)
             
@@ -110,7 +110,7 @@ def fetch_paginated_data(url, token, params):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_data_standard(url, token, params=None):
-    """Consulta padrão para endpoints sem paginação complexa ou menores."""
+    """Consulta padrão para endpoints menores."""
     headers = {"Authorization": f"Bearer {token}"}
     session = get_session()
     try:
@@ -203,7 +203,6 @@ if st.button(f"🚀 Iniciar Consulta de {tipo_relatorio}"):
         "Clientes": "https://sigyo.uzzipay.com/api/clientes"
     }
     
-    # Configuração de expansão conforme a necessidade da API
     params_map = {
         "Motoristas": {
             'expand': 'grupos_vinculados,modulos,empresas,empresas.municipio,empresas.municipio.estado',
@@ -231,7 +230,7 @@ if st.button(f"🚀 Iniciar Consulta de {tipo_relatorio}"):
             st.success(f"Sucesso! {len(df)} registros carregados.")
             st.rerun()
 
-# --- VISUALIZAÇÃO ---
+# --- VISUALIZAÇÃO E EXPORTAÇÃO ---
 
 key_map = {"Motoristas": "df_Motoristas", "Credenciados": "df_Credenciados", "Clientes": "df_Clientes"}
 current_key = key_map.get(tipo_relatorio)
@@ -242,18 +241,46 @@ if current_key in st.session_state:
     st.divider()
     st.subheader(f"📊 Tabela de {tipo_relatorio}")
     
-    search = st.text_input("🔍 Filtro rápido:", placeholder="Digite para buscar...")
+    # 1. Filtro Rápido (Search)
+    search = st.text_input("🔍 Filtro rápido (busca em todas as colunas):", placeholder="Digite para buscar...")
     if search:
-        df_display = df[df.astype(str).apply(lambda x: x.str.contains(search, case=False)).any(axis=1)]
+        # Filtra no DataFrame original completo
+        df_filtered = df[df.astype(str).apply(lambda x: x.str.contains(search, case=False)).any(axis=1)]
     else:
-        df_display = df
+        df_filtered = df
 
-    st.dataframe(df_display, use_container_width=True)
+    # 2. Seleção de Colunas
+    st.markdown("### 👁️ Personalizar Visualização e Exportação")
     
-    csv = df_display.to_csv(index=False).encode('utf-8-sig')
-    st.download_button(
-        label="📥 Baixar em CSV",
-        data=csv,
-        file_name=f"consulta_{tipo_relatorio.lower()}.csv",
-        mime="text/csv"
+    all_cols = df_filtered.columns.tolist()
+    
+    # Define colunas padrão para facilitar (todas selecionadas por padrão)
+    default_cols = all_cols
+    
+    selected_cols = st.multiselect(
+        "Selecione as colunas que deseja visualizar e exportar:",
+        options=all_cols,
+        default=default_cols
     )
+    
+    if not selected_cols:
+        st.warning("⚠️ Selecione pelo menos uma coluna para visualizar.")
+    else:
+        # Cria o DataFrame final apenas com as colunas e linhas filtradas
+        df_final = df_filtered[selected_cols]
+        
+        # Mostra a tabela
+        st.dataframe(df_final, use_container_width=True)
+        
+        # Rodapé com contagem
+        st.caption(f"Exibindo {len(df_final)} registros e {len(selected_cols)} colunas.")
+        
+        # Botão de Download (Exporta o que o usuário está vendo)
+        csv = df_final.to_csv(index=False).encode('utf-8-sig')
+        st.download_button(
+            label="📥 Baixar Seleção (.csv)",
+            data=csv,
+            file_name=f"consulta_{tipo_relatorio.lower()}_selecao.csv",
+            mime="text/csv",
+            type="primary"
+        )
