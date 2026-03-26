@@ -141,12 +141,18 @@ def process_generic(all_data, entity_type):
         row = {}
         row['ID'] = d.get('id')
         
-        # --- CORREÇÃO DO EMAIL ---
-        # Tenta pegar da raiz; se não existir, tenta dentro de dadosAcesso (comum em Credenciados)
-        email_raiz = d.get('email')
-        email_acesso = d.get('dadosAcesso', {}).get('email') if isinstance(d.get('dadosAcesso'), dict) else None
-        row['Email'] = email_raiz or email_acesso
+        # --- LÓGICA CORRIGIDA DE EXTRAÇÃO DE EMAIL ---
+        # 1. Tenta pegar da raiz do objeto
+        email_final = d.get('email')
         
+        # 2. Se não estiver na raiz, busca dentro de 'dadosAcesso' (conforme seu JSON de exemplo)
+        if not email_final:
+            dados_acesso = d.get('dadosAcesso', {})
+            if isinstance(dados_acesso, dict):
+                # Tenta as duas chaves possíveis encontradas no seu response.json
+                email_final = dados_acesso.get('email_acesso') or dados_acesso.get('email_responsavel')
+        
+        row['Email'] = email_final
         row['Telefone'] = d.get('telefone')
         row['Ativo'] = 'Sim' if d.get('ativo') in [True, 1] else 'Não'
         
