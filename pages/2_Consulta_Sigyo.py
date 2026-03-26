@@ -140,7 +140,13 @@ def process_generic(all_data, entity_type):
         
         row = {}
         row['ID'] = d.get('id')
-        row['Email'] = d.get('email')
+        
+        # --- CORREÇÃO DO EMAIL ---
+        # Tenta pegar da raiz; se não existir, tenta dentro de dadosAcesso (comum em Credenciados)
+        email_raiz = d.get('email')
+        email_acesso = d.get('dadosAcesso', {}).get('email') if isinstance(d.get('dadosAcesso'), dict) else None
+        row['Email'] = email_raiz or email_acesso
+        
         row['Telefone'] = d.get('telefone')
         row['Ativo'] = 'Sim' if d.get('ativo') in [True, 1] else 'Não'
         
