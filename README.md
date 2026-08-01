@@ -1,8 +1,8 @@
-# Produto Tools 2.2 — Editor visual ampliado e MongoDB compartilhado
+# Produto Tools 2.3 — Fluxos grandes, raias e decisões navegáveis
 
 Aplicação Streamlit com editor visual de processos, autenticação compartilhada com o **Simulador-Telemetria** e persistência dos fluxos no MongoDB Atlas.
 
-## Recursos visuais do editor 2.2
+## Recursos visuais do editor 2.3
 
 - Inspetor de propriedades horizontal na parte superior.
 - Canvas ocupando toda a largura restante da página.
@@ -10,8 +10,25 @@ Aplicação Streamlit com editor visual de processos, autenticação compartilha
 - Tela cheia nativa para usar o monitor inteiro.
 - Modo claro e escuro.
 - Nós arredondados com faixa de cor corrigida.
-- Destaque de um caminho específico em fluxos grandes: selecione uma etapa ou conexão e clique em **Destacar caminho**.
-- Reprodução do caminho com **Play**, pausa, parada, velocidade e centralização automática em cada etapa.
+- Importação e organização automática de fluxos extensos, com mundo dinâmico e zoom de até 4%.
+- Elementos reposicionados dentro das respectivas raias, com expansão automática da altura quando necessário.
+- Decisões com no mínimo duas saídas visuais e validação estrutural no frontend e no backend.
+- Seleção explícita da ramificação padrão de cada decisão.
+- Destaque de uma rota completa em fluxos grandes, evitando encerrar no primeiro fim ou exceção próximos.
+- Reprodução da rota escolhida com **Play**, pausa, parada, velocidade e centralização automática em cada etapa.
+
+## Fluxos grandes e decisões
+
+Ao importar um JSON com muitos elementos, o editor: 
+
+1. calcula o tamanho necessário do mundo;
+2. preserva as raias e ajusta suas alturas;
+3. agrupa os elementos em colunas de leitura;
+4. evita sobreposições;
+5. enquadra o fluxo completo com zoom reduzido;
+6. atribui conectores separados às saídas de decisões.
+
+Para definir qual ramificação será usada no destaque e no Play, selecione uma decisão e escolha **Saída padrão para destaque e Play** no inspetor superior. Também é possível selecionar diretamente uma conexão de saída antes de destacar a rota.
 
 ## O que mudou nesta versão
 

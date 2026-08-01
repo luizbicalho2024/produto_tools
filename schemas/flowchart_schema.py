@@ -57,6 +57,8 @@ FLOWCHART_SCHEMA: dict[str, Any] = {
                     "id": {"type": "string"},
                     "source": {"type": "string"},
                     "target": {"type": "string"},
+                    "sourceHandle": {"type": "string"},
+                    "targetHandle": {"type": "string"},
                     "enabled": {"type": "boolean"},
                 },
             },
@@ -120,14 +122,16 @@ def demo_flowchart_document(owner_email: str = "") -> dict[str, Any]:
         {"id": "node_start", "type": "start", "laneId": "lane_comercial", "position": {"x": 80, "y": 78}, "data": {"label": "Solicitação recebida", "description": "", "owner": "Comercial", "enabled": True, "locked": False, "slaMinutes": None, "tags": []}},
         {"id": "node_analyze", "type": "task", "laneId": "lane_comercial", "position": {"x": 330, "y": 70}, "data": {"label": "Analisar solicitação", "description": "Validar dados e escopo", "owner": "Comercial", "enabled": True, "locked": False, "slaMinutes": 60, "tags": ["análise"]}},
         {"id": "node_decision", "type": "decision", "laneId": "lane_comercial", "position": {"x": 610, "y": 65}, "data": {"label": "Dados completos?", "description": "", "owner": "Comercial", "enabled": True, "locked": False, "slaMinutes": None, "tags": []}},
+        {"id": "node_reject", "type": "end", "laneId": "lane_comercial", "position": {"x": 890, "y": 145}, "data": {"label": "Solicitação devolvida", "description": "Solicitar complementação dos dados", "owner": "Comercial", "enabled": True, "locked": False, "slaMinutes": None, "tags": ["pendência"]}},
         {"id": "node_execute", "type": "subprocess", "laneId": "lane_operacao", "position": {"x": 890, "y": 315}, "data": {"label": "Executar processo", "description": "", "owner": "Operação", "enabled": True, "locked": False, "slaMinutes": 240, "tags": []}},
         {"id": "node_end", "type": "end", "laneId": "lane_operacao", "position": {"x": 1180, "y": 325}, "data": {"label": "Processo concluído", "description": "", "owner": "Operação", "enabled": True, "locked": False, "slaMinutes": None, "tags": []}},
     ]
     doc["edges"] = [
-        {"id": "edge_1", "source": "node_start", "target": "node_analyze", "type": "smoothstep", "label": "", "enabled": True, "condition": None},
-        {"id": "edge_2", "source": "node_analyze", "target": "node_decision", "type": "smoothstep", "label": "", "enabled": True, "condition": None},
-        {"id": "edge_3", "source": "node_decision", "target": "node_execute", "type": "smoothstep", "label": "Sim", "enabled": True, "condition": "Dados completos"},
-        {"id": "edge_4", "source": "node_execute", "target": "node_end", "type": "smoothstep", "label": "", "enabled": True, "condition": None},
+        {"id": "edge_1", "source": "node_start", "target": "node_analyze", "sourceHandle": "output", "targetHandle": "input", "type": "smoothstep", "label": "", "enabled": True, "condition": None},
+        {"id": "edge_2", "source": "node_analyze", "target": "node_decision", "sourceHandle": "output", "targetHandle": "input", "type": "smoothstep", "label": "", "enabled": True, "condition": None},
+        {"id": "edge_3", "source": "node_decision", "target": "node_execute", "sourceHandle": "branch-0", "targetHandle": "input", "type": "smoothstep", "label": "Sim", "enabled": True, "condition": "Dados completos"},
+        {"id": "edge_4", "source": "node_decision", "target": "node_reject", "sourceHandle": "branch-1", "targetHandle": "input", "type": "smoothstep", "label": "Não", "enabled": True, "condition": "Dados incompletos"},
+        {"id": "edge_5", "source": "node_execute", "target": "node_end", "sourceHandle": "output", "targetHandle": "input", "type": "smoothstep", "label": "", "enabled": True, "condition": None},
     ]
     return doc
 
@@ -181,11 +185,18 @@ def validate_document(document: dict[str, Any]) -> list[str]:
         if edge["source"] == edge["target"]:
             errors.append(f"Conexão {edge['id']} liga um nó a ele mesmo")
 
+    active_edges = [edge for edge in document.get("edges", []) if edge.get("enabled", True)]
     for node in document.get("nodes", []):
         lane_id = node.get("laneId")
         if lane_id and lane_id not in lane_set:
             errors.append(f"Nó {node['id']} referencia raia inexistente: {lane_id}")
         if not str(node.get("data", {}).get("label", "")).strip():
             errors.append(f"Nó {node['id']} está sem nome")
+        if node.get("type") == "decision" and node.get("data", {}).get("enabled", True):
+            outgoing = [edge for edge in active_edges if edge.get("source") == node["id"]]
+            if len(outgoing) < 2:
+                errors.append(
+                    f"Decisão {node['id']} deve possuir no mínimo duas conexões de saída"
+                )
 
     return errors

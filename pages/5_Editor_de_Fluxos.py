@@ -121,7 +121,7 @@ if not is_admin and record["owner_username"] != owner_username:
 
 page_header(
     "Editor de Processos",
-    "Modele fluxos com arrastar e soltar, conexões, raias, organização automática e armazenamento no MongoDB.",
+    "Modele processos extensos com raias, decisões ramificadas, organização automática, destaque de rotas e armazenamento no MongoDB.",
 )
 
 meta1, meta2, meta3, meta4 = st.columns([2.2, 1, 1, 1])

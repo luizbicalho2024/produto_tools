@@ -343,7 +343,7 @@ button { color: inherit; }
 
 .canvas-viewport { position: relative; overflow: hidden; min-width: 0; min-height: 0; outline: none; cursor: default; background: var(--fe-canvas); }
 .canvas-viewport.is-panning { cursor: grabbing; }
-.canvas-world { position: absolute; left: 0; top: 0; width: 4200px; height: 2600px; transform-origin: 0 0; }
+.canvas-world { position: absolute; left: 0; top: 0; width: var(--flow-world-width, 4200px); height: var(--flow-world-height, 2600px); transform-origin: 0 0; }
 .canvas-world.is-animating { transition: transform .32s ease; }
 .canvas-world.show-grid {
   background-image: linear-gradient(var(--fe-grid) 1px, transparent 1px), linear-gradient(90deg, var(--fe-grid) 1px, transparent 1px);
@@ -351,15 +351,15 @@ button { color: inherit; }
 }
 .lane-layer, .node-layer { position: absolute; inset: 0; }
 .lane-layer { z-index: 1; }
-.edge-layer { position: absolute; inset: 0; width: 4200px; height: 2600px; overflow: visible; z-index: 2; pointer-events: none; }
+.edge-layer { position: absolute; inset: 0; width: var(--flow-world-width, 4200px); height: var(--flow-world-height, 2600px); overflow: visible; z-index: 2; pointer-events: none; }
 .node-layer { z-index: 3; pointer-events: none; }
 
 .flow-lane {
   position: absolute;
   left: 34px;
-  width: 3950px;
+  width: calc(var(--flow-world-width, 4200px) - 68px);
   border: 1px solid var(--fe-line-strong);
-  border-radius: 13px;
+  border-radius: 8px;
   overflow: hidden;
   background: color-mix(in srgb, var(--fe-panel) 72%, transparent);
   box-shadow: 0 2px 7px rgba(15,23,42,.04);
@@ -429,6 +429,24 @@ button { color: inherit; }
 .node-port:hover, .node-port.connecting { border-color: var(--fe-primary); transform: scale(1.2); }
 .node-port.input { left: -8px; }
 .node-port.output { right: -8px; }
+.node-port.decision-output { margin-top: -6px; border-color: color-mix(in srgb, var(--node-color) 72%, var(--fe-muted)); }
+.node-port.decision-output.used { background: var(--node-soft); border-color: var(--node-color); }
+.node-port.decision-output::after {
+  content: attr(data-handle);
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: 0;
+  overflow: hidden;
+  color: var(--node-color);
+  font-size: 8px;
+  font-weight: 800;
+  white-space: nowrap;
+  opacity: 0;
+  transition: max-width .15s ease, opacity .15s ease;
+}
+.flow-node.type-decision:hover .node-port.decision-output::after { max-width: 60px; opacity: .75; }
 
 .flow-node.focus-member {
   border-color: var(--node-color);
@@ -510,6 +528,30 @@ button { color: inherit; }
 .modal-card footer { border-top: 1px solid var(--fe-line); border-bottom: 0; justify-content: flex-end; }
 .modal-card header button { width: 32px; padding: 0; font-size: 20px; }
 .modal-card > div { padding: 14px; overflow: auto; font-size: 12px; }
+.route-choice-intro { display: grid; gap: 5px; margin-bottom: 12px; padding: 12px; border-radius: 11px; background: var(--fe-panel-soft); }
+.route-choice-intro strong { font-size: 13px; color: var(--fe-ink); }
+.route-choice-intro span { color: var(--fe-muted); font-size: 11px; }
+.route-choice-list { display: grid; gap: 8px; }
+.route-choice {
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--fe-line);
+  border-radius: 11px;
+  background: var(--fe-input);
+  color: var(--fe-ink);
+  text-align: left;
+}
+.route-choice:hover { border-color: var(--fe-primary); background: var(--fe-primary-soft); }
+.route-choice-index { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; color: var(--fe-primary-dark); background: var(--fe-primary-soft); font-weight: 850; }
+.route-choice-text { min-width: 0; display: grid; gap: 2px; }
+.route-choice-text strong { font-size: 11px; }
+.route-choice-text small { color: var(--fe-muted); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.route-choice-arrow { color: var(--fe-primary); font-size: 18px; }
 .validation-list { display: grid; gap: 8px; }
 .validation-item { border: 1px solid var(--fe-line); border-radius: 10px; padding: 9px 10px; display: flex; align-items: flex-start; gap: 8px; color: var(--fe-ink); background: var(--fe-panel); }
 .validation-item.error { border-color: #f87171; background: color-mix(in srgb, #dc2626 9%, var(--fe-panel)); }

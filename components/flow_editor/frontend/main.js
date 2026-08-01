@@ -11,8 +11,17 @@ const NODE_TYPES = {
   note:       { label: "Observação",   description: "Nota explicativa",      icon: "✎", color: "#ca8a04", soft: "#fef9c3" },
 };
 
-const WORLD_WIDTH = 4200;
-const WORLD_HEIGHT = 2600;
+const DEFAULT_WORLD_WIDTH = 4200;
+const DEFAULT_WORLD_HEIGHT = 2600;
+const WORLD_PADDING_X = 260;
+const WORLD_PADDING_Y = 140;
+const LANE_HEADER_HEIGHT = 38;
+const LANE_CONTENT_TOP = 58;
+const LANE_BOTTOM_PADDING = 28;
+const LANE_ROW_GAP = 104;
+const LEVEL_GAP = 260;
+const MIN_ZOOM = 0.04;
+const MAX_ZOOM = 2.2;
 const NODE_WIDTH = 184;
 const NODE_HEIGHT = 72;
 
@@ -66,7 +75,7 @@ function normalizeDocument(input) {
     lane.color ||= "#EEF2FF";
     lane.enabled = lane.enabled !== false;
     lane.collapsed = lane.collapsed === true;
-    lane.height = clamp(Number(lane.height) || 240, 110, 700);
+    lane.height = clamp(Number(lane.height) || 240, 110, 1200);
   });
   doc.nodes.forEach((node) => {
     node.id ||= uid("node");
@@ -82,6 +91,7 @@ function normalizeDocument(input) {
     node.data.locked = node.data.locked === true;
     node.data.slaMinutes = node.data.slaMinutes ?? null;
     node.data.tags = Array.isArray(node.data.tags) ? node.data.tags : [];
+    node.data.preferredEdgeId = node.data.preferredEdgeId || null;
   });
   doc.edges.forEach((edge) => {
     edge.id ||= uid("edge");
@@ -89,7 +99,27 @@ function normalizeDocument(input) {
     edge.label ||= "";
     edge.condition = edge.condition ?? "";
     edge.enabled = edge.enabled !== false;
+    edge.targetHandle ||= "input";
   });
+
+  const nodeMap = new Map(doc.nodes.map((node) => [node.id, node]));
+  const outgoingByNode = new Map();
+  doc.edges.forEach((edge) => {
+    if (!outgoingByNode.has(edge.source)) outgoingByNode.set(edge.source, []);
+    outgoingByNode.get(edge.source).push(edge);
+  });
+  outgoingByNode.forEach((outgoing, sourceId) => {
+    const sourceNode = nodeMap.get(sourceId);
+    outgoing.forEach((edge, index) => {
+      if (sourceNode?.type === "decision") {
+        const current = String(edge.sourceHandle || "");
+        edge.sourceHandle = /^branch-\d+$/.test(current) ? current : `branch-${index}`;
+      } else {
+        edge.sourceHandle ||= "output";
+      }
+    });
+  });
+
   return doc;
 }
 
@@ -122,6 +152,9 @@ export default function flowEditor(component) {
     paletteCollapsed: localStorage.getItem("produto_tools_palette_collapsed") === "true",
     inspectorCollapsed: localStorage.getItem("produto_tools_inspector_collapsed") === "true",
     uiTheme: String(data?.theme || localStorage.getItem("produto_tools_editor_theme") || "light") === "dark" ? "dark" : "light",
+    worldSize: { width: DEFAULT_WORLD_WIDTH, height: DEFAULT_WORLD_HEIGHT },
+    branchChoices: {},
+    pendingPathAction: null,
     focusPath: null,
     playback: {
       running: false,
@@ -136,6 +169,12 @@ export default function flowEditor(component) {
       visitedEdgeIds: new Set(),
     },
   };
+
+  state.doc.nodes.forEach((node) => {
+    if (node.type === "decision" && node.data.preferredEdgeId) {
+      state.branchChoices[node.id] = node.data.preferredEdgeId;
+    }
+  });
 
   const viewport = $('[data-role="viewport"]');
   const world = $('[data-role="world"]');
@@ -153,14 +192,52 @@ export default function flowEditor(component) {
 
   function laneGeometry() {
     const sorted = [...state.doc.lanes].sort((a, b) => Number(a.order) - Number(b.order));
-    let top = 28;
+    let top = 0;
     const map = new Map();
     sorted.forEach((lane) => {
-      const height = lane.collapsed ? 48 : clamp(Number(lane.height) || 240, 110, 700);
+      const height = lane.collapsed ? 48 : clamp(Number(lane.height) || 240, 110, 1200);
       map.set(lane.id, { top, height, bottom: top + height });
-      top += height + 18;
+      top += height;
     });
     return { sorted, map, totalHeight: top };
+  }
+
+  function worldWidth() {
+    return Math.max(DEFAULT_WORLD_WIDTH, Number(state.worldSize?.width) || DEFAULT_WORLD_WIDTH);
+  }
+
+  function worldHeight() {
+    return Math.max(DEFAULT_WORLD_HEIGHT, Number(state.worldSize?.height) || DEFAULT_WORLD_HEIGHT);
+  }
+
+  function computeWorldSize() {
+    const geometry = laneGeometry();
+    let maxX = 900;
+    let maxY = Math.max(500, geometry.totalHeight);
+    state.doc.nodes.forEach((node) => {
+      const dimensions = nodeDimensions(node);
+      maxX = Math.max(maxX, Number(node.position.x) + dimensions.width);
+      maxY = Math.max(maxY, Number(node.position.y) + dimensions.height);
+    });
+    return {
+      width: Math.ceil(Math.max(DEFAULT_WORLD_WIDTH, maxX + WORLD_PADDING_X) / 100) * 100,
+      height: Math.ceil(Math.max(DEFAULT_WORLD_HEIGHT, maxY + WORLD_PADDING_Y, geometry.totalHeight + 80) / 100) * 100,
+    };
+  }
+
+  function updateWorldSize() {
+    state.worldSize = computeWorldSize();
+    const width = worldWidth();
+    const height = worldHeight();
+    world.style.width = `${width}px`;
+    world.style.height = `${height}px`;
+    edgeLayer.style.width = `${width}px`;
+    edgeLayer.style.height = `${height}px`;
+    edgeLayer.setAttribute("width", String(width));
+    edgeLayer.setAttribute("height", String(height));
+    edgeLayer.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    root.style.setProperty("--flow-world-width", `${width}px`);
+    root.style.setProperty("--flow-world-height", `${height}px`);
   }
 
   function worldPoint(clientX, clientY) {
@@ -179,6 +256,30 @@ export default function flowEditor(component) {
       if (y >= box.top && y <= box.bottom) return lane.id;
     }
     return null;
+  }
+
+  function constrainNodeYToLane(node, value) {
+    const raw = Math.max(0, Number(value) || 0);
+    if (!node?.laneId) return raw;
+    const box = laneGeometry().map.get(node.laneId);
+    if (!box) return raw;
+    const minY = box.top + LANE_CONTENT_TOP;
+    const maxY = Math.max(minY, box.bottom - NODE_HEIGHT - LANE_BOTTOM_PADDING);
+    return clamp(raw, minY, maxY);
+  }
+
+  function normalizeNodesIntoLanes() {
+    const geometry = laneGeometry();
+    const lanesById = new Set(geometry.sorted.map((lane) => lane.id));
+    const unassigned = state.doc.nodes.filter((node) => !node.laneId || !lanesById.has(node.laneId));
+    unassigned.forEach((node) => {
+      const detected = laneAtY(Number(node.position.y) + NODE_HEIGHT / 2);
+      if (detected) node.laneId = detected;
+    });
+    state.doc.nodes.forEach((node) => {
+      if (!node.laneId || !geometry.map.has(node.laneId)) return;
+      node.position.y = constrainNodeYToLane(node, node.position.y);
+    });
   }
 
   function snap(value) {
@@ -290,7 +391,7 @@ export default function flowEditor(component) {
 
   function renderViewport() {
     const v = state.doc.viewport;
-    v.zoom = clamp(Number(v.zoom) || 1, .25, 2.2);
+    v.zoom = clamp(Number(v.zoom) || 1, MIN_ZOOM, MAX_ZOOM);
     world.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.zoom})`;
     world.classList.toggle("show-grid", state.doc.settings.showGrid !== false);
     $('[data-role="zoom-label"]').textContent = `${Math.round(v.zoom * 100)}%`;
@@ -309,6 +410,7 @@ export default function flowEditor(component) {
       laneEl.dataset.id = lane.id;
       laneEl.style.top = `${box.top}px`;
       laneEl.style.height = `${box.height}px`;
+      laneEl.style.width = `${Math.max(600, worldWidth() - 68)}px`;
       laneEl.style.background = lane.color || "#EEF2FF";
       laneEl.classList.toggle("selected", state.selected?.kind === "lane" && state.selected.id === lane.id);
       laneEl.classList.toggle("disabled", lane.enabled === false);
@@ -355,6 +457,16 @@ export default function flowEditor(component) {
     return { nodes, nodeIds, edges };
   }
 
+  function graphMaps(graph) {
+    const outgoing = new Map(graph.nodes.map((node) => [node.id, []]));
+    const incoming = new Map(graph.nodes.map((node) => [node.id, []]));
+    graph.edges.forEach((edge) => {
+      if (outgoing.has(edge.source)) outgoing.get(edge.source).push(edge);
+      if (incoming.has(edge.target)) incoming.get(edge.target).push(edge);
+    });
+    return { outgoing, incoming };
+  }
+
   function shortestPath(startIds, targetIds, edges) {
     const targets = targetIds instanceof Set ? targetIds : new Set(targetIds || []);
     const outgoing = new Map();
@@ -392,7 +504,9 @@ export default function flowEditor(component) {
       (path.nodeSequence || []).forEach((id) => {
         if (!nodeSequence.length || nodeSequence[nodeSequence.length - 1] !== id) nodeSequence.push(id);
       });
-      (path.edgeSequence || []).forEach((id) => edgeSequence.push(id));
+      (path.edgeSequence || []).forEach((id) => {
+        if (!edgeSequence.length || edgeSequence[edgeSequence.length - 1] !== id) edgeSequence.push(id);
+      });
     });
     return {
       nodeSequence,
@@ -402,20 +516,113 @@ export default function flowEditor(component) {
     };
   }
 
+  function branchText(edge) {
+    const target = getNode(edge.target);
+    return `${edge.label || ""} ${edge.condition || ""} ${target?.data?.label || ""} ${(target?.data?.tags || []).join(" ")}`.toLowerCase();
+  }
+
+  function continuationStats(startId, graph, maps, blocked = new Set()) {
+    const queue = [{ nodeId: startId, depth: 0 }];
+    const visited = new Set(blocked);
+    visited.add(startId);
+    let maxDepth = 0;
+    let normalTerminals = 0;
+    let exceptionTerminals = 0;
+    while (queue.length) {
+      const current = queue.shift();
+      maxDepth = Math.max(maxDepth, current.depth);
+      const outgoing = (maps.outgoing.get(current.nodeId) || []).filter((edge) => !blocked.has(edge.target));
+      const node = getNode(current.nodeId);
+      if (!outgoing.length || node?.type === "end") {
+        const text = `${node?.data?.label || ""} ${(node?.data?.tags || []).join(" ")}`.toLowerCase();
+        if (/(erro|falha|recus|cancel|indispon|bloque|expir|encerrad|não cobrar|nao cobrar)/.test(text)) exceptionTerminals += 1;
+        else normalTerminals += 1;
+      }
+      for (const edge of outgoing) {
+        if (visited.has(edge.target)) continue;
+        visited.add(edge.target);
+        queue.push({ nodeId: edge.target, depth: current.depth + 1 });
+      }
+    }
+    return { count: visited.size, maxDepth, normalTerminals, exceptionTerminals };
+  }
+
+  function branchScore(edge, graph, maps, blocked = new Set()) {
+    const stats = continuationStats(edge.target, graph, maps, blocked);
+    const text = branchText(edge);
+    let score = stats.maxDepth * 18 + stats.count * 1.4 + stats.normalTerminals * 24 - stats.exceptionTerminals * 12;
+    if (/(sim|aceit|aprov|conclu|sucesso|disponível|disponivel|suficiente|ativo|continuar|automático|automatico|cobrar|gerar|criar|cliente|ambos|válid|valid)/.test(text)) score += 55;
+    if (/(erro|falha|recus|cancel|indispon|bloque|expir|corrigir|aguardar|pendente|não cobrar|nao cobrar)/.test(text)) score -= 70;
+    if (/^\s*n[aã]o\b/.test(text)) score -= 12;
+    const target = getNode(edge.target);
+    if (target?.type === "end" && stats.maxDepth === 0) score -= 20;
+    return score;
+  }
+
+  function chooseForwardEdge(nodeId, candidates, graph, maps, forcedEdgeId = null, blocked = new Set()) {
+    if (!candidates.length) return null;
+    if (forcedEdgeId) {
+      const forced = candidates.find((edge) => edge.id === forcedEdgeId);
+      if (forced) return forced;
+    }
+    const chosenId = state.branchChoices[nodeId];
+    if (chosenId) {
+      const chosen = candidates.find((edge) => edge.id === chosenId);
+      if (chosen) return chosen;
+    }
+    return [...candidates].sort((left, right) => branchScore(right, graph, maps, blocked) - branchScore(left, graph, maps, blocked))[0];
+  }
+
+  function buildForwardRoute(startId, graph, forcedFirstEdgeId = null) {
+    const maps = graphMaps(graph);
+    const nodeSequence = [startId];
+    const edgeSequence = [];
+    const visited = new Set([startId]);
+    let currentId = startId;
+    let first = true;
+    const limit = Math.max(20, graph.nodes.length * 2);
+
+    while (nodeSequence.length <= limit) {
+      const currentNode = getNode(currentId);
+      if (currentNode?.type === "end") break;
+      const candidates = (maps.outgoing.get(currentId) || []).filter((edge) => !visited.has(edge.target));
+      if (!candidates.length) break;
+      const edge = chooseForwardEdge(currentId, candidates, graph, maps, first ? forcedFirstEdgeId : null, visited);
+      first = false;
+      if (!edge) break;
+      edgeSequence.push(edge.id);
+      currentId = edge.target;
+      nodeSequence.push(currentId);
+      visited.add(currentId);
+    }
+
+    return { nodeSequence, edgeSequence };
+  }
+
+  function pathToAnchor(starts, anchorId, graph) {
+    if (starts.includes(anchorId)) return { nodeSequence: [anchorId], edgeSequence: [] };
+    const candidates = starts
+      .map((startId) => shortestPath([startId], new Set([anchorId]), graph.edges))
+      .filter(Boolean)
+      .sort((left, right) => right.nodeSequence.length - left.nodeSequence.length);
+    return candidates[0] || { nodeSequence: [anchorId], edgeSequence: [] };
+  }
+
   function buildReadablePath() {
     const graph = enabledGraph();
     if (!graph.nodes.length) return null;
     const startIds = graph.nodes.filter((node) => node.type === "start").map((node) => node.id);
-    const endIds = new Set(graph.nodes.filter((node) => node.type === "end").map((node) => node.id));
-    const effectiveStarts = startIds.length ? startIds : [graph.nodes[0].id];
-    const effectiveEnds = endIds.size ? endIds : new Set([graph.nodes[graph.nodes.length - 1].id]);
+    const rootIds = graph.nodes.filter((node) => !graph.edges.some((edge) => edge.target === node.id)).map((node) => node.id);
+    const effectiveStarts = startIds.length ? startIds : (rootIds.length ? rootIds : [graph.nodes[0].id]);
 
     if (state.selected?.kind === "edge") {
       const selectedEdge = getEdge(state.selected.id);
-      if (selectedEdge && selectedEdge.enabled !== false) {
-        const prefix = shortestPath(effectiveStarts, new Set([selectedEdge.source]), graph.edges) || { nodeSequence: [selectedEdge.source], edgeSequence: [] };
+      if (selectedEdge && selectedEdge.enabled !== false && graph.nodeIds.has(selectedEdge.source) && graph.nodeIds.has(selectedEdge.target)) {
+        const sourceNode = getNode(selectedEdge.source);
+        if (sourceNode?.type === "decision") state.branchChoices[sourceNode.id] = selectedEdge.id;
+        const prefix = pathToAnchor(effectiveStarts, selectedEdge.source, graph);
         const middle = { nodeSequence: [selectedEdge.source, selectedEdge.target], edgeSequence: [selectedEdge.id] };
-        const suffix = shortestPath([selectedEdge.target], effectiveEnds, graph.edges) || { nodeSequence: [selectedEdge.target], edgeSequence: [] };
+        const suffix = buildForwardRoute(selectedEdge.target, graph);
         return combinePaths(prefix, middle, suffix);
       }
     }
@@ -423,14 +630,13 @@ export default function flowEditor(component) {
     let anchorId = null;
     if (state.selected?.kind === "node" && graph.nodeIds.has(state.selected.id)) anchorId = state.selected.id;
     if (!anchorId && state.selected?.kind === "lane") {
-      anchorId = graph.nodes.find((node) => node.laneId === state.selected.id)?.id || null;
+      const laneNodes = graph.nodes.filter((node) => node.laneId === state.selected.id).sort((left, right) => left.position.x - right.position.x);
+      anchorId = laneNodes[0]?.id || null;
     }
     if (!anchorId) anchorId = effectiveStarts[0];
 
-    const prefix = effectiveStarts.includes(anchorId)
-      ? { nodeSequence: [anchorId], edgeSequence: [] }
-      : shortestPath(effectiveStarts, new Set([anchorId]), graph.edges) || { nodeSequence: [anchorId], edgeSequence: [] };
-    const suffix = shortestPath([anchorId], effectiveEnds, graph.edges) || { nodeSequence: [anchorId], edgeSequence: [] };
+    const prefix = pathToAnchor(effectiveStarts, anchorId, graph);
+    const suffix = buildForwardRoute(anchorId, graph);
     return combinePaths(prefix, suffix);
   }
 
@@ -476,13 +682,41 @@ export default function flowEditor(component) {
       inputPort.title = "Solte ou clique para receber uma conexão";
       inputPort.addEventListener("pointerup", (event) => finishConnection(event, node.id));
       inputPort.addEventListener("click", (event) => finishConnection(event, node.id));
-      const outputPort = el("span", "node-port output");
-      outputPort.title = "Arraste para conectar";
-      outputPort.classList.toggle("connecting", state.connecting?.source === node.id);
-      outputPort.addEventListener("pointerdown", (event) => beginConnection(event, node.id));
-      outputPort.addEventListener("click", (event) => beginConnection(event, node.id));
 
-      nodeEl.append(accent, content, inputPort, outputPort);
+      const outputPorts = [];
+      if (node.type === "decision") {
+        const outgoing = state.doc.edges.filter((edge) => edge.source === node.id);
+        const highestHandle = outgoing.reduce((highest, edge) => {
+          const match = String(edge.sourceHandle || "").match(/^branch-(\d+)$/);
+          return match ? Math.max(highest, Number(match[1])) : highest;
+        }, -1);
+        const portCount = Math.max(2, highestHandle + 1);
+        for (let index = 0; index < portCount; index += 1) {
+          const handle = `branch-${index}`;
+          const branchEdge = outgoing.find((edge) => edge.sourceHandle === handle);
+          const outputPort = el("span", "node-port output decision-output");
+          outputPort.dataset.handle = handle;
+          outputPort.style.top = `${((index + 1) / (portCount + 1)) * 100}%`;
+          outputPort.title = branchEdge
+            ? `Saída ${index + 1}: ${branchEdge.label || branchEdge.condition || getNode(branchEdge.target)?.data.label || "ramificação"}`
+            : `Saída ${index + 1}: arraste para conectar`;
+          outputPort.classList.toggle("used", Boolean(branchEdge));
+          outputPort.classList.toggle("connecting", state.connecting?.source === node.id && state.connecting?.sourceHandle === handle);
+          outputPort.addEventListener("pointerdown", (event) => beginConnection(event, node.id, handle));
+          outputPort.addEventListener("click", (event) => beginConnection(event, node.id, handle));
+          outputPorts.push(outputPort);
+        }
+      } else {
+        const outputPort = el("span", "node-port output");
+        outputPort.dataset.handle = "output";
+        outputPort.title = "Arraste para conectar";
+        outputPort.classList.toggle("connecting", state.connecting?.source === node.id);
+        outputPort.addEventListener("pointerdown", (event) => beginConnection(event, node.id, "output"));
+        outputPort.addEventListener("click", (event) => beginConnection(event, node.id, "output"));
+        outputPorts.push(outputPort);
+      }
+
+      nodeEl.append(accent, content, inputPort, ...outputPorts);
       nodeEl.addEventListener("pointerdown", (event) => beginNodeDrag(event, node.id));
       nodeEl.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -499,22 +733,52 @@ export default function flowEditor(component) {
     });
   }
 
-  function nodeCenter(node, side) {
+  function decisionPortCount(nodeId) {
+    const outgoing = state.doc.edges.filter((edge) => edge.source === nodeId);
+    const highestHandle = outgoing.reduce((highest, edge) => {
+      const match = String(edge.sourceHandle || "").match(/^branch-(\d+)$/);
+      return match ? Math.max(highest, Number(match[1])) : highest;
+    }, -1);
+    return Math.max(2, highestHandle + 1);
+  }
+
+  function nextDecisionHandle(nodeId) {
+    const used = new Set(
+      state.doc.edges
+        .filter((edge) => edge.source === nodeId)
+        .map((edge) => String(edge.sourceHandle || "")),
+    );
+    let index = 0;
+    while (used.has(`branch-${index}`)) index += 1;
+    return `branch-${index}`;
+  }
+
+  function nodeCenter(node, side, handle = null) {
     const dimensions = nodeDimensions(node);
+    let y = node.position.y + dimensions.height / 2;
+    if (side === "source" && node.type === "decision") {
+      const count = decisionPortCount(node.id);
+      const match = String(handle || "branch-0").match(/^branch-(\d+)$/);
+      const index = clamp(match ? Number(match[1]) : 0, 0, count - 1);
+      y = node.position.y + ((index + 1) / (count + 1)) * dimensions.height;
+    }
     return {
       x: node.position.x + (side === "source" ? dimensions.width : 0),
-      y: node.position.y + dimensions.height / 2,
+      y,
     };
   }
 
   function edgePath(source, target, type = "smoothstep") {
-    const dx = Math.max(70, Math.abs(target.x - source.x) * .45);
     if (type === "straight") return `M ${source.x} ${source.y} L ${target.x} ${target.y}`;
+    const direction = target.x >= source.x ? 1 : -1;
+    const clearance = Math.max(42, Math.min(90, Math.abs(target.x - source.x) * .22));
+    const exitX = source.x + direction * clearance;
+    const entryX = target.x - direction * clearance;
+    const middle = (exitX + entryX) / 2;
     if (type === "step") {
-      const middle = (source.x + target.x) / 2;
       return `M ${source.x} ${source.y} L ${middle} ${source.y} L ${middle} ${target.y} L ${target.x} ${target.y}`;
     }
-    return `M ${source.x} ${source.y} C ${source.x + dx} ${source.y}, ${target.x - dx} ${target.y}, ${target.x} ${target.y}`;
+    return `M ${source.x} ${source.y} L ${exitX} ${source.y} C ${middle} ${source.y}, ${middle} ${target.y}, ${entryX} ${target.y} L ${target.x} ${target.y}`;
   }
 
   function svgNode(tag, attrs = {}) {
@@ -529,7 +793,7 @@ export default function flowEditor(component) {
       const sourceNode = getNode(edge.source);
       const targetNode = getNode(edge.target);
       if (!sourceNode || !targetNode) return;
-      const source = nodeCenter(sourceNode, "source");
+      const source = nodeCenter(sourceNode, "source", edge.sourceHandle);
       const target = nodeCenter(targetNode, "target");
       const path = edgePath(source, target, edge.type);
       const edgeClasses = ["edge-group"];
@@ -568,7 +832,7 @@ export default function flowEditor(component) {
     if (!state.connecting) return;
     const node = getNode(state.connecting.source);
     if (!node) return;
-    const source = nodeCenter(node, "source");
+    const source = nodeCenter(node, "source", state.connecting.sourceHandle);
     const path = edgePath(source, state.pointerWorld, "smoothstep");
     const temp = svgNode("path", { d: path, class: "edge-path temp-edge", "stroke-dasharray": "7 5", opacity: ".8" });
     edgeLayer.appendChild(temp);
@@ -577,16 +841,18 @@ export default function flowEditor(component) {
   function renderMinimap() {
     minimap.innerHTML = "";
     if (state.doc.settings.showMiniMap === false) return;
-    const scaleX = 156 / WORLD_WIDTH;
-    const scaleY = 92 / WORLD_HEIGHT;
+    const mapWidth = 156;
+    const mapHeight = 92;
+    const scaleX = mapWidth / worldWidth();
+    const scaleY = mapHeight / worldHeight();
     const geometry = laneGeometry();
     geometry.sorted.forEach((lane) => {
       const box = geometry.map.get(lane.id);
       const item = el("div", "minimap-lane");
       item.style.left = `${34 * scaleX}px`;
       item.style.top = `${box.top * scaleY}px`;
-      item.style.width = `${3950 * scaleX}px`;
-      item.style.height = `${box.height * scaleY}px`;
+      item.style.width = `${Math.max(2, (worldWidth() - 68) * scaleX)}px`;
+      item.style.height = `${Math.max(1, box.height * scaleY)}px`;
       item.style.background = lane.color;
       minimap.appendChild(item);
     });
@@ -601,10 +867,10 @@ export default function flowEditor(component) {
     const rect = viewport.getBoundingClientRect();
     const v = state.doc.viewport;
     const view = el("div", "minimap-viewport");
-    view.style.left = `${(-v.x / v.zoom) * scaleX}px`;
-    view.style.top = `${(-v.y / v.zoom) * scaleY}px`;
-    view.style.width = `${(rect.width / v.zoom) * scaleX}px`;
-    view.style.height = `${(rect.height / v.zoom) * scaleY}px`;
+    view.style.left = `${clamp((-v.x / v.zoom) * scaleX, 0, mapWidth)}px`;
+    view.style.top = `${clamp((-v.y / v.zoom) * scaleY, 0, mapHeight)}px`;
+    view.style.width = `${clamp((rect.width / v.zoom) * scaleX, 2, mapWidth)}px`;
+    view.style.height = `${clamp((rect.height / v.zoom) * scaleY, 2, mapHeight)}px`;
     minimap.appendChild(view);
   }
 
@@ -759,7 +1025,15 @@ export default function flowEditor(component) {
     const meta = NODE_TYPES[node.type];
     $('[data-role="properties-caption"]').textContent = meta.label;
     const type = selectInput("type", node.type, Object.entries(NODE_TYPES).map(([value, item]) => [value, item.label]));
-    bindCommit(type, (input) => { node.type = input.value; });
+    bindCommit(type, (input) => {
+      node.type = input.value;
+      const outgoing = state.doc.edges.filter((edge) => edge.source === node.id);
+      outgoing.forEach((edge, index) => { edge.sourceHandle = node.type === "decision" ? `branch-${index}` : "output"; });
+      if (node.type !== "decision") {
+        node.data.preferredEdgeId = null;
+        delete state.branchChoices[node.id];
+      }
+    });
     const label = textInput("label", node.data.label, "Nome da etapa");
     bindCommit(label, (input) => { node.data.label = input.value.trim() || meta.label; });
     const description = textarea("description", node.data.description);
@@ -779,11 +1053,29 @@ export default function flowEditor(component) {
     const tags = textInput("tags", node.data.tags.join(", "), "Ex.: contrato, aprovação");
     bindCommit(tags, (input) => { node.data.tags = input.value.split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 12); });
 
+    let preferredBranchField = null;
+    if (node.type === "decision") {
+      const outgoing = state.doc.edges
+        .filter((edge) => edge.source === node.id && edge.enabled !== false)
+        .sort((left, right) => String(left.sourceHandle || "").localeCompare(String(right.sourceHandle || "")));
+      const branchOptions = [["", "Automática — rota principal mais completa"], ...outgoing.map((edge, index) => [
+        edge.id,
+        `${index + 1}. ${edge.label || edge.condition || getNode(edge.target)?.data.label || "Saída sem nome"}`,
+      ])];
+      const branch = selectInput("preferred-branch", node.data.preferredEdgeId || state.branchChoices[node.id] || "", branchOptions);
+      bindCommit(branch, (input) => {
+        node.data.preferredEdgeId = input.value || null;
+        if (input.value) state.branchChoices[node.id] = input.value;
+        else delete state.branchChoices[node.id];
+      });
+      preferredBranchField = fieldGroup("Saída padrão para destaque e Play", branch);
+    }
+
     const coordinates = el("div", "property-row");
     const x = numberInput("x", Math.round(node.position.x));
     const y = numberInput("y", Math.round(node.position.y));
-    bindCommit(x, (input) => { node.position.x = snap(clamp(Number(input.value) || 0, 0, WORLD_WIDTH - NODE_WIDTH)); });
-    bindCommit(y, (input) => { node.position.y = snap(clamp(Number(input.value) || 0, 0, WORLD_HEIGHT - NODE_HEIGHT)); });
+    bindCommit(x, (input) => { node.position.x = snap(Math.max(0, Number(input.value) || 0)); });
+    bindCommit(y, (input) => { node.position.y = snap(constrainNodeYToLane(node, Number(input.value) || 0)); });
     coordinates.append(fieldGroup("Posição X", x), fieldGroup("Posição Y", y));
 
     const actions = el("div", "property-actions");
@@ -793,14 +1085,19 @@ export default function flowEditor(component) {
     remove.addEventListener("click", () => deleteSelected());
     actions.append(duplicate, remove);
 
-    propertiesBody.append(
+    const propertyItems = [
       fieldGroup("Tipo", type), fieldGroup("Nome", label), fieldGroup("Descrição", description),
       fieldGroup("Responsável", owner), fieldGroup("Raia", lane), fieldGroup("SLA em minutos", sla),
-      fieldGroup("Tags separadas por vírgula", tags), coordinates,
+      fieldGroup("Tags separadas por vírgula", tags),
+    ];
+    if (preferredBranchField) propertyItems.push(preferredBranchField);
+    propertyItems.push(
+      coordinates,
       switchRow("Elemento ativo", "Itens inativos permanecem visíveis, mas são ignorados na validação principal", node.data.enabled, () => mutate(() => { node.data.enabled = !node.data.enabled; })),
       switchRow("Posição bloqueada", "Impede o arraste manual e o auto-layout", node.data.locked, () => mutate(() => { node.data.locked = !node.data.locked; })),
       actions,
     );
+    propertiesBody.append(...propertyItems);
   }
 
   function renderEdgeProperties(edge) {
@@ -817,7 +1114,12 @@ export default function flowEditor(component) {
     route.append(el("label", "", "Percurso"), el("div", "switch-row", `${source} → ${target}`));
     const actions = el("div", "property-actions");
     const reverse = el("button", "", "Inverter");
-    reverse.addEventListener("click", () => mutate(() => { [edge.source, edge.target] = [edge.target, edge.source]; }));
+    reverse.addEventListener("click", () => mutate(() => {
+      [edge.source, edge.target] = [edge.target, edge.source];
+      const newSource = getNode(edge.source);
+      edge.sourceHandle = newSource?.type === "decision" ? nextDecisionHandle(newSource.id) : "output";
+      edge.targetHandle = "input";
+    }));
     const remove = el("button", "danger", "Excluir");
     remove.addEventListener("click", () => deleteSelected());
     actions.append(reverse, remove);
@@ -838,7 +1140,7 @@ export default function flowEditor(component) {
     const order = numberInput("lane-order", lane.order, 1);
     bindCommit(order, (input) => { lane.order = Math.max(1, Number(input.value) || 1); });
     const height = numberInput("lane-height", lane.height, 110);
-    bindCommit(height, (input) => { lane.height = clamp(Number(input.value) || 240, 110, 700); });
+    bindCommit(height, (input) => { lane.height = clamp(Number(input.value) || 240, 110, 1200); });
     const color = el("input");
     color.type = "color";
     color.value = lane.color || "#EEF2FF";
@@ -878,6 +1180,7 @@ export default function flowEditor(component) {
   }
 
   function renderAll() {
+    updateWorldSize();
     renderViewport();
     renderLanes();
     renderNodes();
@@ -889,6 +1192,11 @@ export default function flowEditor(component) {
 
   function selectItem(kind, id) {
     state.selected = kind && id ? { kind, id } : null;
+    if (kind === "edge" && id) {
+      const edge = getEdge(id);
+      const source = edge ? getNode(edge.source) : null;
+      if (edge && source?.type === "decision") state.branchChoices[source.id] = edge.id;
+    }
     renderAll();
   }
 
@@ -900,7 +1208,7 @@ export default function flowEditor(component) {
         id,
         type,
         laneId: laneId || laneAtY(y),
-        position: { x: snap(clamp(x, 0, WORLD_WIDTH - NODE_WIDTH)), y: snap(clamp(y, 0, WORLD_HEIGHT - NODE_HEIGHT)) },
+        position: { x: snap(Math.max(0, x)), y: snap(Math.max(0, y)) },
         data: { label: meta.label, description: "", owner: "", enabled: true, locked: false, slaMinutes: null, tags: [] },
       });
       state.selected = { kind: "node", id };
@@ -923,8 +1231,8 @@ export default function flowEditor(component) {
     if (!source) return;
     const duplicate = clone(source);
     duplicate.id = uid("node");
-    duplicate.position.x = clamp(source.position.x + 40, 0, WORLD_WIDTH - NODE_WIDTH);
-    duplicate.position.y = clamp(source.position.y + 40, 0, WORLD_HEIGHT - NODE_HEIGHT);
+    duplicate.position.x = Math.max(0, source.position.x + 40);
+    duplicate.position.y = constrainNodeYToLane(duplicate, source.position.y + 40);
     duplicate.data.label = `${source.data.label} (cópia)`;
     mutate(() => {
       state.doc.nodes.push(duplicate);
@@ -965,13 +1273,13 @@ export default function flowEditor(component) {
     state.dragging = { kind: "lane-resize", id: laneId, start, initialHeight, snapshot: clone(state.doc) };
   }
 
-  function beginConnection(event, sourceId) {
+  function beginConnection(event, sourceId, sourceHandle = "output") {
     event.stopPropagation();
     event.preventDefault();
     const source = getNode(sourceId);
     if (!source) return;
-    state.connecting = { source: sourceId };
-    state.pointerWorld = nodeCenter(source, "source");
+    state.connecting = { source: sourceId, sourceHandle };
+    state.pointerWorld = nodeCenter(source, "source", sourceHandle);
     renderAll();
   }
 
@@ -979,19 +1287,31 @@ export default function flowEditor(component) {
     event.stopPropagation();
     if (!state.connecting) return;
     const sourceId = state.connecting.source;
+    const sourceHandle = state.connecting.sourceHandle || "output";
     state.connecting = null;
     if (sourceId === targetId) {
       renderAll();
       return toast("Um elemento não pode ser ligado a ele mesmo", "warning");
     }
-    const existing = state.doc.edges.some((edge) => edge.source === sourceId && edge.target === targetId);
+    const sourceNode = getNode(sourceId);
+    const existing = state.doc.edges.some((edge) => {
+      if (edge.source !== sourceId || edge.target !== targetId) return false;
+      return sourceNode?.type === "decision"
+        ? String(edge.sourceHandle || "branch-0") === String(sourceHandle)
+        : true;
+    });
     if (existing) {
       renderAll();
-      return toast("Essa conexão já existe", "warning");
+      return toast(
+        sourceNode?.type === "decision"
+          ? "Essa saída da decisão já está ligada a esse elemento"
+          : "Essa conexão já existe",
+        "warning",
+      );
     }
     const id = uid("edge");
     mutate(() => {
-      state.doc.edges.push({ id, source: sourceId, target: targetId, type: "smoothstep", label: "", enabled: true, condition: "" });
+      state.doc.edges.push({ id, source: sourceId, target: targetId, sourceHandle, targetHandle: "input", type: "smoothstep", label: "", enabled: true, condition: "" });
       state.selected = { kind: "edge", id };
     }, "Elementos conectados");
   }
@@ -1006,9 +1326,12 @@ export default function flowEditor(component) {
       const point = worldPoint(event.clientX, event.clientY);
       const dx = point.x - state.dragging.start.x;
       const dy = point.y - state.dragging.start.y;
-      node.position.x = snap(clamp(state.dragging.origin.x + dx, 0, WORLD_WIDTH - NODE_WIDTH));
-      node.position.y = snap(clamp(state.dragging.origin.y + dy, 0, WORLD_HEIGHT - NODE_HEIGHT));
-      node.laneId = laneAtY(node.position.y + NODE_HEIGHT / 2);
+      node.position.x = snap(Math.max(0, state.dragging.origin.x + dx));
+      node.position.y = snap(Math.max(0, state.dragging.origin.y + dy));
+      const detectedLane = laneAtY(node.position.y + NODE_HEIGHT / 2);
+      if (detectedLane) node.laneId = detectedLane;
+      node.position.y = snap(constrainNodeYToLane(node, node.position.y));
+      updateWorldSize();
       renderNodes();
       renderEdges();
       renderMinimap();
@@ -1019,7 +1342,7 @@ export default function flowEditor(component) {
       const lane = getLane(state.dragging.id);
       if (!lane) return;
       const point = worldPoint(event.clientX, event.clientY);
-      lane.height = clamp(state.dragging.initialHeight + (point.y - state.dragging.start.y), 110, 700);
+      lane.height = clamp(state.dragging.initialHeight + (point.y - state.dragging.start.y), 110, 1200);
       renderLanes();
       renderNodes();
       renderEdges();
@@ -1068,7 +1391,7 @@ export default function flowEditor(component) {
     const rect = viewport.getBoundingClientRect();
     const before = worldPoint(clientX, clientY);
     const oldZoom = state.doc.viewport.zoom;
-    const nextZoom = clamp(oldZoom * delta, .25, 2.2);
+    const nextZoom = clamp(oldZoom * delta, MIN_ZOOM, MAX_ZOOM);
     state.doc.viewport.zoom = nextZoom;
     state.doc.viewport.x = clientX - rect.left - before.x * nextZoom;
     state.doc.viewport.y = clientY - rect.top - before.y * nextZoom;
@@ -1093,7 +1416,7 @@ export default function flowEditor(component) {
     });
     const width = maxX - minX;
     const height = maxY - minY;
-    const zoom = clamp(Math.min((rect.width - 80) / width, (rect.height - 70) / height), .3, 1.25);
+    const zoom = clamp(Math.min((rect.width - 80) / width, (rect.height - 70) / height), MIN_ZOOM, 1.25);
     state.doc.viewport.zoom = zoom;
     state.doc.viewport.x = (rect.width - width * zoom) / 2 - minX * zoom;
     state.doc.viewport.y = (rect.height - height * zoom) / 2 - minY * zoom;
@@ -1141,60 +1464,235 @@ export default function flowEditor(component) {
     setTimeout(() => world.classList.remove("is-animating"), 350);
   }
 
-  function autoLayout() {
-    if (!state.doc.nodes.length) return toast("Adicione elementos antes de organizar", "info");
-    mutate(() => {
-      const orientation = state.doc.flow.orientation || "LR";
-      const geometry = laneGeometry();
-      const activeNodes = state.doc.nodes.filter((node) => !node.data.locked);
-      const indegree = new Map(activeNodes.map((node) => [node.id, 0]));
-      const outgoing = new Map(activeNodes.map((node) => [node.id, []]));
-      state.doc.edges.filter((edge) => edge.enabled !== false).forEach((edge) => {
-        if (indegree.has(edge.source) && indegree.has(edge.target)) {
-          indegree.set(edge.target, indegree.get(edge.target) + 1);
-          outgoing.get(edge.source).push(edge.target);
-        }
+  function ensureUnassignedLane() {
+    const laneIds = new Set(state.doc.lanes.map((lane) => lane.id));
+    const missing = state.doc.nodes.filter((node) => !node.laneId || !laneIds.has(node.laneId));
+    if (!missing.length) return null;
+    let lane = state.doc.lanes.find((item) => item.id === "lane_unassigned");
+    if (!lane) {
+      const order = state.doc.lanes.reduce((max, item) => Math.max(max, Number(item.order) || 0), 0) + 1;
+      lane = {
+        id: "lane_unassigned",
+        name: "Sem raia definida",
+        orientation: "horizontal",
+        order,
+        color: "#F8FAFC",
+        collapsed: false,
+        enabled: true,
+        height: 240,
+      };
+      state.doc.lanes.push(lane);
+    }
+    missing.forEach((node) => { node.laneId = lane.id; });
+    return lane;
+  }
+
+  function computeLayoutLevels(nodes, edges) {
+    const xValues = nodes.map((node) => Number(node.position.x) || 0).sort((a, b) => a - b);
+    const xSpread = xValues.length ? xValues[xValues.length - 1] - xValues[0] : 0;
+    if (nodes.length >= 40 && xSpread >= LEVEL_GAP * 5) {
+      const columns = [];
+      xValues.forEach((value) => {
+        const last = columns[columns.length - 1];
+        if (last === undefined || Math.abs(value - last) > LEVEL_GAP * 0.38) columns.push(value);
+        else columns[columns.length - 1] = (last + value) / 2;
       });
-      const queue = activeNodes.filter((node) => indegree.get(node.id) === 0).map((node) => node.id);
-      const level = new Map(queue.map((id) => [id, 0]));
-      let index = 0;
-      while (index < queue.length) {
-        const current = queue[index++];
-        for (const next of outgoing.get(current) || []) {
-          level.set(next, Math.max(level.get(next) || 0, (level.get(current) || 0) + 1));
-          indegree.set(next, indegree.get(next) - 1);
-          if (indegree.get(next) === 0) queue.push(next);
+      const levels = new Map();
+      nodes.forEach((node) => {
+        const x = Number(node.position.x) || 0;
+        let bestIndex = 0;
+        let bestDistance = Infinity;
+        columns.forEach((columnX, index) => {
+          const distance = Math.abs(columnX - x);
+          if (distance < bestDistance) { bestDistance = distance; bestIndex = index; }
+        });
+        levels.set(node.id, bestIndex);
+      });
+      return levels;
+    }
+
+    const nodeIds = new Set(nodes.map((node) => node.id));
+    const adjacency = new Map(nodes.map((node) => [node.id, []]));
+    edges.forEach((edge) => {
+      if (nodeIds.has(edge.source) && nodeIds.has(edge.target)) adjacency.get(edge.source).push(edge.target);
+    });
+
+    let sequence = 0;
+    const indexByNode = new Map();
+    const lowLink = new Map();
+    const stack = [];
+    const onStack = new Set();
+    const components = [];
+
+    function strongConnect(nodeId) {
+      indexByNode.set(nodeId, sequence);
+      lowLink.set(nodeId, sequence);
+      sequence += 1;
+      stack.push(nodeId);
+      onStack.add(nodeId);
+
+      for (const targetId of adjacency.get(nodeId) || []) {
+        if (!indexByNode.has(targetId)) {
+          strongConnect(targetId);
+          lowLink.set(nodeId, Math.min(lowLink.get(nodeId), lowLink.get(targetId)));
+        } else if (onStack.has(targetId)) {
+          lowLink.set(nodeId, Math.min(lowLink.get(nodeId), indexByNode.get(targetId)));
         }
       }
-      activeNodes.forEach((node, nodeIndex) => {
-        if (!level.has(node.id)) level.set(node.id, nodeIndex);
-      });
 
-      const laneBuckets = new Map();
-      activeNodes.forEach((node) => {
-        const laneId = node.laneId || "__none__";
-        if (!laneBuckets.has(laneId)) laneBuckets.set(laneId, new Map());
-        const nodeLevel = level.get(node.id) || 0;
-        const levels = laneBuckets.get(laneId);
-        if (!levels.has(nodeLevel)) levels.set(nodeLevel, []);
-        levels.get(nodeLevel).push(node);
-      });
+      if (lowLink.get(nodeId) === indexByNode.get(nodeId)) {
+        const componentNodes = [];
+        while (stack.length) {
+          const current = stack.pop();
+          onStack.delete(current);
+          componentNodes.push(current);
+          if (current === nodeId) break;
+        }
+        components.push(componentNodes);
+      }
+    }
 
-      laneBuckets.forEach((levels, laneId) => {
-        const laneBox = geometry.map.get(laneId);
-        [...levels.entries()].sort((a, b) => a[0] - b[0]).forEach(([nodeLevel, nodes]) => {
-          nodes.forEach((node, row) => {
-            const baseX = 120 + nodeLevel * 270;
-            const baseY = laneBox ? laneBox.top + 66 + row * 104 : geometry.totalHeight + 60 + row * 104;
-            if (orientation === "LR") { node.position.x = baseX; node.position.y = baseY; }
-            else if (orientation === "RL") { node.position.x = Math.max(100, 3300 - baseX); node.position.y = baseY; }
-            else if (orientation === "TB") { node.position.x = 140 + row * 230; node.position.y = 70 + nodeLevel * 150 + (laneBox?.top || 0); }
-            else { node.position.x = 140 + row * 230; node.position.y = Math.max(70, 2100 - nodeLevel * 150 - (laneBox?.top || 0)); }
-          });
+    nodes.forEach((node) => {
+      if (!indexByNode.has(node.id)) strongConnect(node.id);
+    });
+
+    const componentByNode = new Map();
+    components.forEach((members, componentId) => members.forEach((nodeId) => componentByNode.set(nodeId, componentId)));
+    const dag = new Map(components.map((_, index) => [index, new Set()]));
+    const indegree = new Map(components.map((_, index) => [index, 0]));
+    edges.forEach((edge) => {
+      const sourceComponent = componentByNode.get(edge.source);
+      const targetComponent = componentByNode.get(edge.target);
+      if (sourceComponent === undefined || targetComponent === undefined || sourceComponent === targetComponent) return;
+      if (!dag.get(sourceComponent).has(targetComponent)) {
+        dag.get(sourceComponent).add(targetComponent);
+        indegree.set(targetComponent, indegree.get(targetComponent) + 1);
+      }
+    });
+
+    const queue = [...indegree.entries()].filter(([, degree]) => degree === 0).map(([componentId]) => componentId);
+    const componentLevel = new Map(queue.map((componentId) => [componentId, 0]));
+    let cursor = 0;
+    while (cursor < queue.length) {
+      const componentId = queue[cursor++];
+      const currentLevel = componentLevel.get(componentId) || 0;
+      for (const targetComponent of dag.get(componentId) || []) {
+        componentLevel.set(targetComponent, Math.max(componentLevel.get(targetComponent) || 0, currentLevel + 1));
+        indegree.set(targetComponent, indegree.get(targetComponent) - 1);
+        if (indegree.get(targetComponent) === 0) queue.push(targetComponent);
+      }
+    }
+
+    const levels = new Map();
+    components.forEach((members, componentId) => {
+      const baseLevel = componentLevel.get(componentId) || 0;
+      const ordered = [...members].sort((leftId, rightId) => {
+        const left = getNode(leftId);
+        const right = getNode(rightId);
+        return (Number(left?.position.x) || 0) - (Number(right?.position.x) || 0)
+          || (Number(left?.position.y) || 0) - (Number(right?.position.y) || 0);
+      });
+      ordered.forEach((nodeId, index) => levels.set(nodeId, baseLevel + (ordered.length > 1 ? index : 0)));
+    });
+
+    return levels;
+  }
+
+  function layoutDocumentInPlace() {
+    if (!state.doc.nodes.length) return { columns: 0, moved: 0 };
+    ensureUnassignedLane();
+    const layoutNodes = [...state.doc.nodes];
+    const activeIds = new Set(layoutNodes.map((node) => node.id));
+    const layoutEdges = state.doc.edges.filter((edge) => edge.enabled !== false && activeIds.has(edge.source) && activeIds.has(edge.target));
+    const levels = computeLayoutLevels(layoutNodes, layoutEdges);
+    const maxLevel = Math.max(0, ...levels.values());
+    const laneBuckets = new Map();
+
+    layoutNodes.forEach((node) => {
+      const laneId = node.laneId || "lane_unassigned";
+      const level = levels.get(node.id) || 0;
+      if (!laneBuckets.has(laneId)) laneBuckets.set(laneId, new Map());
+      const buckets = laneBuckets.get(laneId);
+      if (!buckets.has(level)) buckets.set(level, []);
+      buckets.get(level).push(node);
+    });
+
+    state.doc.lanes.forEach((lane) => {
+      const levelsForLane = laneBuckets.get(lane.id);
+      const maxRows = levelsForLane
+        ? Math.max(1, ...[...levelsForLane.values()].map((items) => items.length))
+        : 1;
+      const requiredHeight = LANE_CONTENT_TOP + maxRows * LANE_ROW_GAP + LANE_BOTTOM_PADDING;
+      lane.height = clamp(Math.max(Number(lane.height) || 240, requiredHeight), 150, 1200);
+      lane.collapsed = false;
+    });
+
+    const geometry = laneGeometry();
+    const orientation = state.doc.flow.orientation || "LR";
+    let moved = 0;
+    laneBuckets.forEach((levelsForLane, laneId) => {
+      const laneBox = geometry.map.get(laneId);
+      if (!laneBox) return;
+      [...levelsForLane.entries()].sort((a, b) => a[0] - b[0]).forEach(([level, items]) => {
+        const ordered = [...items].sort((left, right) => {
+          return (Number(left.position.y) || 0) - (Number(right.position.y) || 0)
+            || String(left.data.label || "").localeCompare(String(right.data.label || ""));
+        });
+        ordered.forEach((node, row) => {
+          if (node.data.locked === true) return;
+          const visualLevel = orientation === "RL" ? maxLevel - level : level;
+          const nextX = 120 + visualLevel * LEVEL_GAP;
+          const nextY = laneBox.top + LANE_CONTENT_TOP + row * LANE_ROW_GAP;
+          if (node.position.x !== nextX || node.position.y !== nextY) moved += 1;
+          node.position.x = nextX;
+          node.position.y = nextY;
         });
       });
-    }, "Fluxo organizado automaticamente");
-    setTimeout(fitView, 30);
+    });
+
+    normalizeNodesIntoLanes();
+    updateWorldSize();
+    return { columns: maxLevel + 1, moved };
+  }
+
+  function countLayoutProblems() {
+    const geometry = laneGeometry();
+    let outside = 0;
+    let overlaps = 0;
+    const byLane = new Map();
+    state.doc.nodes.forEach((node) => {
+      const box = geometry.map.get(node.laneId);
+      if (!box || node.position.y < box.top + LANE_HEADER_HEIGHT || node.position.y + NODE_HEIGHT > box.bottom) outside += 1;
+      const laneId = node.laneId || "__none__";
+      if (!byLane.has(laneId)) byLane.set(laneId, []);
+      byLane.get(laneId).push(node);
+    });
+    byLane.forEach((items) => {
+      for (let leftIndex = 0; leftIndex < items.length; leftIndex += 1) {
+        const left = items[leftIndex];
+        const leftSize = nodeDimensions(left);
+        for (let rightIndex = leftIndex + 1; rightIndex < items.length; rightIndex += 1) {
+          const right = items[rightIndex];
+          const rightSize = nodeDimensions(right);
+          const separated = left.position.x + leftSize.width + 14 < right.position.x
+            || right.position.x + rightSize.width + 14 < left.position.x
+            || left.position.y + leftSize.height + 10 < right.position.y
+            || right.position.y + rightSize.height + 10 < left.position.y;
+          if (!separated) overlaps += 1;
+        }
+      }
+    });
+    return { outside, overlaps };
+  }
+
+  function autoLayout() {
+    if (!state.doc.nodes.length) return toast("Adicione elementos antes de organizar", "info");
+    let summary = null;
+    mutate(() => {
+      summary = layoutDocumentInPlace();
+    });
+    toast(`Fluxo organizado em ${summary.columns} colunas; ${summary.moved} elementos reposicionados.`, "success");
+    setTimeout(fitView, 40);
   }
 
   function validationReport() {
@@ -1213,8 +1711,25 @@ export default function flowEditor(component) {
       const outgoing = activeEdges.filter((edge) => edge.source === node.id && activeIds.has(edge.target));
       if (node.type !== "start" && !incoming.length) issues.push({ level: "warning", message: `“${node.data.label}” não possui conexão de entrada.`, target: { kind: "node", id: node.id } });
       if (node.type !== "end" && !outgoing.length) issues.push({ level: "warning", message: `“${node.data.label}” não possui conexão de saída.`, target: { kind: "node", id: node.id } });
-      if (node.type === "decision" && outgoing.length < 2) issues.push({ level: "warning", message: `A decisão “${node.data.label}” deveria possuir ao menos duas saídas.`, target: { kind: "node", id: node.id } });
+      if (node.type === "decision") {
+        if (outgoing.length < 2) {
+          issues.push({ level: "error", message: `A decisão “${node.data.label}” deve possuir no mínimo duas conexões de saída.`, target: { kind: "node", id: node.id } });
+        }
+        const usedHandles = outgoing.map((edge) => edge.sourceHandle || "branch-0");
+        if (new Set(usedHandles).size < outgoing.length) {
+          issues.push({ level: "warning", message: `A decisão “${node.data.label}” possui saídas usando o mesmo conector visual. Use conectores diferentes para melhorar a leitura.`, target: { kind: "node", id: node.id } });
+        }
+        outgoing.filter((edge) => !String(edge.label || edge.condition || "").trim()).forEach((edge) => {
+          issues.push({ level: "warning", message: `Uma saída da decisão “${node.data.label}” está sem rótulo ou condição.`, target: { kind: "edge", id: edge.id } });
+        });
+      }
       if (!node.laneId && state.doc.lanes.length) issues.push({ level: "warning", message: `“${node.data.label}” está fora de uma raia.`, target: { kind: "node", id: node.id } });
+      if (node.laneId && state.doc.lanes.length) {
+        const laneBox = laneGeometry().map.get(node.laneId);
+        if (!laneBox || node.position.y < laneBox.top + LANE_HEADER_HEIGHT || node.position.y + NODE_HEIGHT > laneBox.bottom) {
+          issues.push({ level: "error", message: `“${node.data.label}” não está posicionado dentro dos limites da raia selecionada.`, target: { kind: "node", id: node.id } });
+        }
+      }
     });
     activeEdges.forEach((edge) => {
       if (!activeIds.has(edge.source) || !activeIds.has(edge.target)) issues.push({ level: "error", message: `A conexão ${edge.id} aponta para um elemento inexistente ou inativo.`, target: { kind: "edge", id: edge.id } });
@@ -1230,6 +1745,8 @@ export default function flowEditor(component) {
     const issues = validationReport();
     const modal = $('[data-role="modal"]');
     const body = $('[data-role="modal-body"]');
+    const title = $('[data-role="modal-title"]');
+    title.textContent = "Validação do fluxo";
     body.innerHTML = "";
     if (!issues.length) {
       body.appendChild(el("div", "validation-ok", "Fluxo válido. Nenhum problema estrutural foi encontrado."));
@@ -1282,14 +1799,29 @@ export default function flowEditor(component) {
         state.doc = normalized;
         state.selected = null;
         state.focusPath = null;
+        state.branchChoices = {};
+        state.doc.nodes.forEach((node) => {
+          if (node.type === "decision" && node.data.preferredEdgeId) state.branchChoices[node.id] = node.data.preferredEdgeId;
+        });
         clearPlaybackTimer();
         state.playback.running = false;
         resetPlaybackVisuals();
         state.future = [];
+
+        ensureUnassignedLane();
+        normalizeNodesIntoLanes();
+        const initialProblems = countLayoutProblems();
+        const shouldOrganize = state.doc.nodes.length >= 60 || initialProblems.outside > 0 || initialProblems.overlaps > 2;
+        const layoutSummary = shouldOrganize ? layoutDocumentInPlace() : null;
+
         markDirty();
         renderAll();
-        fitView();
-        toast("Fluxo importado. Clique em Salvar para persistir.", "success");
+        setTimeout(fitView, 40);
+        if (layoutSummary) {
+          toast(`Fluxo grande importado e organizado em ${layoutSummary.columns} colunas, respeitando todas as raias.`, "success");
+        } else {
+          toast("Fluxo importado e ajustado às raias. Clique em Salvar para persistir.", "success");
+        }
       } catch (error) {
         toast(`Não foi possível importar: ${error.message}`, "error");
       }
@@ -1354,6 +1886,80 @@ export default function flowEditor(component) {
     button.classList.toggle("is-active", active);
   }
 
+  function activeDecisionBranches(nodeId) {
+    return state.doc.edges
+      .filter((edge) => edge.source === nodeId && edge.enabled !== false && getNode(edge.target)?.data.enabled !== false)
+      .sort((left, right) => {
+        const leftMatch = String(left.sourceHandle || "").match(/(\d+)$/);
+        const rightMatch = String(right.sourceHandle || "").match(/(\d+)$/);
+        return Number(leftMatch?.[1] || 0) - Number(rightMatch?.[1] || 0);
+      });
+  }
+
+  function showBranchChooser(decisionId, action) {
+    const node = getNode(decisionId);
+    const branches = activeDecisionBranches(decisionId);
+    if (!node || branches.length < 2) return false;
+    const modal = $('[data-role="modal"]');
+    const body = $('[data-role="modal-body"]');
+    const title = $('[data-role="modal-title"]');
+    title.textContent = "Escolha a ramificação";
+    body.innerHTML = "";
+    const intro = el("div", "route-choice-intro");
+    intro.append(
+      el("strong", "", node.data.label || "Decisão"),
+      el("span", "", "Selecione a saída que deve ser usada no destaque e na reprodução. A escolha ficará salva no fluxo."),
+    );
+    const list = el("div", "route-choice-list");
+    branches.forEach((edge, index) => {
+      const target = getNode(edge.target);
+      const button = el("button", "route-choice");
+      button.type = "button";
+      const badge = el("span", "route-choice-index", String(index + 1));
+      const text = el("span", "route-choice-text");
+      text.append(
+        el("strong", "", edge.label || edge.condition || `Saída ${index + 1}`),
+        el("small", "", `Segue para: ${target?.data.label || edge.target}${edge.condition ? ` • ${edge.condition}` : ""}`),
+      );
+      button.append(badge, text, el("span", "route-choice-arrow", "→"));
+      button.addEventListener("click", () => {
+        modal.hidden = true;
+        mutate(() => {
+          state.branchChoices[decisionId] = edge.id;
+          node.data.preferredEdgeId = edge.id;
+          state.selected = { kind: "edge", id: edge.id };
+        });
+        if (action === "play") startPlayback(true);
+        else applyFocusPath();
+      });
+      list.appendChild(button);
+    });
+    body.append(intro, list);
+    modal.hidden = false;
+    return true;
+  }
+
+  function promptSelectedDecisionBranch(action) {
+    if (state.selected?.kind !== "node") return false;
+    const node = getNode(state.selected.id);
+    if (!node || node.type !== "decision") return false;
+    const branches = activeDecisionBranches(node.id);
+    if (branches.length < 2 || state.branchChoices[node.id]) return false;
+    return showBranchChooser(node.id, action);
+  }
+
+  function applyFocusPath() {
+    const path = buildReadablePath();
+    if (!path || !path.nodeSequence.length) {
+      toast("Selecione uma etapa ou conexão válida para destacar a rota completa.", "warning");
+      return;
+    }
+    state.focusPath = path;
+    renderAll();
+    setTimeout(() => fitNodeIds(path.nodeIds), 40);
+    toast(`Rota completa destacada com ${path.nodeSequence.length} etapas.`, "success");
+  }
+
   function toggleFocusPath() {
     if (state.focusPath) {
       state.focusPath = null;
@@ -1362,15 +1968,8 @@ export default function flowEditor(component) {
       toast("Destaque removido", "info");
       return;
     }
-    const path = buildReadablePath();
-    if (!path || !path.nodeSequence.length) {
-      toast("Selecione uma etapa ou conexão válida para destacar o caminho.", "warning");
-      return;
-    }
-    state.focusPath = path;
-    renderAll();
-    setTimeout(() => fitNodeIds(path.nodeIds), 40);
-    toast(`Caminho destacado com ${path.nodeSequence.length} etapas.`, "success");
+    if (promptSelectedDecisionBranch("focus")) return;
+    applyFocusPath();
   }
 
   function playbackDelay() {
@@ -1438,10 +2037,11 @@ export default function flowEditor(component) {
     }, playbackDelay());
   }
 
-  function startPlayback() {
+  function startPlayback(skipPrompt = false) {
+    if (!skipPrompt && promptSelectedDecisionBranch("play")) return;
     const path = state.focusPath || buildReadablePath();
     if (!path || !path.nodeSequence.length) {
-      toast("Não foi encontrado um caminho ativo para reproduzir.", "warning");
+      toast("Não foi encontrada uma rota completa ativa para reproduzir.", "warning");
       return;
     }
     clearPlaybackTimer();
@@ -1558,8 +2158,18 @@ export default function flowEditor(component) {
 
   palette();
   bindEvents();
+  ensureUnassignedLane();
+  const initialLayoutProblems = countLayoutProblems();
+  const repairedLargeLayout = state.doc.nodes.length >= 60
+    && (initialLayoutProblems.outside > 0 || initialLayoutProblems.overlaps > 2);
+  if (repairedLargeLayout) layoutDocumentInPlace();
+  else normalizeNodesIntoLanes();
   renderAll();
-  setTimeout(fitView, 50);
+  if (repairedLargeLayout) {
+    markDirty();
+    setTimeout(() => toast("O fluxo grande foi reorganizado dentro das raias. Salve para persistir o novo layout.", "success"), 120);
+  }
+  setTimeout(fitView, 60);
 
   return () => {
     state.destroyed = true;

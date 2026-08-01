@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.3.0 — 2026-08-01
+
+- Mundo do canvas dimensionado dinamicamente para fluxos com dezenas de milhares de pixels.
+- Zoom mínimo reduzido para enquadrar processos extensos.
+- Importação de fluxos grandes com organização automática por raias.
+- Raias contíguas e com altura expansível conforme a quantidade de elementos.
+- Normalização de elementos fora dos limites de suas raias.
+- Redução de sobreposição por agrupamento em colunas e linhas internas.
+- Decisões com dois ou mais conectores de saída independentes.
+- Validação obrigatória de no mínimo duas conexões de saída por decisão.
+- Escolha explícita e persistente da ramificação padrão.
+- Destaque e Play calculados como rota completa, sem priorizar o fim mais próximo.
+- Seletor de ramificação exibido quando uma decisão ainda não possui saída preferida.
+- Minimap e enquadramento adaptados ao tamanho real do fluxo.
+
 ## 2.2.0 — 2026-08-01
 
 - Propriedades transferidas da lateral direita para um inspetor horizontal superior.
