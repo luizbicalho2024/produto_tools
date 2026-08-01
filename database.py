@@ -22,6 +22,10 @@ from core.configuration import (
     FLOWCHART_APPROVALS_COLLECTION,
     FLOWCHART_TEMPLATES_COLLECTION,
     FLOWCHART_PRESENCE_COLLECTION,
+    PROJECTS_COLLECTION,
+    PROJECT_RELEASES_COLLECTION,
+    PROJECT_RELEASE_FLOWS_COLLECTION,
+    PROJECT_MEMBERS_COLLECTION,
     MONGO_DB_NAME,
     USERS_COLLECTION,
     VALID_USER_ROLES,
@@ -144,6 +148,33 @@ def initialize_database() -> bool:
         )
         database[FLOWCHART_PRESENCE_COLLECTION].create_index(
             [("expires_at", ASCENDING)], expireAfterSeconds=0, name="ttl_pt_presence"
+        )
+        database[PROJECTS_COLLECTION].create_index(
+            [("owner_username", ASCENDING), ("updated_at", DESCENDING)],
+            name="ix_pt_projects_owner_updated",
+        )
+        database[PROJECTS_COLLECTION].create_index(
+            [("status", ASCENDING), ("updated_at", DESCENDING)],
+            name="ix_pt_projects_status_updated",
+        )
+        database[PROJECT_MEMBERS_COLLECTION].create_index(
+            [("project_id", ASCENDING), ("username", ASCENDING)],
+            unique=True,
+            name="uq_pt_project_members",
+        )
+        database[PROJECT_RELEASES_COLLECTION].create_index(
+            [("project_id", ASCENDING), ("version", DESCENDING)],
+            unique=True,
+            name="uq_pt_project_releases",
+        )
+        database[PROJECT_RELEASE_FLOWS_COLLECTION].create_index(
+            [("project_id", ASCENDING), ("release_version", DESCENDING), ("flow_id", ASCENDING)],
+            unique=True,
+            name="uq_pt_project_release_flows",
+        )
+        database[FLOWCHARTS_COLLECTION].create_index(
+            [("project_id", ASCENDING), ("project_order", ASCENDING)],
+            name="ix_pt_flows_project_order",
         )
         database[ACTIVITY_LOGS_COLLECTION].create_index(
             [("timestamp", DESCENDING)], name="ix_logs_timestamp"

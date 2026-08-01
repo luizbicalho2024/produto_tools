@@ -1,0 +1,1127 @@
+{
+  "schemaVersion": "2.0.0",
+  "flow": {
+    "id": "flow_sigyo_aux_proposta_aprovacao",
+    "name": "SIGYO Auxiliar — Proposta e Aprovação Comercial",
+    "description": "Fluxo detalhado da proposta, range por produto, aprovação automática ou dupla alçada, envio e aceite.",
+    "status": "draft",
+    "orientation": "LR",
+    "createdAt": "2026-08-01T21:18:00.000Z",
+    "updatedAt": "2026-08-01T21:18:00.000Z",
+    "createdBy": "luiz.bicalho@rovemabank.com.br",
+    "tags": [
+      "SIGYO",
+      "Modular"
+    ],
+    "projectId": "project_sigyo_modular",
+    "projectRole": "subprocess",
+    "projectGroup": "Comercial",
+    "projectOrder": 3
+  },
+  "settings": {
+    "snapToGrid": true,
+    "gridSize": 20,
+    "autoLayout": false,
+    "showMiniMap": true,
+    "showGrid": true,
+    "layoutPreset": "compact",
+    "edgeRouting": "corridor-v2",
+    "autosaveSeconds": 10,
+    "interactivePlayback": true
+  },
+  "viewport": {
+    "x": 40,
+    "y": 80,
+    "zoom": 0.12
+  },
+  "lanes": [
+    {
+      "id": "pl_comercial",
+      "name": "Comercial",
+      "orientation": "horizontal",
+      "order": 1,
+      "color": "#EEF2FF",
+      "collapsed": false,
+      "enabled": true,
+      "height": 300,
+      "owner": ""
+    },
+    {
+      "id": "pl_head",
+      "name": "Head Comercial",
+      "orientation": "horizontal",
+      "order": 2,
+      "color": "#FEF3C7",
+      "collapsed": false,
+      "enabled": true,
+      "height": 240,
+      "owner": ""
+    },
+    {
+      "id": "pl_diretoria",
+      "name": "Diretoria",
+      "orientation": "horizontal",
+      "order": 3,
+      "color": "#FEE2E2",
+      "collapsed": false,
+      "enabled": true,
+      "height": 240,
+      "owner": ""
+    },
+    {
+      "id": "pl_destinatario",
+      "name": "Cliente ou Credenciado",
+      "orientation": "horizontal",
+      "order": 4,
+      "color": "#F5F3FF",
+      "collapsed": false,
+      "enabled": true,
+      "height": 300,
+      "owner": ""
+    },
+    {
+      "id": "pl_core",
+      "name": "SIGYO Core",
+      "orientation": "horizontal",
+      "order": 5,
+      "color": "#EFF6FF",
+      "collapsed": false,
+      "enabled": true,
+      "height": 380,
+      "owner": ""
+    },
+    {
+      "id": "pl_governanca",
+      "name": "Governança e Auditoria",
+      "orientation": "horizontal",
+      "order": 6,
+      "color": "#F1F5F9",
+      "collapsed": false,
+      "enabled": true,
+      "height": 240,
+      "owner": ""
+    }
+  ],
+  "nodes": [
+    {
+      "id": "p_start",
+      "type": "start",
+      "laneId": "pl_comercial",
+      "position": {
+        "x": 100,
+        "y": 80
+      },
+      "data": {
+        "label": "Iniciar proposta comercial",
+        "description": "Nova venda, credenciamento, renovação ou aditivo.",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Início"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_range_cfg",
+      "type": "subprocess",
+      "laneId": "pl_comercial",
+      "position": {
+        "x": 380,
+        "y": 80
+      },
+      "data": {
+        "label": "Validar ranges cadastrados",
+        "description": "Confirmar range vigente por produto: piso, alvo, teto, desconto máximo, segmento, canal, quantidade e vigência.",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Range"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_simular",
+      "type": "subprocess",
+      "laneId": "pl_comercial",
+      "position": {
+        "x": 660,
+        "y": 80
+      },
+      "data": {
+        "label": "Compor simulação",
+        "description": "Selecionar destinatário, módulos, produtos, quantidades, preços, descontos e justificativas.",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Simulação"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_snapshot",
+      "type": "document",
+      "laneId": "pl_core",
+      "position": {
+        "x": 940,
+        "y": 1160
+      },
+      "data": {
+        "label": "Gerar versão interna da proposta",
+        "description": "Congelar snapshot de itens, ranges, preços e condições. Status EM_VALIDACAO; sem link público.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Snapshot",
+          "Proposta"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_validar",
+      "type": "subprocess",
+      "laneId": "pl_core",
+      "position": {
+        "x": 1220,
+        "y": 1160
+      },
+      "data": {
+        "label": "Calcular desvios por item",
+        "description": "Comparar preço proposto e piso; calcular desvio absoluto/percentual e desconto; bloquear item sem range válido.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Range",
+          "Validação"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_dentro",
+      "type": "decision",
+      "laneId": "pl_core",
+      "position": {
+        "x": 1500,
+        "y": 1160
+      },
+      "data": {
+        "label": "Todos os itens dentro da alçada?",
+        "description": "Nenhum item abaixo do piso e nenhum desconto acima do limite automático.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Alçada"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_auto",
+      "type": "event",
+      "laneId": "pl_core",
+      "position": {
+        "x": 1780,
+        "y": 1160
+      },
+      "data": {
+        "label": "Registrar aprovação automática",
+        "description": "Status DENTRO_DA_ALCADA; registrar regra e versão.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Aprovação"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_solicitar",
+      "type": "subprocess",
+      "laneId": "pl_core",
+      "position": {
+        "x": 1780,
+        "y": 1270
+      },
+      "data": {
+        "label": "Abrir solicitação de exceção",
+        "description": "Exigir justificativa do vendedor e registrar itens abaixo do piso, impacto, cliente e versão.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Exceção",
+          "Workflow"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_head_task",
+      "type": "task",
+      "laneId": "pl_head",
+      "position": {
+        "x": 2060,
+        "y": 380
+      },
+      "data": {
+        "label": "Head analisa no SIGYO",
+        "description": "Revisar exceção, condições, impacto e justificativa; comentário obrigatório.",
+        "owner": "Head Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": 1440,
+        "tags": [
+          "Aprovação"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_head_dec",
+      "type": "decision",
+      "laneId": "pl_head",
+      "position": {
+        "x": 2340,
+        "y": 380
+      },
+      "data": {
+        "label": "Head aprova?",
+        "description": "Decisão vinculada à versão e registrada em auditoria.",
+        "owner": "Head Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Alçada"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_dir_task",
+      "type": "task",
+      "laneId": "pl_diretoria",
+      "position": {
+        "x": 2620,
+        "y": 620
+      },
+      "data": {
+        "label": "Diretoria analisa no SIGYO",
+        "description": "Revisar proposta e aprovação anterior. Usuário deve possuir papel de Diretor.",
+        "owner": "Diretoria",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": 1440,
+        "tags": [
+          "Aprovação"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_dir_dec",
+      "type": "decision",
+      "laneId": "pl_diretoria",
+      "position": {
+        "x": 2900,
+        "y": 620
+      },
+      "data": {
+        "label": "Diretoria aprova?",
+        "description": "Decisão final para exceção abaixo do piso.",
+        "owner": "Diretoria",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Alçada Final"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_reprovada",
+      "type": "event",
+      "laneId": "pl_core",
+      "position": {
+        "x": 3180,
+        "y": 1270
+      },
+      "data": {
+        "label": "Reprovar versão",
+        "description": "Registrar motivo, bloquear envio e notificar Comercial.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Reprovação"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_ajustar",
+      "type": "task",
+      "laneId": "pl_comercial",
+      "position": {
+        "x": 3460,
+        "y": 80
+      },
+      "data": {
+        "label": "Ajustar proposta",
+        "description": "Alterar itens, preços, descontos, quantidades ou justificativas; criar nova versão.",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Revisão"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_dupla",
+      "type": "event",
+      "laneId": "pl_core",
+      "position": {
+        "x": 3180,
+        "y": 1160
+      },
+      "data": {
+        "label": "Registrar dupla aprovação",
+        "description": "Confirmar Head e Diretoria para a mesma versão; status APROVADA_INTERNAMENTE.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Aprovação"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_inalterada",
+      "type": "decision",
+      "laneId": "pl_core",
+      "position": {
+        "x": 3460,
+        "y": 1160
+      },
+      "data": {
+        "label": "Versão permaneceu inalterada?",
+        "description": "Qualquer mudança após aprovação invalida as decisões e exige nova validação.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Versionamento"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_publicar",
+      "type": "subprocess",
+      "laneId": "pl_core",
+      "position": {
+        "x": 3740,
+        "y": 1160
+      },
+      "data": {
+        "label": "Publicar e enviar proposta",
+        "description": "Gerar token público, validade, HTML/PDF e enviar por canal configurado.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Envio",
+          "Token"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_visualizar",
+      "type": "task",
+      "laneId": "pl_destinatario",
+      "position": {
+        "x": 4020,
+        "y": 860
+      },
+      "data": {
+        "label": "Visualizar proposta",
+        "description": "Validar token, registrar visualização, IP e data/hora.",
+        "owner": "Cliente ou Credenciado",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Visualização"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_aceita",
+      "type": "decision",
+      "laneId": "pl_destinatario",
+      "position": {
+        "x": 4300,
+        "y": 860
+      },
+      "data": {
+        "label": "Aceita a proposta?",
+        "description": "Registrar aceite ou recusa.",
+        "owner": "Cliente ou Credenciado",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Aceite"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_end_recusada",
+      "type": "end",
+      "laneId": "pl_destinatario",
+      "position": {
+        "x": 4580,
+        "y": 960
+      },
+      "data": {
+        "label": "Proposta recusada ou expirada",
+        "description": "Encerrar a versão e notificar Comercial.",
+        "owner": "Cliente ou Credenciado",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Fim"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_end_aceita",
+      "type": "end",
+      "laneId": "pl_core",
+      "position": {
+        "x": 4580,
+        "y": 1160
+      },
+      "data": {
+        "label": "Proposta aceita e liberada para assinatura",
+        "description": "Disparar PropostaAceitaEvent.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Fim",
+          "Sucesso"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "p_gov",
+      "type": "note",
+      "laneId": "pl_governanca",
+      "position": {
+        "x": 1780,
+        "y": 1540
+      },
+      "data": {
+        "label": "Controles da alçada",
+        "description": "RBAC, segregação de funções, comentários obrigatórios, SLA, lembretes, substituição autorizada, auditoria imutável e invalidação por mudança de versão.",
+        "owner": "Governança",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "RBAC",
+          "Auditoria"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "governance",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e001",
+      "source": "p_start",
+      "target": "p_range_cfg",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e002",
+      "source": "p_range_cfg",
+      "target": "p_simular",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e003",
+      "source": "p_simular",
+      "target": "p_snapshot",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e004",
+      "source": "p_snapshot",
+      "target": "p_validar",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e005",
+      "source": "p_validar",
+      "target": "p_dentro",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e006",
+      "source": "p_dentro",
+      "target": "p_auto",
+      "type": "step",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Dentro da alçada",
+      "targetHandle": "input",
+      "sourceHandle": "branch-0"
+    },
+    {
+      "id": "e007",
+      "source": "p_dentro",
+      "target": "p_solicitar",
+      "type": "step",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Há exceção",
+      "targetHandle": "input",
+      "sourceHandle": "branch-1"
+    },
+    {
+      "id": "e008",
+      "source": "p_solicitar",
+      "target": "p_head_task",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e009",
+      "source": "p_head_task",
+      "target": "p_head_dec",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e010",
+      "source": "p_head_dec",
+      "target": "p_reprovada",
+      "type": "step",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Reprovada",
+      "targetHandle": "input",
+      "sourceHandle": "branch-0"
+    },
+    {
+      "id": "e011",
+      "source": "p_head_dec",
+      "target": "p_dir_task",
+      "type": "step",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Aprovada pelo Head",
+      "targetHandle": "input",
+      "sourceHandle": "branch-1"
+    },
+    {
+      "id": "e012",
+      "source": "p_dir_task",
+      "target": "p_dir_dec",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e013",
+      "source": "p_dir_dec",
+      "target": "p_reprovada",
+      "type": "step",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Reprovada",
+      "targetHandle": "input",
+      "sourceHandle": "branch-0"
+    },
+    {
+      "id": "e014",
+      "source": "p_dir_dec",
+      "target": "p_dupla",
+      "type": "step",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Aprovada",
+      "targetHandle": "input",
+      "sourceHandle": "branch-1"
+    },
+    {
+      "id": "e015",
+      "source": "p_reprovada",
+      "target": "p_ajustar",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e016",
+      "source": "p_ajustar",
+      "target": "p_simular",
+      "type": "step",
+      "label": "Nova versão",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e017",
+      "source": "p_auto",
+      "target": "p_inalterada",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e018",
+      "source": "p_dupla",
+      "target": "p_inalterada",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e019",
+      "source": "p_inalterada",
+      "target": "p_validar",
+      "type": "step",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Aprovações invalidadas",
+      "targetHandle": "input",
+      "sourceHandle": "branch-0"
+    },
+    {
+      "id": "e020",
+      "source": "p_inalterada",
+      "target": "p_publicar",
+      "type": "step",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Versão válida",
+      "targetHandle": "input",
+      "sourceHandle": "branch-1"
+    },
+    {
+      "id": "e021",
+      "source": "p_publicar",
+      "target": "p_visualizar",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e022",
+      "source": "p_visualizar",
+      "target": "p_aceita",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e023",
+      "source": "p_aceita",
+      "target": "p_end_recusada",
+      "type": "step",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Recusa/expiração",
+      "targetHandle": "input",
+      "sourceHandle": "branch-0"
+    },
+    {
+      "id": "e024",
+      "source": "p_aceita",
+      "target": "p_end_aceita",
+      "type": "step",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Aceite",
+      "targetHandle": "input",
+      "sourceHandle": "branch-1"
+    }
+  ]
+}

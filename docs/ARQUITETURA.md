@@ -1,35 +1,65 @@
-# Arquitetura — Produto Tools 3.0
+# Arquitetura — Produto Tools 3.1
 
 ## Camadas
 
-- `login_app.py` e `pages/`: interface Streamlit e orquestração de casos de uso.
-- `components/flow_editor/`: componente bidirecional V2, renderer e interação do canvas.
-- `schemas/`: normalização retrocompatível e validação estrutural.
-- `services/flowchart_repository.py`: persistência, revisão otimista, governança, comentários, templates e presença.
-- `services/flow_analytics.py`: análise de grafo, qualidade, RACI e indicadores.
-- `services/flow_diff.py`: comparação de documentos e versões.
-- `services/report_export.py`: PDF, HTML e CSV.
-- `database.py`: conexão compartilhada, usuários e índices do Atlas.
+```text
+Streamlit
+├── login e autenticação compartilhada
+├── Central de Processos
+├── Gestão de Projetos
+└── Editor Custom Component V2
 
-## Persistência
+Serviços
+├── flowchart_repository.py
+├── project_repository.py
+├── flow_analytics.py
+├── flow_diff.py
+└── report_export.py
 
-O documento atual é mantido em `produto_tools_flowcharts`. Uma versão formal é criada somente no salvamento manual, restauração ou operação equivalente. Movimentos intermediários são armazenados por usuário em `produto_tools_flowchart_drafts`.
+MongoDB
+├── projetos e participantes
+├── releases consolidadas
+├── fluxos e versões
+├── rascunhos
+├── comentários e aprovações
+└── presença colaborativa
+```
 
-Cada documento principal possui `revision`. O cliente envia a revisão que carregou. O update somente é aceito quando a revisão ainda coincide. Caso contrário, o editor apresenta as alternativas de recarregar, criar cópia ou sobrescrever como proprietário.
+## Projeto
 
-## Governança
+O projeto é a camada agregadora. Os fluxos permanecem documentos independentes e armazenam os campos:
 
-As transições são validadas no backend. Uma versão publicada permanece identificada por `published_version`. Ao editar um processo publicado, o estado volta a rascunho, sem apagar a referência da publicação anterior.
+```json
+{
+  "projectId": "project_sigyo_modular",
+  "projectRole": "subprocess",
+  "projectGroup": "Financeiro",
+  "projectOrder": 6
+}
+```
 
-## Compatibilidade
+A coleção `produto_tools_projects` armazena metadados, proprietário, participantes, visibilidade, fluxo inicial e release atual.
 
-`normalize_document` converte documentos anteriores para schema 2.0, adicionando metadados de nível, categoria, criticidade, RACI, subprocesso vinculado e novas configurações sem remover campos desconhecidos.
+## Vínculos
 
-## Segurança
+As dependências são derivadas dos cards com `linkedFlowId`. O sistema não duplica a lista de vínculos no projeto; o mapa é recalculado a partir dos documentos atuais, evitando inconsistência entre duas fontes.
 
-- Secrets somente no Streamlit Cloud ou ambiente.
-- Senhas bcrypt permanecem na coleção compartilhada `users`.
-- Permissões são verificadas novamente no backend.
-- O último administrador ativo não pode ser removido.
-- Comentários, aprovações e alterações relevantes são auditados.
-- Presença usa TTL e não funciona como bloqueio exclusivo.
+## Releases
+
+Uma release registra, para cada fluxo:
+
+- ID;
+- versão;
+- revisão;
+- hash SHA-256;
+- papel, grupo e ordem no projeto.
+
+O pacote de uma release utiliza as versões imutáveis da coleção `produto_tools_flowchart_versions`.
+
+## Rascunhos
+
+No navegador, a chave inclui projeto, usuário, fluxo e revisão. No MongoDB, os rascunhos continuam indexados por fluxo e usuário e registram também `project_id`.
+
+## Importação
+
+O importador lê `project.json`, carrega `flows/*.json`, resolve conflitos de IDs e remapeia automaticamente `linkedFlowId` quando novos IDs são gerados.

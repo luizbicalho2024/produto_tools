@@ -51,10 +51,17 @@ from services.flowchart_repository import (
     touch_presence,
     transition_workflow,
 )
+from services.project_repository import (
+    get_project,
+    list_project_flows,
+    list_projects,
+    project_impact,
+    update_project,
+)
 from services.report_export import html_report, nodes_csv, pdf_report, raci_csv
 from services.template_library import built_in_templates, clone_template
 
-st.set_page_config(page_title="Editor de Processos Pro", page_icon="◈", layout="wide")
+st.set_page_config(page_title="Editor de Processos e Projetos", page_icon="◈", layout="wide")
 apply_global_styles(full_width=True)
 user = require_login()
 render_account_sidebar()
@@ -108,14 +115,35 @@ if "flow_flash" in st.session_state:
     getattr(st, kind)(message)
 
 try:
-    flows = list_flowcharts(username, include_all=is_admin)
+    projects = list_projects(username, include_all=is_admin, is_admin=is_admin)
+    project_ids = {item["id"] for item in projects}
+    selected_project_id = str(st.session_state.get("selected_project_id") or "")
+    if selected_project_id and selected_project_id not in project_ids:
+        selected_project_id = ""
+    if not selected_project_id and projects:
+        selected_project_id = projects[0]["id"]
+        st.session_state["selected_project_id"] = selected_project_id
+
+    if selected_project_id:
+        flows = list_project_flows(selected_project_id, username, is_admin=is_admin)
+    else:
+        flows = [item for item in list_flowcharts(username, include_all=is_admin) if not item.get("project_id")]
+
     if not flows:
+        demo = demo_flowchart_document(username)
+        if selected_project_id:
+            demo["flow"].update({
+                "projectId": selected_project_id,
+                "projectRole": "operational",
+                "projectGroup": "Geral",
+                "projectOrder": 1,
+            })
         created = save_flowchart(
-            demo_flowchart_document(username), username, user_email,
+            demo, username, user_email,
             actor_username=username, is_admin=is_admin, save_reason="initial_demo",
         )
         st.session_state["selected_flowchart_id"] = created["id"]
-        flows = list_flowcharts(username, include_all=is_admin)
+        flows = list_project_flows(selected_project_id, username, is_admin=is_admin) if selected_project_id else [item for item in list_flowcharts(username, include_all=is_admin) if not item.get("project_id")]
 except Exception as exc:
     st.error(f"Não foi possível acessar os fluxos no MongoDB: {exc}")
     st.stop()
@@ -126,14 +154,36 @@ if selected_id not in available_ids:
     selected_id = available_ids[0]
     st.session_state["selected_flowchart_id"] = selected_id
 
+project = get_project(selected_project_id, username, is_admin=is_admin) if selected_project_id else None
+
 # Navegação de subprocessos vinculados.
 flow_stack: list[str] = st.session_state.setdefault("flow_navigation_stack", [])
 
 with st.sidebar:
+    st.markdown("### Workspace")
+    project_options = {"": "Fluxos avulsos", **{item["id"]: item["name"] for item in projects}}
+    project_values = list(project_options)
+    project_choice = st.selectbox(
+        "Projeto",
+        project_values,
+        index=project_values.index(selected_project_id) if selected_project_id in project_values else 0,
+        format_func=lambda value: project_options[value],
+    )
+    if project_choice != selected_project_id:
+        st.session_state["selected_project_id"] = project_choice
+        st.session_state.pop("selected_flowchart_id", None)
+        st.session_state["flow_navigation_stack"] = []
+        st.rerun()
+    if selected_project_id and st.button("▦ Abrir mapa do projeto", use_container_width=True):
+        st.switch_page("pages/3_Gestão_de_Projetos.py")
+
     st.markdown("### Processos")
     if flow_stack and st.button("← Voltar ao fluxo anterior", use_container_width=True):
         previous = flow_stack.pop()
-        st.session_state["selected_flowchart_id"] = previous
+        previous_id = previous.get("flow_id") if isinstance(previous, dict) else previous
+        st.session_state["selected_flowchart_id"] = previous_id
+        if isinstance(previous, dict) and previous.get("source_node_id"):
+            st.session_state["project_focus_node"] = {"flow_id": previous_id, "node_id": previous["source_node_id"]}
         st.rerun()
 
     filter_text = st.text_input("Buscar processo", placeholder="Nome, status ou proprietário")
@@ -160,8 +210,16 @@ with st.sidebar:
     col_new, col_copy = st.columns(2)
     with col_new:
         if st.button("Novo", use_container_width=True, type="primary"):
+            new_document = new_flowchart_document("Novo processo", username)
+            if selected_project_id:
+                new_document["flow"].update({
+                    "projectId": selected_project_id,
+                    "projectRole": "subprocess",
+                    "projectGroup": "Geral",
+                    "projectOrder": len(flows) + 1,
+                })
             created = save_flowchart(
-                new_flowchart_document("Novo processo", username), username, user_email,
+                new_document, username, user_email,
                 actor_username=username, save_reason="new",
             )
             st.session_state["selected_flowchart_id"] = created["id"]
@@ -186,6 +244,13 @@ with st.sidebar:
     if st.button("Criar processo pelo template", use_container_width=True):
         template = template_map[template_label]
         doc = clone_template(template, username)
+        if selected_project_id:
+            doc["flow"].update({
+                "projectId": selected_project_id,
+                "projectRole": "subprocess",
+                "projectGroup": "Geral",
+                "projectOrder": len(flows) + 1,
+            })
         created = save_flowchart(doc, username, user_email, actor_username=username, save_reason="template")
         st.session_state["selected_flowchart_id"] = created["id"]
         flash("Processo criado a partir do template.")
@@ -213,9 +278,63 @@ if using_draft:
     editor_document = draft["document"]
 
 page_header(
-    "Editor de Processos Professional",
-    "Modele, simule, revise, publique e documente processos com governança, colaboração e versionamento no MongoDB.",
+    "Editor de Processos e Projetos",
+    "Modele fluxos independentes ou vinculados, navegue por subprocessos e mantenha versões, rascunhos e releases do projeto no MongoDB.",
 )
+
+if project:
+    st.caption(f"Projeto: **{project['name']}** › {record['name']}")
+    tabs_by_project = st.session_state.setdefault("project_open_flow_tabs", {})
+    open_tabs = tabs_by_project.setdefault(selected_project_id, [])
+    if selected_id not in open_tabs:
+        open_tabs.append(selected_id)
+    open_tabs[:] = [flow_id for flow_id in open_tabs if flow_id in available_ids][-8:]
+    if open_tabs:
+        tab_cols = st.columns(min(len(open_tabs), 6))
+        for index, flow_id in enumerate(open_tabs[:6]):
+            tab_record = next((item for item in flows if item["id"] == flow_id), None)
+            if tab_record and tab_cols[index].button(
+                ("● " if flow_id == selected_id else "") + tab_record["name"][:30],
+                key=f"open_tab_{selected_project_id}_{flow_id}",
+                use_container_width=True,
+            ):
+                st.session_state["selected_flowchart_id"] = flow_id
+                st.rerun()
+        if len(open_tabs) > 1:
+            close_col, clear_col = st.columns([3, 1])
+            close_id = close_col.selectbox(
+                "Fechar aba", open_tabs,
+                format_func=lambda value: next((item["name"] for item in flows if item["id"] == value), value),
+                label_visibility="collapsed", key="close_project_tab",
+            )
+            if clear_col.button("Fechar", use_container_width=True):
+                if close_id in open_tabs:
+                    open_tabs.remove(close_id)
+                if close_id == selected_id and open_tabs:
+                    st.session_state["selected_flowchart_id"] = open_tabs[-1]
+                st.rerun()
+
+execution = st.session_state.get("project_execution")
+if project and isinstance(execution, dict) and execution.get("project_id") == selected_project_id:
+    path = [flow_id for flow_id in execution.get("path", []) if flow_id in available_ids]
+    if path:
+        index = max(0, min(int(execution.get("index") or 0), len(path) - 1))
+        execution["index"] = index
+        route_names = [next((item["name"] for item in flows if item["id"] == flow_id), flow_id) for flow_id in path]
+        st.info(f"Execução guiada do projeto · Etapa {index + 1} de {len(path)}: " + " → ".join(route_names))
+        prev_col, current_col, next_col, stop_col = st.columns([1, 2, 1, 1])
+        if prev_col.button("← Fluxo anterior", disabled=index == 0, use_container_width=True):
+            execution["index"] = index - 1
+            st.session_state["selected_flowchart_id"] = path[index - 1]
+            st.rerun()
+        current_col.caption("Use o Play do editor para percorrer o fluxo atual.")
+        if next_col.button("Próximo fluxo →", disabled=index >= len(path) - 1, use_container_width=True):
+            execution["index"] = index + 1
+            st.session_state["selected_flowchart_id"] = path[index + 1]
+            st.rerun()
+        if stop_col.button("Encerrar", use_container_width=True):
+            st.session_state.pop("project_execution", None)
+            st.rerun()
 
 status_label = WORKFLOW_STATUS_LABELS.get(record["workflow_status"], record["workflow_status"])
 meta1, meta2, meta3, meta4, meta5 = st.columns([2.3, .85, .85, .85, 1])
@@ -373,7 +492,11 @@ with manage_tabs[1]:
 
 with manage_tabs[2]:
     users = [item for item in db.get_all_users() if item.get("active") is not False and item.get("username") != record["owner_username"]]
-    if permission == "owner":
+    if project:
+        st.info("Este fluxo herda participantes e visibilidade do projeto. Altere o compartilhamento na Gestão de Projetos.")
+        if st.button("Abrir participantes do projeto", use_container_width=True):
+            st.switch_page("pages/3_Gestão_de_Projetos.py")
+    elif permission == "owner":
         visibility = st.radio("Visibilidade", ["private", "organization"], index=1 if record.get("visibility") == "organization" else 0, format_func=lambda value: "Toda a organização pode visualizar" if value == "organization" else "Somente convidados", horizontal=True)
         collaborator_rows = {str(item.get("username")): str(item.get("level") or "viewer") for item in record.get("collaborators", [])}
         selected_users = st.multiselect("Colaboradores", [item.get("username") for item in users], default=list(collaborator_rows))
@@ -449,10 +572,53 @@ with manage_tabs[5]:
                 st.rerun()
 
 st.divider()
-flow_catalog = [{"id": item["id"], "name": item["name"], "status": item.get("workflow_status", "draft")} for item in flows]
+flow_catalog = []
+for item in flows:
+    catalog_item = {
+        "id": item["id"], "name": item["name"], "status": item.get("workflow_status", "draft"),
+        "role": item.get("project_role", ""), "group": item.get("project_group", ""),
+        "entries": [], "exits": [],
+    }
+    target_record = get_flowchart(item["id"], actor_username=username, is_admin=is_admin)
+    if target_record:
+        target_doc = target_record.get("document") or {}
+        target_nodes = target_doc.get("nodes", [])
+        target_edges = [edge for edge in target_doc.get("edges", []) if edge.get("enabled", True)]
+        incoming_ids = {str(edge.get("target") or "") for edge in target_edges}
+        outgoing_ids = {str(edge.get("source") or "") for edge in target_edges}
+        catalog_item["entries"] = [
+            {"id": str(node.get("id") or ""), "label": str((node.get("data") or {}).get("label") or node.get("id"))}
+            for node in target_nodes
+            if node.get("type") == "start" or str(node.get("id") or "") not in incoming_ids
+        ][:30]
+        catalog_item["exits"] = [
+            {"id": str(node.get("id") or ""), "label": str((node.get("data") or {}).get("label") or node.get("id"))}
+            for node in target_nodes
+            if node.get("type") == "end" or str(node.get("id") or "") not in outgoing_ids
+        ][:30]
+    flow_catalog.append(catalog_item)
 comments_for_editor = serialize_comments(list_comments(selected_id, include_resolved=True))
 
-component_key = f"flow_editor_v303_{selected_id}_{record['revision']}"
+auto_play_request = st.session_state.get("project_auto_play_request")
+auto_play_active = isinstance(auto_play_request, dict) and auto_play_request.get("flow_id") == selected_id
+focus_request = st.session_state.get("project_focus_node")
+initial_node_id = ""
+if auto_play_active:
+    initial_node_id = str(auto_play_request.get("initial_node_id") or "")
+    st.session_state.pop("project_auto_play_request", None)
+elif isinstance(focus_request, dict) and focus_request.get("flow_id") == selected_id:
+    initial_node_id = str(focus_request.get("node_id") or "")
+    st.session_state.pop("project_focus_node", None)
+
+project_playback_config = {
+    "enabled": bool(project),
+    "autoStart": bool(auto_play_active and auto_play_request.get("auto_start", True)),
+    "stopNodeId": str(auto_play_request.get("stop_node_id") or "") if auto_play_active else "",
+    "returnEnabled": bool(auto_play_request.get("return_enabled")) if auto_play_active else False,
+    "mode": "project" if project else "flow",
+}
+
+component_key = f"flow_editor_v310_{selected_project_id or 'standalone'}_{selected_id}_{record['revision']}"
 result = flow_editor(
     editor_document,
     key=component_key,
@@ -463,9 +629,14 @@ result = flow_editor(
     flow_catalog=flow_catalog,
     comments=comments_for_editor,
     autosave_seconds=int(editor_document.get("settings", {}).get("autosaveSeconds") or 10),
+    project_id=selected_project_id,
+    user_id=username,
+    initial_node_id=initial_node_id,
+    project_playback=project_playback_config,
     on_save_change=lambda: None,
     on_autosave_change=lambda: None,
     on_open_flow_change=lambda: None,
+    on_project_return_change=lambda: None,
     on_comment_create_change=lambda: None,
 )
 
@@ -500,12 +671,67 @@ if comment_payload and editable:
 open_payload = getattr(result, "open_flow", None)
 if open_payload:
     linked_id = str(open_payload.get("flowId") or "") if isinstance(open_payload, dict) else str(open_payload)
+    source_node_id = str(open_payload.get("sourceNodeId") or "") if isinstance(open_payload, dict) else ""
+    entry_node_id = str(open_payload.get("entryNodeId") or "") if isinstance(open_payload, dict) else ""
+    exit_node_id = str(open_payload.get("exitNodeId") or "") if isinstance(open_payload, dict) else ""
+    from_playback = bool(open_payload.get("fromPlayback")) if isinstance(open_payload, dict) else False
+    return_node_id = str(open_payload.get("returnNodeId") or "") if isinstance(open_payload, dict) else ""
     if linked_id and linked_id in available_ids:
-        flow_stack.append(selected_id)
+        flow_stack.append({"flow_id": selected_id, "source_node_id": source_node_id})
+        tabs_by_project = st.session_state.setdefault("project_open_flow_tabs", {})
+        open_tabs = tabs_by_project.setdefault(selected_project_id, [])
+        if linked_id not in open_tabs:
+            open_tabs.append(linked_id)
+        if from_playback and project:
+            playback_stack = st.session_state.setdefault("project_playback_stack", [])
+            playback_stack.append({
+                "parent_flow_id": selected_id,
+                "source_node_id": source_node_id,
+                "return_node_id": return_node_id,
+                "parent_stop_node_id": str(open_payload.get("parentStopNodeId") or ""),
+                "parent_return_enabled": bool(open_payload.get("parentReturnEnabled")),
+            })
+            st.session_state["project_auto_play_request"] = {
+                "flow_id": linked_id,
+                "initial_node_id": entry_node_id,
+                "stop_node_id": exit_node_id,
+                "return_enabled": True,
+                "auto_start": True,
+            }
+        elif entry_node_id:
+            st.session_state["project_focus_node"] = {"flow_id": linked_id, "node_id": entry_node_id}
         st.session_state["selected_flowchart_id"] = linked_id
         st.rerun()
     elif linked_id:
-        st.warning("O fluxo vinculado não existe ou você não possui acesso.")
+        st.warning("O fluxo vinculado não existe neste projeto ou você não possui acesso.")
+
+project_return_payload = getattr(result, "project_return", None)
+if project_return_payload and project:
+    playback_stack = st.session_state.setdefault("project_playback_stack", [])
+    if playback_stack:
+        frame = playback_stack.pop()
+        parent_flow_id = str(frame.get("parent_flow_id") or "")
+        return_node_id = str(frame.get("return_node_id") or "")
+        if parent_flow_id in available_ids:
+            if flow_stack:
+                flow_stack.pop()
+            st.session_state["selected_flowchart_id"] = parent_flow_id
+            if return_node_id:
+                st.session_state["project_auto_play_request"] = {
+                    "flow_id": parent_flow_id,
+                    "initial_node_id": return_node_id,
+                    "stop_node_id": str(frame.get("parent_stop_node_id") or ""),
+                    "return_enabled": bool(frame.get("parent_return_enabled")),
+                    "auto_start": True,
+                }
+            else:
+                st.session_state["project_focus_node"] = {
+                    "flow_id": parent_flow_id,
+                    "node_id": str(frame.get("source_node_id") or ""),
+                }
+            st.rerun()
+    else:
+        st.session_state.pop("project_auto_play_request", None)
 
 save_payload = getattr(result, "save", None)
 if save_payload and editable:
@@ -546,10 +772,24 @@ with st.expander("Administração do processo", expanded=False):
         mime="application/json",
     )
     if permission == "owner":
+        impacts = project_impact(selected_project_id, username, selected_id, is_admin=is_admin) if selected_project_id else []
+        if impacts:
+            st.error(f"Este fluxo é referenciado por {len(impacts)} subprocesso(s). A exclusão criará vínculos quebrados no projeto.")
+            st.dataframe(pd.DataFrame([{
+                "Fluxo pai": item.get("source_flow_name"),
+                "Card": item.get("source_node_label"),
+            } for item in impacts]), use_container_width=True, hide_index=True)
         st.warning("A exclusão remove o fluxo, as versões, comentários, aprovações e rascunhos.")
-        confirm_delete = st.checkbox("Confirmar exclusão permanente", key="confirm_flow_delete")
+        confirm_delete = st.checkbox("Confirmar exclusão permanente e os impactos no projeto", key="confirm_flow_delete")
         if st.button("Excluir processo", disabled=not confirm_delete):
             if delete_flowchart(selected_id, username, is_admin=is_admin):
+                if project and project.get("default_flow_id") == selected_id:
+                    remaining_id = next((item["id"] for item in flows if item["id"] != selected_id), "")
+                    update_project(selected_project_id, username, default_flow_id=remaining_id, is_admin=is_admin)
+                tabs_by_project = st.session_state.setdefault("project_open_flow_tabs", {})
+                open_tabs = tabs_by_project.setdefault(selected_project_id, [])
+                if selected_id in open_tabs:
+                    open_tabs.remove(selected_id)
                 st.session_state.pop("selected_flowchart_id", None)
                 flash("Processo excluído.")
                 st.rerun()

@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "1.0.0",
+  "project": {
+    "id": "project_sigyo_modular",
+    "name": "SIGYO Modular",
+    "code": "SIGYO",
+    "description": "Projeto consolidado com visão executiva, visão operacional e fluxos auxiliares de proposta, assinatura, provisionamento, faturamento e ciclo de vida contratual.",
+    "status": "draft",
+    "owner": "luiz.bicalho@rovemabank.com.br",
+    "defaultFlowId": "flow_sigyo_modular_simplificado_aprovacao",
+    "tags": [
+      "SIGYO",
+      "Modular",
+      "Aprovação Comercial",
+      "Faturamento",
+      "Onboarding"
+    ]
+  },
+  "release": null,
+  "flows": [
+    {
+      "flowId": "flow_sigyo_modular_simplificado_aprovacao",
+      "name": "SIGYO Modular — Fluxo Simplificado com Aprovação Comercial",
+      "role": "executive",
+      "group": "Visões principais",
+      "order": 1,
+      "file": "flows/flow_sigyo_modular_simplificado_aprovacao.json"
+    },
+    {
+      "flowId": "flow_sigyo_modular_completo_aprovacao_comercial",
+      "name": "SIGYO Modular — Fluxo Completo com Aprovação Comercial",
+      "role": "operational",
+      "group": "Visões principais",
+      "order": 2,
+      "file": "flows/flow_sigyo_modular_completo_aprovacao_comercial.json"
+    },
+    {
+      "flowId": "flow_sigyo_aux_proposta_aprovacao",
+      "name": "SIGYO Auxiliar — Proposta e Aprovação Comercial",
+      "role": "subprocess",
+      "group": "Comercial",
+      "order": 3,
+      "file": "flows/flow_sigyo_aux_proposta_aprovacao.json"
+    },
+    {
+      "flowId": "flow_sigyo_aux_assinatura_onboarding",
+      "name": "SIGYO Auxiliar — Assinatura e Onboarding",
+      "role": "subprocess",
+      "group": "Jurídico e Onboarding",
+      "order": 4,
+      "file": "flows/flow_sigyo_aux_assinatura_onboarding.json"
+    },
+    {
+      "flowId": "flow_sigyo_aux_provisionamento_modular",
+      "name": "SIGYO Auxiliar — Provisionamento Modular",
+      "role": "subprocess",
+      "group": "Operação",
+      "order": 5,
+      "file": "flows/flow_sigyo_aux_provisionamento_modular.json"
+    },
+    {
+      "flowId": "flow_sigyo_aux_faturamento_empenho",
+      "name": "SIGYO Auxiliar — Faturamento, Empenho e Cobrança",
+      "role": "subprocess",
+      "group": "Financeiro",
+      "order": 6,
+      "file": "flows/flow_sigyo_aux_faturamento_empenho.json"
+    },
+    {
+      "flowId": "flow_sigyo_aux_ciclo_vida_contratual",
+      "name": "SIGYO Auxiliar — Ciclo de Vida Contratual e Aditivos",
+      "role": "subprocess",
+      "group": "Contratos",
+      "order": 7,
+      "file": "flows/flow_sigyo_aux_ciclo_vida_contratual.json"
+    }
+  ]
+}

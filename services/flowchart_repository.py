@@ -20,6 +20,7 @@ from core.configuration import (
     FLOWCHART_TEMPLATES_COLLECTION,
     FLOWCHART_VERSIONS_COLLECTION,
     FLOWCHARTS_COLLECTION,
+    PROJECTS_COLLECTION,
     WORKFLOW_STATUSES,
 )
 from schemas.flowchart_schema import normalize_document, validate_document
@@ -91,6 +92,10 @@ def _serialize_record(record: dict[str, Any], *, include_document: bool = False)
         "updated_at": record.get("updated_at"),
         "last_saved_by": str(record.get("last_saved_by") or record.get("owner_username") or ""),
         "document_hash": str(record.get("document_hash") or ""),
+        "project_id": str(record.get("project_id") or ""),
+        "project_role": str(record.get("project_role") or ""),
+        "project_group": str(record.get("project_group") or ""),
+        "project_order": int(record.get("project_order") or 0),
     }
     if include_document:
         result["document"] = deepcopy(record.get("document") or {})
@@ -130,7 +135,7 @@ def can_approve(permission: str | None) -> bool:
     return permission in {"owner", "approver"}
 
 
-def list_flowcharts(owner_username: str, include_all: bool = False) -> list[dict]:
+def list_flowcharts(owner_username: str, include_all: bool = False, project_id: str | None = None) -> list[dict]:
     initialize_flowchart_tables()
     normalized = owner_username.strip().lower()
     query: dict[str, Any]
@@ -142,6 +147,9 @@ def list_flowcharts(owner_username: str, include_all: bool = False) -> list[dict
             {"collaborators.username": normalized},
             {"visibility": "organization"},
         ]}
+    if project_id:
+        project_filter = {"project_id": str(project_id)}
+        query = project_filter if not query else {"$and": [query, project_filter]}
     projection = {"document": 0}
     try:
         records = _flow_collection().find(query, projection).sort("updated_at", DESCENDING)
@@ -259,6 +267,10 @@ def save_flowchart(
                 "visibility": existing.get("visibility") or "private",
                 "collaborators": deepcopy(existing.get("collaborators") or []),
                 "published_version": existing.get("published_version"),
+                "project_id": str(flow.get("projectId") or existing.get("project_id") or ""),
+                "project_role": str(flow.get("projectRole") or existing.get("project_role") or ""),
+                "project_group": str(flow.get("projectGroup") or existing.get("project_group") or ""),
+                "project_order": int(flow.get("projectOrder") or existing.get("project_order") or 0),
             }
             query: dict[str, Any] = {"_id": flow_id}
             if not force:
@@ -292,6 +304,10 @@ def save_flowchart(
                 "document": deepcopy(doc),
                 "document_hash": document_hash(doc),
                 "created_at": now, "updated_at": now, "last_saved_by": actor,
+                "project_id": str(flow.get("projectId") or ""),
+                "project_role": str(flow.get("projectRole") or ""),
+                "project_group": str(flow.get("projectGroup") or ""),
+                "project_order": int(flow.get("projectOrder") or 0),
             }
             try:
                 collection.insert_one(replacement)
@@ -304,8 +320,19 @@ def save_flowchart(
                     _version_payload(flow_id, 1, doc, actor, save_reason, None, now),
                     upsert=True,
                 )
+        project_id = str(doc.get("flow", {}).get("projectId") or "")
+        if project_id:
+            project = _collection(PROJECTS_COLLECTION).find_one({"_id": project_id}, {"members": 1, "visibility": 1})
+            if project:
+                collection.update_one(
+                    {"_id": flow_id},
+                    {"$set": {
+                        "collaborators": deepcopy(project.get("members") or []),
+                        "visibility": str(project.get("visibility") or "private"),
+                    }},
+                )
         _collection(FLOWCHART_DRAFTS_COLLECTION).delete_one({"flowchart_id": flow_id, "username": actor})
-        db.add_log(actor, "Salvou fluxo no Produto Tools", {"flowchart_id": flow_id, "version": next_version, "revision": next_revision, "reason": save_reason})
+        db.add_log(actor, "Salvou fluxo no Produto Tools", {"flowchart_id": flow_id, "version": next_version, "revision": next_revision, "reason": save_reason, "project_id": project_id})
         return {"id": flow_id, "version": next_version, "revision": next_revision, "document": doc}
     except (RevisionConflictError, FlowPermissionError, ValueError):
         raise
@@ -321,7 +348,7 @@ def save_draft(flowchart_id: str, username: str, document: dict, base_revision: 
     try:
         _collection(FLOWCHART_DRAFTS_COLLECTION).replace_one(
             {"flowchart_id": str(flowchart_id), "username": normalized},
-            {"flowchart_id": str(flowchart_id), "username": normalized, "base_revision": int(base_revision), "document": normalized_doc, "updated_at": now},
+            {"flowchart_id": str(flowchart_id), "project_id": str(normalized_doc.get("flow", {}).get("projectId") or ""), "username": normalized, "base_revision": int(base_revision), "document": normalized_doc, "updated_at": now},
             upsert=True,
         )
         return {"updated_at": now, "base_revision": int(base_revision)}

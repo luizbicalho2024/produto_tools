@@ -1,155 +1,188 @@
-# Produto Tools 3.0.3 Professional — Editor de Processos
+# Produto Tools 3.1 Professional
 
-Aplicação Streamlit com editor visual de processos, autenticação compartilhada com o **Simulador-Telemetria** e persistência dos fluxos no MongoDB Atlas.
+Aplicação Streamlit para modelagem, governança e publicação de processos, com autenticação compartilhada, persistência no MongoDB Atlas e suporte a **projetos compostos por vários fluxos vinculados**.
 
-## Correções de estabilidade 3.0.3
+## Gestão de projetos
 
-- O autosave é feito primeiro no navegador e não recarrega a página durante a edição.
-- O botão **Rascunho** sincroniza explicitamente a cópia local com o MongoDB.
-- Alterações locais são restauradas automaticamente após reruns do Streamlit.
-- O modo escuro cobre controles, menus, modais, cards, raias e campos.
-- Os filtros de visão ocultam elementos incompatíveis e enquadram apenas o conjunto filtrado.
-- O botão **Organizar** redistribui cards por raia, reserva canais para conexões e reduz sobreposições.
-- As linhas usam corredores ortogonais, procuram colunas livres entre raias e recebem halo visual para melhorar a leitura em processos extensos.
+Um projeto pode reunir uma visão executiva, uma visão operacional e diversos fluxos auxiliares. Cada fluxo continua independente, com seu próprio rascunho, revisão, versão, comentários e governança.
 
+Principais recursos:
 
-## Recursos visuais do editor 2.3
+- mapa visual das dependências entre fluxos;
+- abertura de subprocessos por duplo clique;
+- navegação de volta ao fluxo pai;
+- até oito fluxos abertos como abas internas do projeto;
+- busca global por cards, responsáveis, tags, raias e IDs;
+- destaque automático do resultado dentro do fluxo correto;
+- execução guiada entre fluxos;
+- análise de impacto de alterações em fluxos auxiliares;
+- detecção de vínculos quebrados, entradas ou saídas inexistentes, ciclos e fluxos órfãos;
+- release consolidada, fixando a versão e revisão de cada fluxo;
+- importação e exportação em pacote `project.zip`;
+- importação simultânea de vários JSONs como um novo projeto.
 
-- Inspetor de propriedades horizontal na parte superior.
-- Canvas ocupando toda a largura restante da página.
-- Paleta de elementos recolhível para liberar espaço.
-- Tela cheia nativa para usar o monitor inteiro.
-- Modo claro e escuro.
-- Nós arredondados com faixa de cor corrigida.
-- Importação e organização automática de fluxos extensos, com mundo dinâmico e zoom de até 4%.
-- Elementos reposicionados dentro das respectivas raias, com expansão automática da altura quando necessário.
-- Decisões com no mínimo duas saídas visuais e validação estrutural no frontend e no backend.
-- Seleção explícita da ramificação padrão de cada decisão.
-- Destaque de uma rota completa em fluxos grandes, evitando encerrar no primeiro fim ou exceção próximos.
-- Reprodução da rota escolhida com **Play**, pausa, parada, velocidade e centralização automática em cada etapa.
+## Estrutura de um pacote de projeto
 
-## Fluxos grandes e decisões
+```text
+sigyo_modular_project.zip
+├── project.json
+└── flows/
+    ├── flow_sigyo_modular_simplificado_aprovacao.json
+    ├── flow_sigyo_modular_completo_aprovacao_comercial.json
+    ├── flow_sigyo_aux_proposta_aprovacao.json
+    ├── flow_sigyo_aux_assinatura_onboarding.json
+    ├── flow_sigyo_aux_provisionamento_modular.json
+    ├── flow_sigyo_aux_faturamento_empenho.json
+    └── flow_sigyo_aux_ciclo_vida_contratual.json
+```
 
-Ao importar um JSON com muitos elementos, o editor: 
+O projeto inclui `examples/sigyo_modular_project.zip`, pronto para importação pela tela **Gestão de Projetos**.
 
-1. calcula o tamanho necessário do mundo;
-2. preserva as raias e ajusta suas alturas;
-3. agrupa os elementos em colunas de leitura;
-4. evita sobreposições;
-5. enquadra o fluxo completo com zoom reduzido;
-6. atribui conectores separados às saídas de decisões.
+## Vínculo entre fluxos
 
-Para definir qual ramificação será usada no destaque e no Play, selecione uma decisão e escolha **Saída padrão para destaque e Play** no inspetor superior. Também é possível selecionar diretamente uma conexão de saída antes de destacar a rota.
+Cards do tipo subprocesso utilizam:
 
-## O que mudou nesta versão
+```json
+{
+  "linkedFlowId": "flow_sigyo_aux_proposta_aprovacao",
+  "linkedFlowEntryNodeId": "p_start",
+  "linkedFlowExitNodeId": "p_end_aceita"
+}
+```
 
-- O SQLite foi removido.
-- O login usa a mesma coleção `simulador_db.users` do Simulador-Telemetria.
-- Usuário, senha bcrypt, nome, e-mail, perfil e situação de acesso são compartilhados.
-- Os fluxos são armazenados no mesmo banco MongoDB, em coleções exclusivas do Produto Tools.
-- O histórico de versões também fica no MongoDB.
-- As páginas Consulta Sigyo, Consulta Logpay e Análise de Arredondamento foram removidas.
-- A Gestão de Acesso administra a coleção compartilhada; alterações afetam as duas aplicações.
+O editor abre o fluxo vinculado, centraliza o card de entrada e mantém a pilha de navegação para retornar ao fluxo pai.
 
-## Coleções utilizadas
+## Rascunhos isolados
+
+O rascunho local utiliza a combinação:
+
+```text
+projeto + usuário + fluxo + revisão
+```
+
+Isso impede que alterações de abas ou fluxos diferentes sobrescrevam o rascunho atual.
+
+## Editor visual
+
+- raias horizontais;
+- decisões com no mínimo duas saídas;
+- layout automático para fluxos grandes;
+- conexões ortogonais por corredores;
+- busca dentro do canvas;
+- filtros executivo, operacional, técnico, exceções e raia selecionada;
+- Play a partir de qualquer card ou raia;
+- decisões interativas durante a reprodução;
+- modo claro e escuro;
+- tela cheia, minimapa, zoom e enquadramento;
+- exportação JSON, SVG, PNG, PDF, HTML e CSV;
+- autosave local silencioso e sincronização explícita do rascunho no MongoDB.
+
+## Governança
+
+- rascunho;
+- em revisão;
+- aprovado;
+- publicado;
+- arquivado;
+- comentários por fluxo, raia, card ou conexão;
+- visualizador, editor, revisor e aprovador;
+- controle otimista de concorrência por revisão;
+- versões imutáveis e comparação de alterações;
+- releases imutáveis do projeto.
+
+## Coleções MongoDB
 
 ```text
 simulador_db
-├── users                              compartilhada com Simulador-Telemetria
-├── activity_logs                      compartilhada, com application=produto_tools
-├── produto_tools_flowcharts           versão atual dos fluxos
-└── produto_tools_flowchart_versions   histórico de versões
+├── users
+├── activity_logs
+├── produto_tools_projects
+├── produto_tools_project_members
+├── produto_tools_project_releases
+├── produto_tools_project_release_flows
+├── produto_tools_flowcharts
+├── produto_tools_flowchart_versions
+├── produto_tools_flowchart_drafts
+├── produto_tools_flowchart_comments
+├── produto_tools_flowchart_approvals
+├── produto_tools_flowchart_templates
+└── produto_tools_flowchart_presence
 ```
 
-## Estrutura
+## Estrutura do projeto
 
 ```text
 produto_tools/
 ├── login_app.py
 ├── database.py
 ├── requirements.txt
-├── core/
-│   ├── auth.py
-│   ├── configuration.py
-│   └── styles.py
-├── services/
-│   └── flowchart_repository.py
-├── schemas/
-│   └── flowchart_schema.py
+├── atualizar_produto_tools_v3_1_main.ps1
 ├── components/
 │   └── flow_editor/
-│       ├── component.py
-│       └── frontend/
-│           ├── index.html
-│           ├── styles.css
-│           └── main.js
-└── pages/
-    ├── 1_Gestão_de_Acesso.py
-    └── 5_Editor_de_Fluxos.py
+├── core/
+├── docs/
+├── examples/
+│   ├── sigyo_modular_project.zip
+│   └── sigyo_modular_project/
+├── pages/
+│   ├── 1_Gestão_de_Acesso.py
+│   ├── 2_Central_de_Processos.py
+│   ├── 3_Gestão_de_Projetos.py
+│   └── 5_Editor_de_Fluxos.py
+├── schemas/
+├── services/
+│   ├── flowchart_repository.py
+│   └── project_repository.py
+└── tests/
 ```
 
-## Publicação no Streamlit Cloud
+## Streamlit Cloud
 
-1. Envie todo o projeto para o GitHub.
-2. Crie ou edite o app no Streamlit Community Cloud.
-3. Defina o arquivo principal como `login_app.py`.
-4. Em **Settings > Secrets**, configure:
+Use:
+
+```text
+Branch: main
+Main file path: login_app.py
+```
+
+Secrets mínimos:
 
 ```toml
 MONGO_CONNECTION_STRING = "mongodb+srv://USUARIO:SENHA@cluster.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 MONGO_DB_NAME = "simulador_db"
-
 AUTH_COOKIE_NAME = "simulador_telemetria_auth"
 AUTH_COOKIE_KEY = "A_MESMA_CHAVE_USADA_NO_SIMULADOR"
 AUTH_COOKIE_EXPIRY_DAYS = 30
 ```
 
-Use a mesma conexão, banco, nome de cookie e chave do Simulador-Telemetria. O arquivo `.streamlit/secrets.toml.example` contém o modelo sem credenciais reais.
-
-## MongoDB Atlas
-
-Em **Network Access**, permita a saída do Streamlit Cloud. Para testes, pode ser usado `0.0.0.0/0`; em produção, aplique a política de rede mais restritiva disponível e mantenha usuário do banco com privilégios mínimos necessários.
-
-## Login compartilhado
-
-O Produto Tools lê diretamente os documentos existentes em `simulador_db.users`:
-
-```json
-{
-  "username": "usuario",
-  "name": "Nome do usuário",
-  "email": "usuario@empresa.com",
-  "hashed_password": "$2b$...",
-  "role": "user",
-  "active": true
-}
-```
-
-Os perfis aceitos são `user`, `head_comercial` e `admin`.
-
 ## Execução local
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate
 pip install -r requirements.txt
 streamlit run login_app.py
 ```
 
-No Windows PowerShell:
+Para testes:
+
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+node --check components/flow_editor/frontend/main.js
+```
+
+## Publicação no GitHub
+
+No Windows PowerShell 5.1:
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-streamlit run login_app.py
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+Unblock-File .\atualizar_produto_tools_v3_1_main.ps1
+.\atualizar_produto_tools_v3_1_main.ps1
 ```
 
-## Segurança
+Para ignorar testes locais e deixar a validação para o GitHub Actions:
 
-- A URI do MongoDB e a chave do cookie não ficam no repositório.
-- `.streamlit/secrets.toml` está no `.gitignore`.
-- As senhas permanecem bcrypt, no mesmo formato usado pelo simulador.
-- Usuários inativos não conseguem autenticar.
-- O último administrador ativo não pode ser excluído.
-- O JSON do fluxo é validado novamente no backend antes da gravação.
+```powershell
+.\atualizar_produto_tools_v3_1_main.ps1 -SkipTests
+```

@@ -15,7 +15,7 @@ st.markdown(
     <section class="pt-login-card">
       <div class="pt-login-mark">PT</div>
       <h1>Produto Tools</h1>
-      <p>Editor visual de processos com autenticação compartilhada, persistência no MongoDB Atlas e experiência inspirada no design system do MongoDB.</p>
+      <p>Editor visual de processos e projetos com autenticação compartilhada, fluxos vinculados, releases e persistência no MongoDB Atlas.</p>
     </section>
     """,
     unsafe_allow_html=True,
@@ -25,7 +25,7 @@ st.markdown(
     """
     <section class="pt-soft-card" style="max-width:620px;margin:0 auto 1rem;">
       <strong style="display:block;margin-bottom:.35rem;">O que você encontra aqui</strong>
-      <span style="display:block;color:var(--pt-muted);">Editor de processos com governança, autosave, colaboração, simulação interativa, indicadores, templates e armazenamento versionado no MongoDB.</span>
+      <span style="display:block;color:var(--pt-muted);">Projetos com vários fluxos, mapa de dependências, navegação por subprocessos, busca global, execução guiada, governança, autosave, colaboração e armazenamento versionado no MongoDB.</span>
     </section>
     """,
     unsafe_allow_html=True,
@@ -88,7 +88,7 @@ if st.session_state.get("authentication_status"):
     render_account_sidebar()
     st.success(f"Bem-vindo, **{profile['name']}**.")
     st.caption("As mesmas credenciais também são válidas no Simulador-Telemetria.")
-    col_portfolio, col_editor = st.columns(2)
+    col_portfolio, col_projects, col_editor = st.columns(3)
     with col_portfolio:
         st.page_link(
             "pages/2_Central_de_Processos.py",
@@ -96,10 +96,17 @@ if st.session_state.get("authentication_status"):
             icon="◫",
             use_container_width=True,
         )
+    with col_projects:
+        st.page_link(
+            "pages/3_Gestão_de_Projetos.py",
+            label="Gestão de Projetos",
+            icon="▦",
+            use_container_width=True,
+        )
     with col_editor:
         st.page_link(
             "pages/5_Editor_de_Fluxos.py",
-            label="Abrir Editor Professional",
+            label="Abrir Editor",
             icon="◈",
             use_container_width=True,
         )

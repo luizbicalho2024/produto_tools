@@ -10,6 +10,7 @@ from core.configuration import WORKFLOW_STATUS_LABELS
 from core.styles import apply_global_styles, page_header
 from services.flow_analytics import analyze_document
 from services.flowchart_repository import get_flowchart, list_comments, list_flowcharts
+from services.project_repository import list_projects
 
 st.set_page_config(page_title="Central de Processos", page_icon="◫", layout="wide")
 apply_global_styles()
@@ -32,8 +33,15 @@ page_header(
     "Central de Processos",
     "Portfólio, qualidade, governança e pendências dos fluxos acessíveis ao seu usuário.",
 )
+projects = list_projects(username, include_all=is_admin, is_admin=is_admin)
+project_by_id = {item["id"]: item for item in projects}
 flows = list_flowcharts(username, include_all=is_admin)
 search = st.text_input("Pesquisar no portfólio", placeholder="Nome, responsável ou status")
+project_filter = st.selectbox(
+    "Projeto",
+    [""] + [item["id"] for item in projects],
+    format_func=lambda value: "Todos os projetos" if not value else project_by_id[value]["name"],
+)
 status_filter = st.multiselect(
     "Status",
     options=["draft", "in_review", "approved", "published", "archived"],
@@ -43,7 +51,9 @@ status_filter = st.multiselect(
 
 rows = []
 for item in flows:
-    if search and search.lower() not in " ".join([item["name"], item.get("owner_username", ""), item.get("workflow_status", "")]).lower():
+    if project_filter and item.get("project_id") != project_filter:
+        continue
+    if search and search.lower() not in " ".join([item["name"], item.get("owner_username", ""), item.get("workflow_status", ""), project_by_id.get(item.get("project_id"), {}).get("name", "")]).lower():
         continue
     if status_filter and item.get("workflow_status") not in status_filter:
         continue
@@ -55,6 +65,8 @@ for item in flows:
     rows.append({
         "ID": item["id"],
         "Processo": item["name"],
+        "Projeto": project_by_id.get(item.get("project_id"), {}).get("name", "Fluxo avulso"),
+        "Projeto ID": item.get("project_id") or "",
         "Status": WORKFLOW_STATUS_LABELS.get(item.get("workflow_status"), item.get("workflow_status")),
         "Proprietário": item.get("owner_username"),
         "Versão": item.get("current_version"),
@@ -85,12 +97,14 @@ if rows:
         column_config={
             "Qualidade": st.column_config.ProgressColumn("Qualidade", min_value=0, max_value=100, format="%d/100"),
             "ID": None,
+            "Projeto ID": None,
         },
     )
     selected_name = st.selectbox("Abrir processo", [row["Processo"] for row in rows])
     selected = next(row for row in rows if row["Processo"] == selected_name)
     if st.button("Abrir no editor", type="primary"):
         st.session_state["selected_flowchart_id"] = selected["ID"]
+        st.session_state["selected_project_id"] = selected.get("Projeto ID") or ""
         st.switch_page("pages/5_Editor_de_Fluxos.py")
 else:
     st.info("Nenhum processo atende aos filtros selecionados.")

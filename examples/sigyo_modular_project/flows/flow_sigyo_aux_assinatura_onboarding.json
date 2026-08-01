@@ -1,0 +1,1169 @@
+{
+  "schemaVersion": "2.0.0",
+  "flow": {
+    "id": "flow_sigyo_aux_assinatura_onboarding",
+    "name": "SIGYO Auxiliar — Assinatura e Onboarding",
+    "description": "Fluxo detalhado do termo digital, webhook, onboarding, contrato, assinatura comercial e empenho.",
+    "status": "draft",
+    "orientation": "LR",
+    "createdAt": "2026-08-01T21:18:00.000Z",
+    "updatedAt": "2026-08-01T21:18:00.000Z",
+    "createdBy": "luiz.bicalho@rovemabank.com.br",
+    "tags": [
+      "SIGYO",
+      "Modular"
+    ],
+    "projectId": "project_sigyo_modular",
+    "projectRole": "subprocess",
+    "projectGroup": "Jurídico e Onboarding",
+    "projectOrder": 4
+  },
+  "settings": {
+    "snapToGrid": true,
+    "gridSize": 20,
+    "autoLayout": false,
+    "showMiniMap": true,
+    "showGrid": true,
+    "layoutPreset": "compact",
+    "edgeRouting": "corridor-v2",
+    "autosaveSeconds": 10,
+    "interactivePlayback": true
+  },
+  "viewport": {
+    "x": 40,
+    "y": 80,
+    "zoom": 0.12
+  },
+  "lanes": [
+    {
+      "id": "sl_dest",
+      "name": "Cliente ou Credenciado",
+      "orientation": "horizontal",
+      "order": 1,
+      "color": "#F5F3FF",
+      "collapsed": false,
+      "enabled": true,
+      "height": 280,
+      "owner": ""
+    },
+    {
+      "id": "sl_juridico",
+      "name": "Jurídico e Assinatura",
+      "orientation": "horizontal",
+      "order": 2,
+      "color": "#FFF7ED",
+      "collapsed": false,
+      "enabled": true,
+      "height": 260,
+      "owner": ""
+    },
+    {
+      "id": "sl_core2",
+      "name": "SIGYO Core",
+      "orientation": "horizontal",
+      "order": 3,
+      "color": "#EFF6FF",
+      "collapsed": false,
+      "enabled": true,
+      "height": 380,
+      "owner": ""
+    },
+    {
+      "id": "sl_ext",
+      "name": "Serviços Externos",
+      "orientation": "horizontal",
+      "order": 4,
+      "color": "#F8FAFC",
+      "collapsed": false,
+      "enabled": true,
+      "height": 240,
+      "owner": ""
+    },
+    {
+      "id": "sl_fin",
+      "name": "Financeiro",
+      "orientation": "horizontal",
+      "order": 5,
+      "color": "#FFFBEB",
+      "collapsed": false,
+      "enabled": true,
+      "height": 300,
+      "owner": ""
+    },
+    {
+      "id": "sl_gov",
+      "name": "Governança",
+      "orientation": "horizontal",
+      "order": 6,
+      "color": "#F1F5F9",
+      "collapsed": false,
+      "enabled": true,
+      "height": 240,
+      "owner": ""
+    }
+  ],
+  "nodes": [
+    {
+      "id": "s_start",
+      "type": "start",
+      "laneId": "sl_core2",
+      "position": {
+        "x": 100,
+        "y": 620
+      },
+      "data": {
+        "label": "Proposta aceita",
+        "description": "Proposta previamente aprovada internamente e aceita pelo destinatário.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Início"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_template",
+      "type": "subprocess",
+      "laneId": "sl_juridico",
+      "position": {
+        "x": 380,
+        "y": 360
+      },
+      "data": {
+        "label": "Selecionar template e cláusulas",
+        "description": "Considerar entidade, módulos, segmento, contratação inicial ou aditivo.",
+        "owner": "Jurídico",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Template"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_render",
+      "type": "document",
+      "laneId": "sl_juridico",
+      "position": {
+        "x": 660,
+        "y": 360
+      },
+      "data": {
+        "label": "Renderizar documento imutável",
+        "description": "Combinar cláusulas, dados e snapshot da proposta.",
+        "owner": "Jurídico",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Documento",
+          "Snapshot"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_envelope",
+      "type": "subprocess",
+      "laneId": "sl_core2",
+      "position": {
+        "x": 940,
+        "y": 620
+      },
+      "data": {
+        "label": "Criar envelope e signatários",
+        "description": "Garantir idempotência e registrar status.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Envelope"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_provider",
+      "type": "api",
+      "laneId": "sl_ext",
+      "position": {
+        "x": 1220,
+        "y": 1000
+      },
+      "data": {
+        "label": "Enviar ao provedor",
+        "description": "Receber ID externo e links de assinatura.",
+        "owner": "Serviços Externos",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "API"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_sign",
+      "type": "task",
+      "laneId": "sl_dest",
+      "position": {
+        "x": 1500,
+        "y": 80
+      },
+      "data": {
+        "label": "Assinar documento",
+        "description": "Concluir, recusar ou abandonar a assinatura.",
+        "owner": "Cliente ou Credenciado",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Assinatura"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_webhook",
+      "type": "api",
+      "laneId": "sl_ext",
+      "position": {
+        "x": 1780,
+        "y": 1000
+      },
+      "data": {
+        "label": "Receber webhook",
+        "description": "Evento autenticado com provider_event_id e status.",
+        "owner": "Serviços Externos",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Webhook"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_process",
+      "type": "subprocess",
+      "laneId": "sl_core2",
+      "position": {
+        "x": 2060,
+        "y": 620
+      },
+      "data": {
+        "label": "Processar evento",
+        "description": "Guardar payload, deduplicar, atualizar status e baixar documento/certificado.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Idempotência"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_status",
+      "type": "decision",
+      "laneId": "sl_core2",
+      "position": {
+        "x": 2340,
+        "y": 620
+      },
+      "data": {
+        "label": "Qual o status?",
+        "description": "Pendente, erro, recusado/cancelado ou concluído.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Status"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_wait",
+      "type": "wait",
+      "laneId": "sl_juridico",
+      "position": {
+        "x": 2620,
+        "y": 360
+      },
+      "data": {
+        "label": "Aguardar assinatura",
+        "description": "Enviar lembretes e aguardar novo webhook.",
+        "owner": "Jurídico",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Pendente"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_retry",
+      "type": "task",
+      "laneId": "sl_gov",
+      "position": {
+        "x": 2620,
+        "y": 1540
+      },
+      "data": {
+        "label": "Registrar erro e reprocessar",
+        "description": "Retry controlado sem duplicar envelope/evento.",
+        "owner": "Governança",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Retry"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_end_cancel",
+      "type": "end",
+      "laneId": "sl_dest",
+      "position": {
+        "x": 2620,
+        "y": 80
+      },
+      "data": {
+        "label": "Assinatura encerrada",
+        "description": "Recusada ou cancelada.",
+        "owner": "Cliente ou Credenciado",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Fim"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_signed",
+      "type": "event",
+      "laneId": "sl_core2",
+      "position": {
+        "x": 2620,
+        "y": 620
+      },
+      "data": {
+        "label": "Documento assinado",
+        "description": "Salvar documento e certificado.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Evento"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_initial",
+      "type": "decision",
+      "laneId": "sl_core2",
+      "position": {
+        "x": 2900,
+        "y": 620
+      },
+      "data": {
+        "label": "Inicial ou aditivo?",
+        "description": "Separar onboarding inicial de mudança contratual.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Lifecycle"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_end_aditivo",
+      "type": "end",
+      "laneId": "sl_juridico",
+      "position": {
+        "x": 3180,
+        "y": 360
+      },
+      "data": {
+        "label": "Aditivo encaminhado ao ciclo de vida",
+        "description": "Aplicar alteração somente na vigência aprovada.",
+        "owner": "Jurídico",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Fim",
+          "Aditivo"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_entity",
+      "type": "decision",
+      "laneId": "sl_core2",
+      "position": {
+        "x": 3180,
+        "y": 620
+      },
+      "data": {
+        "label": "Qual entidade provisionar?",
+        "description": "Cliente, credenciado ou ambos.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Onboarding"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_onboard",
+      "type": "subprocess",
+      "laneId": "sl_core2",
+      "position": {
+        "x": 3460,
+        "y": 620
+      },
+      "data": {
+        "label": "Executar onboarding idempotente",
+        "description": "Criar/atualizar entidade, usuário administrador, acessos, dados bancários e vínculos de módulo.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Onboarding"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_onboard_ok",
+      "type": "decision",
+      "laneId": "sl_core2",
+      "position": {
+        "x": 3740,
+        "y": 620
+      },
+      "data": {
+        "label": "Onboarding concluído?",
+        "description": "Validar dados e etapas obrigatórias.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Validação"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_onboard_retry",
+      "type": "task",
+      "laneId": "sl_gov",
+      "position": {
+        "x": 4020,
+        "y": 1540
+      },
+      "data": {
+        "label": "Reprocessar etapa pendente",
+        "description": "Persistir erro e retomar somente o passo necessário.",
+        "owner": "Governança",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Retry"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_contract",
+      "type": "subprocess",
+      "laneId": "sl_core2",
+      "position": {
+        "x": 4020,
+        "y": 620
+      },
+      "data": {
+        "label": "Gerar contrato e assinatura comercial",
+        "description": "Criar contrato, módulos, itens, vigências e assinatura faturável.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Contrato"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_commit",
+      "type": "decision",
+      "laneId": "sl_fin",
+      "position": {
+        "x": 4300,
+        "y": 1240
+      },
+      "data": {
+        "label": "Exige empenho?",
+        "description": "Criar automático, aprovar manual ou registrar regra sem empenho.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Empenho"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_fin_ready",
+      "type": "subprocess",
+      "laneId": "sl_fin",
+      "position": {
+        "x": 4580,
+        "y": 1240
+      },
+      "data": {
+        "label": "Preparar condição financeira",
+        "description": "Validar saldo, vigência, vínculo e autorização.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Financeiro"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "s_end_ativo",
+      "type": "end",
+      "laneId": "sl_core2",
+      "position": {
+        "x": 4860,
+        "y": 620
+      },
+      "data": {
+        "label": "Contratação pronta para provisionamento modular",
+        "description": "Contrato e assinatura comercial ativos.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Fim",
+          "Sucesso"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e001",
+      "source": "s_start",
+      "target": "s_template",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e002",
+      "source": "s_template",
+      "target": "s_render",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e003",
+      "source": "s_render",
+      "target": "s_envelope",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e004",
+      "source": "s_envelope",
+      "target": "s_provider",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e005",
+      "source": "s_provider",
+      "target": "s_sign",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e006",
+      "source": "s_sign",
+      "target": "s_webhook",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e007",
+      "source": "s_webhook",
+      "target": "s_process",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e008",
+      "source": "s_process",
+      "target": "s_status",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e009",
+      "source": "s_status",
+      "target": "s_wait",
+      "type": "step",
+      "label": "Pendente",
+      "enabled": true,
+      "condition": "Aguardar",
+      "targetHandle": "input",
+      "sourceHandle": "branch-0"
+    },
+    {
+      "id": "e010",
+      "source": "s_wait",
+      "target": "s_webhook",
+      "type": "step",
+      "label": "Novo evento",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e011",
+      "source": "s_status",
+      "target": "s_retry",
+      "type": "step",
+      "label": "Erro",
+      "enabled": true,
+      "condition": "Falha processável",
+      "targetHandle": "input",
+      "sourceHandle": "branch-1"
+    },
+    {
+      "id": "e012",
+      "source": "s_retry",
+      "target": "s_process",
+      "type": "step",
+      "label": "Retry",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e013",
+      "source": "s_status",
+      "target": "s_end_cancel",
+      "type": "step",
+      "label": "Recusada/Cancelada",
+      "enabled": true,
+      "condition": "Encerrada",
+      "targetHandle": "input",
+      "sourceHandle": "branch-2"
+    },
+    {
+      "id": "e014",
+      "source": "s_status",
+      "target": "s_signed",
+      "type": "step",
+      "label": "Concluída",
+      "enabled": true,
+      "condition": "Assinada",
+      "targetHandle": "input",
+      "sourceHandle": "branch-3"
+    },
+    {
+      "id": "e015",
+      "source": "s_signed",
+      "target": "s_initial",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e016",
+      "source": "s_initial",
+      "target": "s_end_aditivo",
+      "type": "step",
+      "label": "Aditivo",
+      "enabled": true,
+      "condition": "Alteração contratual",
+      "targetHandle": "input",
+      "sourceHandle": "branch-0"
+    },
+    {
+      "id": "e017",
+      "source": "s_initial",
+      "target": "s_entity",
+      "type": "step",
+      "label": "Inicial",
+      "enabled": true,
+      "condition": "Nova contratação",
+      "targetHandle": "input",
+      "sourceHandle": "branch-1"
+    },
+    {
+      "id": "e018",
+      "source": "s_entity",
+      "target": "s_onboard",
+      "type": "step",
+      "label": "Cliente/credenciado/ambos",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e019",
+      "source": "s_onboard",
+      "target": "s_onboard_ok",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e020",
+      "source": "s_onboard_ok",
+      "target": "s_onboard_retry",
+      "type": "step",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Falha",
+      "targetHandle": "input",
+      "sourceHandle": "branch-0"
+    },
+    {
+      "id": "e021",
+      "source": "s_onboard_retry",
+      "target": "s_onboard",
+      "type": "step",
+      "label": "Reprocessar",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e022",
+      "source": "s_onboard_ok",
+      "target": "s_contract",
+      "type": "step",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Sucesso",
+      "targetHandle": "input",
+      "sourceHandle": "branch-1"
+    },
+    {
+      "id": "e023",
+      "source": "s_contract",
+      "target": "s_commit",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e024",
+      "source": "s_commit",
+      "target": "s_fin_ready",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e025",
+      "source": "s_fin_ready",
+      "target": "s_end_ativo",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    }
+  ]
+}

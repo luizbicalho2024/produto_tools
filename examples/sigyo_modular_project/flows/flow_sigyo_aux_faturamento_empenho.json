@@ -1,0 +1,1513 @@
+{
+  "schemaVersion": "2.0.0",
+  "flow": {
+    "id": "flow_sigyo_aux_faturamento_empenho",
+    "name": "SIGYO Auxiliar — Faturamento, Empenho e Cobrança",
+    "description": "Fluxo detalhado da régua de corte, providers de métricas, prévia, fatura, empenho, pagamento e inadimplência.",
+    "status": "draft",
+    "orientation": "LR",
+    "createdAt": "2026-08-01T21:18:00.000Z",
+    "updatedAt": "2026-08-01T21:18:00.000Z",
+    "createdBy": "luiz.bicalho@rovemabank.com.br",
+    "tags": [
+      "SIGYO",
+      "Modular"
+    ],
+    "projectId": "project_sigyo_modular",
+    "projectRole": "subprocess",
+    "projectGroup": "Financeiro",
+    "projectOrder": 6
+  },
+  "settings": {
+    "snapToGrid": true,
+    "gridSize": 20,
+    "autoLayout": false,
+    "showMiniMap": true,
+    "showGrid": true,
+    "layoutPreset": "compact",
+    "edgeRouting": "corridor-v2",
+    "autosaveSeconds": 10,
+    "interactivePlayback": true
+  },
+  "viewport": {
+    "x": 40,
+    "y": 80,
+    "zoom": 0.1
+  },
+  "lanes": [
+    {
+      "id": "bl_fin",
+      "name": "Financeiro",
+      "orientation": "horizontal",
+      "order": 1,
+      "color": "#FFFBEB",
+      "collapsed": false,
+      "enabled": true,
+      "height": 340,
+      "owner": ""
+    },
+    {
+      "id": "bl_core",
+      "name": "SIGYO Core",
+      "orientation": "horizontal",
+      "order": 2,
+      "color": "#EFF6FF",
+      "collapsed": false,
+      "enabled": true,
+      "height": 400,
+      "owner": ""
+    },
+    {
+      "id": "bl_asto",
+      "name": "ASTO",
+      "orientation": "horizontal",
+      "order": 3,
+      "color": "#ECFDF5",
+      "collapsed": false,
+      "enabled": true,
+      "height": 220,
+      "owner": ""
+    },
+    {
+      "id": "bl_eliq",
+      "name": "ELIQ",
+      "orientation": "horizontal",
+      "order": 4,
+      "color": "#F0FDFA",
+      "collapsed": false,
+      "enabled": true,
+      "height": 220,
+      "owner": ""
+    },
+    {
+      "id": "bl_verdio",
+      "name": "Verdio",
+      "orientation": "horizontal",
+      "order": 5,
+      "color": "#F7FEE7",
+      "collapsed": false,
+      "enabled": true,
+      "height": 220,
+      "owner": ""
+    },
+    {
+      "id": "bl_bdt",
+      "name": "BDT",
+      "orientation": "horizontal",
+      "order": 6,
+      "color": "#FDF4FF",
+      "collapsed": false,
+      "enabled": true,
+      "height": 220,
+      "owner": ""
+    },
+    {
+      "id": "bl_appoff",
+      "name": "App Off",
+      "orientation": "horizontal",
+      "order": 7,
+      "color": "#FFF1F2",
+      "collapsed": false,
+      "enabled": true,
+      "height": 220,
+      "owner": ""
+    },
+    {
+      "id": "bl_client",
+      "name": "Cliente e Serviços Externos",
+      "orientation": "horizontal",
+      "order": 8,
+      "color": "#F5F3FF",
+      "collapsed": false,
+      "enabled": true,
+      "height": 300,
+      "owner": ""
+    },
+    {
+      "id": "bl_gov",
+      "name": "Governança",
+      "orientation": "horizontal",
+      "order": 9,
+      "color": "#F1F5F9",
+      "collapsed": false,
+      "enabled": true,
+      "height": 240,
+      "owner": ""
+    }
+  ],
+  "nodes": [
+    {
+      "id": "b_start",
+      "type": "start",
+      "laneId": "bl_fin",
+      "position": {
+        "x": 100,
+        "y": 80
+      },
+      "data": {
+        "label": "Data de corte atingida",
+        "description": "Iniciar fechamento por cliente e competência.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Início"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_rule",
+      "type": "subprocess",
+      "laneId": "bl_fin",
+      "position": {
+        "x": 380,
+        "y": 80
+      },
+      "data": {
+        "label": "Resolver régua de corte",
+        "description": "Período, fechamento, vencimento, primeiro ciclo, cancelamento e pró-rata.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Régua"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_items",
+      "type": "task",
+      "laneId": "bl_core",
+      "position": {
+        "x": 660,
+        "y": 420
+      },
+      "data": {
+        "label": "Selecionar assinaturas e itens",
+        "description": "Itens ativos com interseção de vigência no período.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Assinatura"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_active",
+      "type": "decision",
+      "laneId": "bl_core",
+      "position": {
+        "x": 940,
+        "y": 420
+      },
+      "data": {
+        "label": "Item faturável no período?",
+        "description": "Verificar status, vigência e suspensão.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Validação"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_skip",
+      "type": "task",
+      "laneId": "bl_fin",
+      "position": {
+        "x": 1220,
+        "y": 80
+      },
+      "data": {
+        "label": "Registrar item não cobrado",
+        "description": "Guardar motivo na memória de fechamento.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Exclusão"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_provider",
+      "type": "decision",
+      "laneId": "bl_core",
+      "position": {
+        "x": 1220,
+        "y": 420
+      },
+      "data": {
+        "label": "Provider disponível?",
+        "description": "Fallback somente para cobrança fixa; variável sem provider é bloqueada.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Provider"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_fallback",
+      "type": "task",
+      "laneId": "bl_core",
+      "position": {
+        "x": 1500,
+        "y": 420
+      },
+      "data": {
+        "label": "Aplicar cobrança fixa contratada",
+        "description": "Quantidade e valor contratados.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Fallback"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_block",
+      "type": "task",
+      "laneId": "bl_gov",
+      "position": {
+        "x": 1500,
+        "y": 2220
+      },
+      "data": {
+        "label": "Bloquear métrica variável",
+        "description": "Registrar erro e impedir faturamento incorreto.",
+        "owner": "Governança",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Bloqueio"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_dispatch",
+      "type": "api",
+      "laneId": "bl_core",
+      "position": {
+        "x": 1500,
+        "y": 530
+      },
+      "data": {
+        "label": "Despachar cálculo ao módulo",
+        "description": "Enviar cliente, item, período, base e pró-rata ao provider correto.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Dispatch"
+        ],
+        "preferredEdgeId": null,
+        "level": "technical",
+        "category": "integration",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_asto",
+      "type": "subprocess",
+      "laneId": "bl_asto",
+      "position": {
+        "x": 1780,
+        "y": 820
+      },
+      "data": {
+        "label": "Métricas ASTO",
+        "description": "Credenciados, OS, transações e percentual.",
+        "owner": "ASTO",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "ASTO"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_eliq",
+      "type": "subprocess",
+      "laneId": "bl_eliq",
+      "position": {
+        "x": 1780,
+        "y": 1040
+      },
+      "data": {
+        "label": "Métricas ELIQ",
+        "description": "Veículos, abastecimentos, litros e valor.",
+        "owner": "ELIQ",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "ELIQ"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_verdio",
+      "type": "subprocess",
+      "laneId": "bl_verdio",
+      "position": {
+        "x": 1780,
+        "y": 1260
+      },
+      "data": {
+        "label": "Métricas Verdio",
+        "description": "Veículos, rastreadores, modelos, dias ativos e pró-rata.",
+        "owner": "Verdio",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Verdio"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_bdt",
+      "type": "subprocess",
+      "laneId": "bl_bdt",
+      "position": {
+        "x": 1780,
+        "y": 1480
+      },
+      "data": {
+        "label": "Métricas BDT",
+        "description": "Motoristas, veículos, checklists, jornadas e usuários.",
+        "owner": "BDT",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "BDT"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_appoff",
+      "type": "subprocess",
+      "laneId": "bl_appoff",
+      "position": {
+        "x": 1780,
+        "y": 1700
+      },
+      "data": {
+        "label": "Métricas App Off",
+        "description": "Usuários, dispositivos, apps e processos.",
+        "owner": "App Off",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "App Off"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_preview",
+      "type": "subprocess",
+      "laneId": "bl_core",
+      "position": {
+        "x": 2060,
+        "y": 420
+      },
+      "data": {
+        "label": "Consolidar prévia e memória",
+        "description": "Agrupar por módulo, aplicar preços, quantidades, pró-rata e descontos.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Prévia"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_duplicate",
+      "type": "decision",
+      "laneId": "bl_core",
+      "position": {
+        "x": 2340,
+        "y": 420
+      },
+      "data": {
+        "label": "Prévia já existe?",
+        "description": "Impedir duplicidade ou criar nova versão controlada.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Idempotência"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_review",
+      "type": "task",
+      "laneId": "bl_fin",
+      "position": {
+        "x": 2620,
+        "y": 80
+      },
+      "data": {
+        "label": "Revisar prévia",
+        "description": "Conferir métricas, preços, empenho e relatórios.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Revisão"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_approve",
+      "type": "decision",
+      "laneId": "bl_fin",
+      "position": {
+        "x": 2900,
+        "y": 80
+      },
+      "data": {
+        "label": "Prévia aprovada?",
+        "description": "Aprovar ou devolver para correção.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Aprovação"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_fix",
+      "type": "task",
+      "laneId": "bl_fin",
+      "position": {
+        "x": 3180,
+        "y": 180
+      },
+      "data": {
+        "label": "Corrigir e recalcular",
+        "description": "Registrar justificativa e corrigir origem/regra.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Reprocessamento"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_invoice",
+      "type": "subprocess",
+      "laneId": "bl_core",
+      "position": {
+        "x": 3180,
+        "y": 420
+      },
+      "data": {
+        "label": "Gerar fatura oficial",
+        "description": "Usar lock, prévia aprovada e itens por módulo.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Fatura"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_commit",
+      "type": "decision",
+      "laneId": "bl_fin",
+      "position": {
+        "x": 3460,
+        "y": 80
+      },
+      "data": {
+        "label": "Usa empenho e há saldo?",
+        "description": "Validar regra e saldo disponível.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Empenho"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_wait_commit",
+      "type": "wait",
+      "laneId": "bl_fin",
+      "position": {
+        "x": 3740,
+        "y": 180
+      },
+      "data": {
+        "label": "Aguardar reforço de empenho",
+        "description": "Preservar fatura preparada até regularização.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Pendente"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_debit",
+      "type": "subprocess",
+      "laneId": "bl_fin",
+      "position": {
+        "x": 3740,
+        "y": 80
+      },
+      "data": {
+        "label": "Debitar empenho ou registrar exceção",
+        "description": "Movimento com saldo anterior/posterior e idempotência.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Movimento"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_issue",
+      "type": "api",
+      "laneId": "bl_client",
+      "position": {
+        "x": 4020,
+        "y": 1920
+      },
+      "data": {
+        "label": "Emitir e enviar cobrança",
+        "description": "Boleto, PIX, link ou meio configurado.",
+        "owner": "Serviços Externos",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Cobrança"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_status",
+      "type": "decision",
+      "laneId": "bl_fin",
+      "position": {
+        "x": 4300,
+        "y": 80
+      },
+      "data": {
+        "label": "Qual o status financeiro?",
+        "description": "Paga, aberta/vencida ou cancelada/estornada.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Conciliação"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_collection",
+      "type": "subprocess",
+      "laneId": "bl_fin",
+      "position": {
+        "x": 4580,
+        "y": 180
+      },
+      "data": {
+        "label": "Executar régua de cobrança",
+        "description": "Lembretes, reenvio, negociação e escalonamento.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Inadimplência"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_reverse",
+      "type": "subprocess",
+      "laneId": "bl_fin",
+      "position": {
+        "x": 4580,
+        "y": 280
+      },
+      "data": {
+        "label": "Reverter empenho",
+        "description": "Criar movimento de reversão e preservar auditoria.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Estorno"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "b_end_concluida",
+      "type": "end",
+      "laneId": "bl_fin",
+      "position": {
+        "x": 4860,
+        "y": 80
+      },
+      "data": {
+        "label": "Competência concluída",
+        "description": "Pagamento conciliado ou efeitos revertidos.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Fim",
+          "Sucesso"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e001",
+      "source": "b_start",
+      "target": "b_rule",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e002",
+      "source": "b_rule",
+      "target": "b_items",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e003",
+      "source": "b_items",
+      "target": "b_active",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e004",
+      "source": "b_active",
+      "target": "b_skip",
+      "type": "step",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Fora do período",
+      "targetHandle": "input",
+      "sourceHandle": "branch-0"
+    },
+    {
+      "id": "e005",
+      "source": "b_active",
+      "target": "b_provider",
+      "type": "step",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Faturável",
+      "targetHandle": "input",
+      "sourceHandle": "branch-1"
+    },
+    {
+      "id": "e006",
+      "source": "b_provider",
+      "target": "b_fallback",
+      "type": "step",
+      "label": "Não, fixa",
+      "enabled": true,
+      "condition": "Fallback",
+      "targetHandle": "input",
+      "sourceHandle": "branch-0"
+    },
+    {
+      "id": "e007",
+      "source": "b_provider",
+      "target": "b_block",
+      "type": "step",
+      "label": "Não, variável",
+      "enabled": true,
+      "condition": "Bloquear",
+      "targetHandle": "input",
+      "sourceHandle": "branch-1"
+    },
+    {
+      "id": "e008",
+      "source": "b_provider",
+      "target": "b_dispatch",
+      "type": "step",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Provider válido",
+      "targetHandle": "input",
+      "sourceHandle": "branch-2"
+    },
+    {
+      "id": "e009",
+      "source": "b_block",
+      "target": "b_fix",
+      "type": "step",
+      "label": "Corrigir",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e010",
+      "source": "b_dispatch",
+      "target": "b_asto",
+      "type": "step",
+      "label": "ASTO",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e011",
+      "source": "b_dispatch",
+      "target": "b_eliq",
+      "type": "step",
+      "label": "ELIQ",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e012",
+      "source": "b_dispatch",
+      "target": "b_verdio",
+      "type": "step",
+      "label": "Verdio",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e013",
+      "source": "b_dispatch",
+      "target": "b_bdt",
+      "type": "step",
+      "label": "BDT",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e014",
+      "source": "b_dispatch",
+      "target": "b_appoff",
+      "type": "step",
+      "label": "App Off",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e015",
+      "source": "b_asto",
+      "target": "b_preview",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e016",
+      "source": "b_eliq",
+      "target": "b_preview",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e017",
+      "source": "b_verdio",
+      "target": "b_preview",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e018",
+      "source": "b_bdt",
+      "target": "b_preview",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e019",
+      "source": "b_appoff",
+      "target": "b_preview",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e020",
+      "source": "b_fallback",
+      "target": "b_preview",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e021",
+      "source": "b_skip",
+      "target": "b_preview",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e022",
+      "source": "b_preview",
+      "target": "b_duplicate",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e023",
+      "source": "b_duplicate",
+      "target": "b_review",
+      "type": "step",
+      "label": "Salvar/versionar",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e024",
+      "source": "b_review",
+      "target": "b_approve",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e025",
+      "source": "b_approve",
+      "target": "b_fix",
+      "type": "step",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Reprovada",
+      "targetHandle": "input",
+      "sourceHandle": "branch-0"
+    },
+    {
+      "id": "e026",
+      "source": "b_fix",
+      "target": "b_rule",
+      "type": "step",
+      "label": "Recalcular",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e027",
+      "source": "b_approve",
+      "target": "b_invoice",
+      "type": "step",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Aprovada",
+      "targetHandle": "input",
+      "sourceHandle": "branch-1"
+    },
+    {
+      "id": "e028",
+      "source": "b_invoice",
+      "target": "b_commit",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e029",
+      "source": "b_commit",
+      "target": "b_wait_commit",
+      "type": "step",
+      "label": "Sem saldo e bloqueado",
+      "enabled": true,
+      "condition": "Aguardar",
+      "targetHandle": "input",
+      "sourceHandle": "branch-0"
+    },
+    {
+      "id": "e030",
+      "source": "b_wait_commit",
+      "target": "b_commit",
+      "type": "step",
+      "label": "Revalidar saldo",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e031",
+      "source": "b_commit",
+      "target": "b_debit",
+      "type": "step",
+      "label": "Com saldo / sem empenho / exceção permitida",
+      "enabled": true,
+      "condition": "Prosseguir",
+      "targetHandle": "input",
+      "sourceHandle": "branch-1"
+    },
+    {
+      "id": "e032",
+      "source": "b_debit",
+      "target": "b_issue",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e033",
+      "source": "b_issue",
+      "target": "b_status",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e034",
+      "source": "b_status",
+      "target": "b_end_concluida",
+      "type": "step",
+      "label": "Paga",
+      "enabled": true,
+      "condition": "Pagamento confirmado",
+      "targetHandle": "input",
+      "sourceHandle": "branch-0"
+    },
+    {
+      "id": "e035",
+      "source": "b_status",
+      "target": "b_collection",
+      "type": "step",
+      "label": "Aberta/Vencida",
+      "enabled": true,
+      "condition": "Cobrança",
+      "targetHandle": "input",
+      "sourceHandle": "branch-1"
+    },
+    {
+      "id": "e036",
+      "source": "b_collection",
+      "target": "b_status",
+      "type": "step",
+      "label": "Novo evento",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e037",
+      "source": "b_status",
+      "target": "b_reverse",
+      "type": "step",
+      "label": "Cancelada/Estornada",
+      "enabled": true,
+      "condition": "Reverter",
+      "targetHandle": "input",
+      "sourceHandle": "branch-2"
+    },
+    {
+      "id": "e038",
+      "source": "b_reverse",
+      "target": "b_end_concluida",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    }
+  ]
+}

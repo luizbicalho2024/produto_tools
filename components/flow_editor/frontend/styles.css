@@ -427,7 +427,8 @@ button { color: inherit; }
 .node-text strong { font-size: 12px; line-height: 1.25; white-space: normal; overflow-wrap: anywhere; }
 .node-text small { color: var(--fe-muted); font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .node-badges { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 3px; }
-.node-badge { border-radius: 999px; padding: 1px 5px; background: var(--fe-panel-soft); color: var(--fe-muted); font-size: 8px; }
+.node-badge { border-radius: 999px; padding: 1px 5px; background: var(--fe-panel-soft); color: var(--fe-muted); font-size: 8px; max-width: 128px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node-badge.linked-flow-badge { background: color-mix(in srgb, var(--fe-primary) 13%, var(--fe-panel)); color: var(--fe-primary-dark); border: 1px solid color-mix(in srgb, var(--fe-primary) 24%, var(--fe-line)); cursor: pointer; }
 .node-port { position: absolute; top: 50%; width: 13px; height: 13px; margin-top: -6px; border-radius: 50%; background: var(--fe-input); border: 3px solid var(--fe-muted); cursor: crosshair; z-index: 5; }
 .node-port:hover, .node-port.connecting { border-color: var(--fe-primary); transform: scale(1.2); }
 .node-port.input { left: -8px; }

@@ -1,0 +1,740 @@
+{
+  "schemaVersion": "2.0.0",
+  "flow": {
+    "id": "flow_sigyo_aux_provisionamento_modular",
+    "name": "SIGYO Auxiliar — Provisionamento Modular",
+    "description": "Fluxo detalhado de providers, ativação de ASTO, ELIQ, Verdio, BDT e App Off, retry e conclusão.",
+    "status": "draft",
+    "orientation": "LR",
+    "createdAt": "2026-08-01T21:18:00.000Z",
+    "updatedAt": "2026-08-01T21:18:00.000Z",
+    "createdBy": "luiz.bicalho@rovemabank.com.br",
+    "tags": [
+      "SIGYO",
+      "Modular"
+    ],
+    "projectId": "project_sigyo_modular",
+    "projectRole": "subprocess",
+    "projectGroup": "Operação",
+    "projectOrder": 5
+  },
+  "settings": {
+    "snapToGrid": true,
+    "gridSize": 20,
+    "autoLayout": false,
+    "showMiniMap": true,
+    "showGrid": true,
+    "layoutPreset": "compact",
+    "edgeRouting": "corridor-v2",
+    "autosaveSeconds": 10,
+    "interactivePlayback": true
+  },
+  "viewport": {
+    "x": 40,
+    "y": 80,
+    "zoom": 0.13
+  },
+  "lanes": [
+    {
+      "id": "vl_core",
+      "name": "SIGYO Core",
+      "orientation": "horizontal",
+      "order": 1,
+      "color": "#EFF6FF",
+      "collapsed": false,
+      "enabled": true,
+      "height": 360,
+      "owner": ""
+    },
+    {
+      "id": "vl_asto",
+      "name": "ASTO",
+      "orientation": "horizontal",
+      "order": 2,
+      "color": "#ECFDF5",
+      "collapsed": false,
+      "enabled": true,
+      "height": 230,
+      "owner": ""
+    },
+    {
+      "id": "vl_eliq",
+      "name": "ELIQ",
+      "orientation": "horizontal",
+      "order": 3,
+      "color": "#F0FDFA",
+      "collapsed": false,
+      "enabled": true,
+      "height": 230,
+      "owner": ""
+    },
+    {
+      "id": "vl_verdio",
+      "name": "Verdio",
+      "orientation": "horizontal",
+      "order": 4,
+      "color": "#F7FEE7",
+      "collapsed": false,
+      "enabled": true,
+      "height": 230,
+      "owner": ""
+    },
+    {
+      "id": "vl_bdt",
+      "name": "BDT",
+      "orientation": "horizontal",
+      "order": 5,
+      "color": "#FDF4FF",
+      "collapsed": false,
+      "enabled": true,
+      "height": 230,
+      "owner": ""
+    },
+    {
+      "id": "vl_appoff",
+      "name": "App Off",
+      "orientation": "horizontal",
+      "order": 6,
+      "color": "#FFF1F2",
+      "collapsed": false,
+      "enabled": true,
+      "height": 230,
+      "owner": ""
+    },
+    {
+      "id": "vl_gov",
+      "name": "Governança e Auditoria",
+      "orientation": "horizontal",
+      "order": 7,
+      "color": "#F1F5F9",
+      "collapsed": false,
+      "enabled": true,
+      "height": 240,
+      "owner": ""
+    }
+  ],
+  "nodes": [
+    {
+      "id": "v_start",
+      "type": "start",
+      "laneId": "vl_core",
+      "position": {
+        "x": 100,
+        "y": 80
+      },
+      "data": {
+        "label": "Assinatura comercial ativa",
+        "description": "Itens contratados, vigências e condição financeira definidos.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Início"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "v_resolve",
+      "type": "api",
+      "laneId": "vl_core",
+      "position": {
+        "x": 380,
+        "y": 80
+      },
+      "data": {
+        "label": "Resolver módulos e providers",
+        "description": "Selecionar somente módulos ativos e usar ModuloProvisionamentoProviderInterface.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Provider"
+        ],
+        "preferredEdgeId": null,
+        "level": "technical",
+        "category": "integration",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "v_asto",
+      "type": "subprocess",
+      "laneId": "vl_asto",
+      "position": {
+        "x": 660,
+        "y": 440
+      },
+      "data": {
+        "label": "Provisionar ASTO",
+        "description": "Rede, credenciados, taxas, OS, permissões e acessos.",
+        "owner": "ASTO",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "ASTO"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "v_eliq",
+      "type": "subprocess",
+      "laneId": "vl_eliq",
+      "position": {
+        "x": 660,
+        "y": 670
+      },
+      "data": {
+        "label": "Provisionar ELIQ",
+        "description": "Abastecimento, limites, postos, regras e permissões.",
+        "owner": "ELIQ",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "ELIQ"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "v_verdio",
+      "type": "subprocess",
+      "laneId": "vl_verdio",
+      "position": {
+        "x": 660,
+        "y": 900
+      },
+      "data": {
+        "label": "Provisionar Verdio",
+        "description": "Rastreamento, alertas, cercas, relatórios e rastreadores.",
+        "owner": "Verdio",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Verdio"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "v_bdt",
+      "type": "subprocess",
+      "laneId": "vl_bdt",
+      "position": {
+        "x": 660,
+        "y": 1130
+      },
+      "data": {
+        "label": "Provisionar BDT",
+        "description": "Checklist, jornada, app e ocorrências.",
+        "owner": "BDT",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "BDT"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "v_appoff",
+      "type": "subprocess",
+      "laneId": "vl_appoff",
+      "position": {
+        "x": 660,
+        "y": 1360
+      },
+      "data": {
+        "label": "Provisionar App Off",
+        "description": "Sincronização, formulários, dispositivos e permissões.",
+        "owner": "App Off",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "App Off"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "v_join",
+      "type": "decision",
+      "laneId": "vl_core",
+      "position": {
+        "x": 940,
+        "y": 80
+      },
+      "data": {
+        "label": "Todos os módulos obrigatórios concluíram?",
+        "description": "Considerar somente módulos contratados. Não repetir módulos já concluídos.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Validação"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "v_fail",
+      "type": "task",
+      "laneId": "vl_gov",
+      "position": {
+        "x": 1220,
+        "y": 1590
+      },
+      "data": {
+        "label": "Registrar falha parcial",
+        "description": "Guardar provider, etapa, payload, erro, tentativas e chave idempotente.",
+        "owner": "Governança",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Erro",
+          "Auditoria"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "v_retry",
+      "type": "subprocess",
+      "laneId": "vl_core",
+      "position": {
+        "x": 1500,
+        "y": 180
+      },
+      "data": {
+        "label": "Reprocessar módulo com erro",
+        "description": "Executar somente provider pendente, com retry controlado.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Retry"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "v_activate",
+      "type": "event",
+      "laneId": "vl_core",
+      "position": {
+        "x": 1220,
+        "y": 80
+      },
+      "data": {
+        "label": "Ativar cliente e acessos",
+        "description": "Liberar módulos concluídos, contrato, usuários e operação.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Ativação"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "v_end_ativo",
+      "type": "end",
+      "laneId": "vl_core",
+      "position": {
+        "x": 1500,
+        "y": 80
+      },
+      "data": {
+        "label": "Módulos ativos e operação liberada",
+        "description": "Provisionamento concluído e auditado.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Fim",
+          "Sucesso"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "process",
+        "criticality": "medium",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    },
+    {
+      "id": "v_gov",
+      "type": "note",
+      "laneId": "vl_gov",
+      "position": {
+        "x": 380,
+        "y": 1590
+      },
+      "data": {
+        "label": "Controles obrigatórios",
+        "description": "Transação, idempotência, rollback, logs, reprocessamento parcial, segregação por módulo e RBAC.",
+        "owner": "Governança",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Governança"
+        ],
+        "preferredEdgeId": null,
+        "level": "operational",
+        "category": "governance",
+        "criticality": "high",
+        "linkedFlowId": null,
+        "linkedFlowEntryNodeId": null,
+        "linkedFlowExitNodeId": null,
+        "documentationUrl": "",
+        "raci": {
+          "responsible": "",
+          "accountable": "",
+          "consulted": [],
+          "informed": []
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e001",
+      "source": "v_start",
+      "target": "v_resolve",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e002",
+      "source": "v_resolve",
+      "target": "v_asto",
+      "type": "step",
+      "label": "Se contratado",
+      "enabled": true,
+      "condition": "ASTO ativo",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e003",
+      "source": "v_resolve",
+      "target": "v_eliq",
+      "type": "step",
+      "label": "Se contratado",
+      "enabled": true,
+      "condition": "ELIQ ativo",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e004",
+      "source": "v_resolve",
+      "target": "v_verdio",
+      "type": "step",
+      "label": "Se contratado",
+      "enabled": true,
+      "condition": "Verdio ativo",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e005",
+      "source": "v_resolve",
+      "target": "v_bdt",
+      "type": "step",
+      "label": "Se contratado",
+      "enabled": true,
+      "condition": "BDT ativo",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e006",
+      "source": "v_resolve",
+      "target": "v_appoff",
+      "type": "step",
+      "label": "Se contratado",
+      "enabled": true,
+      "condition": "App Off ativo",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e007",
+      "source": "v_asto",
+      "target": "v_join",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e008",
+      "source": "v_eliq",
+      "target": "v_join",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e009",
+      "source": "v_verdio",
+      "target": "v_join",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e010",
+      "source": "v_bdt",
+      "target": "v_join",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e011",
+      "source": "v_appoff",
+      "target": "v_join",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e012",
+      "source": "v_join",
+      "target": "v_fail",
+      "type": "step",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Falha parcial",
+      "targetHandle": "input",
+      "sourceHandle": "branch-0"
+    },
+    {
+      "id": "e013",
+      "source": "v_fail",
+      "target": "v_retry",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e014",
+      "source": "v_retry",
+      "target": "v_join",
+      "type": "step",
+      "label": "Revalidar",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    },
+    {
+      "id": "e015",
+      "source": "v_join",
+      "target": "v_activate",
+      "type": "step",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Sucesso",
+      "targetHandle": "input",
+      "sourceHandle": "branch-1"
+    },
+    {
+      "id": "e016",
+      "source": "v_activate",
+      "target": "v_end_ativo",
+      "type": "step",
+      "label": "",
+      "enabled": true,
+      "condition": "",
+      "targetHandle": "input",
+      "sourceHandle": "output"
+    }
+  ]
+}

@@ -27,7 +27,7 @@ def _renderer():
         )
     html, css, js = _load_assets()
     return st.components.v2.component(
-        "produto_tools_flow_editor_v303",
+        "produto_tools_flow_editor_v310",
         html=html,
         css=css,
         js=js,
@@ -46,9 +46,14 @@ def flow_editor(
     flow_catalog: list[dict[str, Any]] | None = None,
     comments: list[dict[str, Any]] | None = None,
     autosave_seconds: int = 10,
+    project_id: str = "",
+    user_id: str = "",
+    initial_node_id: str = "",
+    project_playback: dict[str, Any] | None = None,
     on_save_change: Callable[[], None] | None = None,
     on_autosave_change: Callable[[], None] | None = None,
     on_open_flow_change: Callable[[], None] | None = None,
+    on_project_return_change: Callable[[], None] | None = None,
     on_comment_create_change: Callable[[], None] | None = None,
 ):
     """Renderiza o editor profissional e devolve eventos transitórios do frontend."""
@@ -62,6 +67,10 @@ def flow_editor(
         "flowCatalog": flow_catalog or [],
         "comments": comments or [],
         "autosaveSeconds": max(5, int(autosave_seconds)),
+        "projectId": str(project_id or ""),
+        "userId": str(user_id or ""),
+        "initialNodeId": str(initial_node_id or ""),
+        "projectPlayback": project_playback or {},
     }
     return renderer(
         data=data,
@@ -69,6 +78,7 @@ def flow_editor(
         on_save_change=on_save_change or (lambda: None),
         on_autosave_change=on_autosave_change or (lambda: None),
         on_open_flow_change=on_open_flow_change or (lambda: None),
+        on_project_return_change=on_project_return_change or (lambda: None),
         on_comment_create_change=on_comment_create_change or (lambda: None),
         height=height,
     )

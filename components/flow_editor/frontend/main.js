@@ -43,13 +43,15 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function draftStorageKey(flowId, revision) {
-  return `produto_tools_draft:${String(flowId || "unknown")}:${Number(revision) || 1}`;
+function draftStorageKey(projectId, userId, flowId, revision) {
+  const project = String(projectId || "standalone").replaceAll(":", "_");
+  const user = String(userId || "anonymous").replaceAll(":", "_");
+  return `produto_tools_draft:${project}:${user}:${String(flowId || "unknown")}:${Number(revision) || 1}`;
 }
 
-function readLocalDraft(flowId, revision) {
+function readLocalDraft(projectId, userId, flowId, revision) {
   try {
-    const raw = localStorage.getItem(draftStorageKey(flowId, revision));
+    const raw = localStorage.getItem(draftStorageKey(projectId, userId, flowId, revision));
     if (!raw) return null;
     const payload = JSON.parse(raw);
     if (!payload || Number(payload.revision) !== Number(revision) || !payload.document) return null;
@@ -59,23 +61,25 @@ function readLocalDraft(flowId, revision) {
   }
 }
 
-function writeLocalDraft(flowId, revision, documentValue) {
+function writeLocalDraft(projectId, userId, flowId, revision, documentValue) {
   try {
     const payload = { revision: Number(revision) || 1, savedAt: nowIso(), document: clone(documentValue) };
-    localStorage.setItem(draftStorageKey(flowId, revision), JSON.stringify(payload));
+    localStorage.setItem(draftStorageKey(projectId, userId, flowId, revision), JSON.stringify(payload));
     return payload;
   } catch (_) {
     return null;
   }
 }
 
-function pruneLocalDrafts(flowId, keepRevision) {
+function pruneLocalDrafts(projectId, userId, flowId, keepRevision) {
   try {
-    const prefix = `produto_tools_draft:${String(flowId || "unknown")}:`;
+    const project = String(projectId || "standalone").replaceAll(":", "_");
+    const user = String(userId || "anonymous").replaceAll(":", "_");
+    const prefix = `produto_tools_draft:${project}:${user}:${String(flowId || "unknown")}:`;
     for (let index = localStorage.length - 1; index >= 0; index -= 1) {
       const key = localStorage.key(index);
       if (!key || !key.startsWith(prefix)) continue;
-      if (key !== draftStorageKey(flowId, keepRevision)) localStorage.removeItem(key);
+      if (key !== draftStorageKey(projectId, userId, flowId, keepRevision)) localStorage.removeItem(key);
     }
   } catch (_) { /* armazenamento local indisponível */ }
 }
@@ -203,7 +207,9 @@ export default function flowEditor(component) {
 
   const incomingDocument = normalizeDocument(data?.document);
   const incomingRevision = Number(data?.revision) || 1;
-  const localDraft = readLocalDraft(incomingDocument.flow.id, incomingRevision);
+  const incomingProjectId = String(data?.projectId || incomingDocument.flow?.projectId || "");
+  const incomingUserId = String(data?.userId || "");
+  const localDraft = readLocalDraft(incomingProjectId, incomingUserId, incomingDocument.flow.id, incomingRevision);
   const incomingUpdatedAt = Date.parse(incomingDocument.flow?.updatedAt || "") || 0;
   const localSavedAt = Date.parse(localDraft?.savedAt || "") || 0;
   const restoredLocalDraft = Boolean(localDraft?.document && localSavedAt >= incomingUpdatedAt);
@@ -222,6 +228,18 @@ export default function flowEditor(component) {
     destroyed: false,
     permission: String(data?.permission || "viewer"),
     revision: incomingRevision,
+    projectId: incomingProjectId,
+    userId: incomingUserId,
+    initialNodeId: String(data?.initialNodeId || ""),
+    projectPlayback: {
+      enabled: Boolean(data?.projectPlayback?.enabled),
+      autoStart: Boolean(data?.projectPlayback?.autoStart),
+      stopNodeId: String(data?.projectPlayback?.stopNodeId || ""),
+      returnEnabled: Boolean(data?.projectPlayback?.returnEnabled),
+      mode: String(data?.projectPlayback?.mode || "flow"),
+    },
+    projectTransferPending: false,
+    projectReturnSent: false,
     flowCatalog: Array.isArray(data?.flowCatalog) ? data.flowCatalog : [],
     comments: Array.isArray(data?.comments) ? data.comments : [],
     autosaveSeconds: Math.max(5, Number(data?.autosaveSeconds || data?.document?.settings?.autosaveSeconds) || 10),
@@ -433,7 +451,7 @@ export default function flowEditor(component) {
     if (!canModify() || !state.dirty) return;
     const fingerprint = fingerprintDocument();
     if (fingerprint === state.lastAutosaveFingerprint) return;
-    const payload = writeLocalDraft(state.doc.flow.id, state.revision, state.doc);
+    const payload = writeLocalDraft(state.projectId, state.userId, state.doc.flow.id, state.revision, state.doc);
     if (!payload) {
       updateSaveState("Falha ao salvar o rascunho local", "error");
       return;
@@ -1077,9 +1095,15 @@ export default function flowEditor(component) {
       const icon = el("div", "node-icon", meta.icon);
       const text = el("div", "node-text");
       text.append(el("strong", "", node.data.label), el("small", "", nodeSubtitle(node)));
-      if (node.data.tags.length) {
+      if (node.data.tags.length || (node.type === "subprocess" && node.data.linkedFlowId)) {
         const badges = el("div", "node-badges");
-        node.data.tags.slice(0, 3).forEach((tag) => badges.appendChild(el("span", "node-badge", tag)));
+        node.data.tags.slice(0, 2).forEach((tag) => badges.appendChild(el("span", "node-badge", tag)));
+        if (node.type === "subprocess" && node.data.linkedFlowId) {
+          const linkedName = state.flowCatalog.find((flow) => flow.id === node.data.linkedFlowId)?.name || "Fluxo vinculado";
+          const linkedBadge = el("span", "node-badge linked-flow-badge", `↗ ${linkedName}`);
+          linkedBadge.title = "Duplo clique para abrir o fluxo vinculado";
+          badges.appendChild(linkedBadge);
+        }
         text.appendChild(badges);
       }
       content.append(icon, text);
@@ -1132,7 +1156,12 @@ export default function flowEditor(component) {
         event.stopPropagation();
         selectItem("node", node.id);
         if (node.type === "subprocess" && node.data.linkedFlowId) {
-          setTriggerValue("open_flow", { flowId: node.data.linkedFlowId, sourceNodeId: node.id });
+          setTriggerValue("open_flow", {
+            flowId: node.data.linkedFlowId,
+            sourceNodeId: node.id,
+            entryNodeId: node.data.linkedFlowEntryNodeId || "",
+            exitNodeId: node.data.linkedFlowExitNodeId || "",
+          });
           return;
         }
         const labelInput = propertiesBody.querySelector('[data-field="label"]');
@@ -1652,11 +1681,29 @@ export default function flowEditor(component) {
     const accountable = textInput("raci-accountable", node.data.raci?.accountable || "", "Aprovador (A)");
     bindCommit(accountable, (input) => { node.data.raci ||= {}; node.data.raci.accountable = input.value; });
 
-    let linkedFlowField = null;
+    let linkedFlowFields = [];
     if (node.type === "subprocess") {
-      const linked = selectInput("linked-flow", node.data.linkedFlowId || "", [["", "Sem fluxo vinculado"], ...state.flowCatalog.filter((flow) => flow.id !== state.doc.flow.id).map((flow) => [flow.id, flow.name])]);
-      bindCommit(linked, (input) => { node.data.linkedFlowId = input.value || null; });
-      linkedFlowField = fieldGroup("Fluxo detalhado vinculado", linked);
+      const linked = selectInput("linked-flow", node.data.linkedFlowId || "", [["", "Sem fluxo vinculado"], ...state.flowCatalog.filter((flow) => flow.id !== state.doc.flow.id).map((flow) => [flow.id, `${flow.name}${flow.group ? ` · ${flow.group}` : ""}`])]);
+      bindCommit(linked, (input) => {
+        const nextId = input.value || null;
+        if (nextId !== node.data.linkedFlowId) {
+          node.data.linkedFlowEntryNodeId = null;
+          node.data.linkedFlowExitNodeId = null;
+        }
+        node.data.linkedFlowId = nextId;
+      });
+      linkedFlowFields.push(fieldGroup("Fluxo detalhado vinculado", linked));
+      const linkedCatalog = state.flowCatalog.find((flow) => flow.id === node.data.linkedFlowId);
+      if (linkedCatalog) {
+        const entries = Array.isArray(linkedCatalog.entries) ? linkedCatalog.entries : [];
+        const exits = Array.isArray(linkedCatalog.exits) ? linkedCatalog.exits : [];
+        const entry = selectInput("linked-entry", node.data.linkedFlowEntryNodeId || "", [["", "Entrada automática"], ...entries.map((item) => [item.id, item.label])]);
+        bindCommit(entry, (input) => { node.data.linkedFlowEntryNodeId = input.value || null; });
+        const exit = selectInput("linked-exit", node.data.linkedFlowExitNodeId || "", [["", "Saída automática"], ...exits.map((item) => [item.id, item.label])]);
+        bindCommit(exit, (input) => { node.data.linkedFlowExitNodeId = input.value || null; });
+        linkedFlowFields.push(fieldGroup("Ponto de entrada no fluxo filho", entry));
+        linkedFlowFields.push(fieldGroup("Ponto de saída e retorno", exit));
+      }
     }
 
     let preferredBranchField = null;
@@ -1698,7 +1745,7 @@ export default function flowEditor(component) {
       fieldGroup("Tags separadas por vírgula", tags), fieldGroup("Documentação", documentationUrl),
       fieldGroup("RACI — Responsável", responsible), fieldGroup("RACI — Aprovador", accountable),
     ];
-    if (linkedFlowField) propertyItems.push(linkedFlowField);
+    if (linkedFlowFields.length) propertyItems.push(...linkedFlowFields);
     if (preferredBranchField) propertyItems.push(preferredBranchField);
     propertyItems.push(
       coordinates,
@@ -2700,6 +2747,7 @@ export default function flowEditor(component) {
 
   function completePlayback() {
     clearPlaybackTimer();
+    const finalNodeId = state.playback.nodeSequence[Math.max(0, Math.min(state.playback.index, state.playback.nodeSequence.length - 1))] || "";
     state.playback.running = false;
     state.playback.paused = false;
     state.playback.currentNodeId = null;
@@ -2707,6 +2755,14 @@ export default function flowEditor(component) {
     renderAll();
     const doneMessage = state.selected?.kind === "lane" ? "Reprodução da raia concluída." : (state.selected?.kind === "node" ? "Reprodução concluída a partir do card selecionado." : "Reprodução concluída até o fim do fluxo.");
     toast(doneMessage, "success");
+    if (state.projectPlayback.returnEnabled && !state.projectReturnSent) {
+      state.projectReturnSent = true;
+      setTriggerValue("project_return", {
+        flowId: state.doc.flow.id,
+        finalNodeId,
+        stoppedAt: state.projectPlayback.stopNodeId || finalNodeId,
+      });
+    }
   }
 
   function showPlaybackDecisionChooser(nodeId) {
@@ -2777,6 +2833,35 @@ export default function flowEditor(component) {
     centerOnNode(nodeId);
 
     const currentNode = getNode(nodeId);
+
+    if (state.projectPlayback.stopNodeId && nodeId === state.projectPlayback.stopNodeId) {
+      state.playback.timer = setTimeout(completePlayback, Math.min(500, playbackDelay()));
+      return;
+    }
+
+    if (
+      state.projectPlayback.enabled
+      && currentNode?.type === "subprocess"
+      && currentNode.data?.linkedFlowId
+      && !state.projectTransferPending
+    ) {
+      state.projectTransferPending = true;
+      state.playback.paused = true;
+      clearPlaybackTimer();
+      setTriggerValue("open_flow", {
+        flowId: currentNode.data.linkedFlowId,
+        sourceNodeId: currentNode.id,
+        entryNodeId: currentNode.data.linkedFlowEntryNodeId || "",
+        exitNodeId: currentNode.data.linkedFlowExitNodeId || "",
+        fromPlayback: true,
+        returnNodeId: state.playback.nodeSequence[index + 1] || "",
+        parentStopNodeId: state.projectPlayback.stopNodeId || "",
+        parentReturnEnabled: state.projectPlayback.returnEnabled,
+      });
+      toast("Abrindo subprocesso vinculado para continuar o Play do projeto.", "info");
+      return;
+    }
+
     if (currentNode?.type === "decision" && showPlaybackDecisionChooser(nodeId)) return;
 
     state.playback.timer = setTimeout(() => {
@@ -2794,6 +2879,8 @@ export default function flowEditor(component) {
     }
     clearPlaybackTimer();
     state.focusPath = path;
+    state.projectTransferPending = false;
+    state.projectReturnSent = false;
     state.playback.running = true;
     state.playback.paused = false;
     state.playback.nodeSequence = [...path.nodeSequence];
@@ -3138,7 +3225,7 @@ export default function flowEditor(component) {
 
   palette();
   bindEvents();
-  pruneLocalDrafts(state.doc.flow.id, state.revision);
+  pruneLocalDrafts(state.projectId, state.userId, state.doc.flow.id, state.revision);
   if (restoredLocalDraft) {
     updateSaveState("Rascunho local recuperado", "success");
     setTimeout(() => toast("As alterações locais foram recuperadas sem recarregar o editor.", "success"), 120);
@@ -3159,7 +3246,23 @@ export default function flowEditor(component) {
     markDirty();
     setTimeout(() => toast("O fluxo grande foi reorganizado dentro das raias. Salve para persistir o novo layout.", "success"), 120);
   }
-  setTimeout(fitView, 60);
+  setTimeout(() => {
+    if (state.initialNodeId && getNode(state.initialNodeId)) {
+      selectItem("node", state.initialNodeId);
+      centerOnNode(state.initialNodeId);
+      if (state.projectPlayback.autoStart) {
+        toast("Continuando o Play entre fluxos do projeto.", "info");
+        setTimeout(() => startPlayback(true), 120);
+      } else {
+        toast("Resultado localizado no projeto.", "info");
+      }
+    } else if (state.projectPlayback.autoStart) {
+      fitView();
+      setTimeout(() => startPlayback(true), 120);
+    } else {
+      fitView();
+    }
+  }, 60);
 
   return () => {
     state.destroyed = true;
