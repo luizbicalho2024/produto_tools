@@ -24,6 +24,7 @@ const MIN_ZOOM = 0.04;
 const MAX_ZOOM = 2.2;
 const NODE_WIDTH = 184;
 const NODE_HEIGHT = 72;
+const LANE_PLAYBACK_FALLBACK_STEP = 220;
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -300,6 +301,15 @@ export default function flowEditor(component) {
     return state.doc.lanes.find((lane) => lane.id === id);
   }
 
+  function lanePlaybackState(laneId) {
+    const currentNode = state.playback.currentNodeId ? getNode(state.playback.currentNodeId) : null;
+    if (currentNode?.laneId === laneId) return "current";
+    for (const nodeId of state.playback.visitedNodeIds) {
+      if (getNode(nodeId)?.laneId === laneId) return "visited";
+    }
+    return null;
+  }
+
   function markDirty() {
     state.dirty = true;
     state.doc.flow.updatedAt = nowIso();
@@ -414,9 +424,16 @@ export default function flowEditor(component) {
       laneEl.style.background = lane.color || "#EEF2FF";
       laneEl.classList.toggle("selected", state.selected?.kind === "lane" && state.selected.id === lane.id);
       laneEl.classList.toggle("disabled", lane.enabled === false);
+      const lanePlayback = lanePlaybackState(lane.id);
+      laneEl.classList.toggle("play-current", lanePlayback === "current");
+      laneEl.classList.toggle("play-visited", lanePlayback === "visited");
       if (state.focusPath) {
         const laneHasFocus = state.doc.nodes.some((node) => node.laneId === lane.id && focusContainsNode(node.id));
+        laneEl.classList.toggle("focus-member", laneHasFocus);
         laneEl.classList.toggle("focus-dimmed", !laneHasFocus);
+      } else {
+        laneEl.classList.remove("focus-member");
+        laneEl.classList.remove("focus-dimmed");
       }
 
       const header = el("header", "lane-header");
@@ -465,6 +482,28 @@ export default function flowEditor(component) {
       if (incoming.has(edge.target)) incoming.get(edge.target).push(edge);
     });
     return { outgoing, incoming };
+  }
+
+  function orderedOutgoingEdges(nodeId, graph = null) {
+    const edges = (graph?.edges || state.doc.edges).filter((edge) => edge.source === nodeId && edge.enabled !== false);
+    return edges.sort((left, right) => {
+      const lt = getNode(left.target);
+      const rt = getNode(right.target);
+      return (Number(lt?.position?.x) || 0) - (Number(rt?.position?.x) || 0)
+        || (Number(lt?.position?.y) || 0) - (Number(rt?.position?.y) || 0)
+        || String(left.sourceHandle || "").localeCompare(String(right.sourceHandle || ""));
+    });
+  }
+
+  function orderedIncomingEdges(nodeId, graph = null) {
+    const edges = (graph?.edges || state.doc.edges).filter((edge) => edge.target === nodeId && edge.enabled !== false);
+    return edges.sort((left, right) => {
+      const ls = getNode(left.source);
+      const rs = getNode(right.source);
+      return (Number(ls?.position?.x) || 0) - (Number(rs?.position?.x) || 0)
+        || (Number(ls?.position?.y) || 0) - (Number(rs?.position?.y) || 0)
+        || String(left.sourceHandle || "").localeCompare(String(right.sourceHandle || ""));
+    });
   }
 
   function shortestPath(startIds, targetIds, edges) {
@@ -608,6 +647,37 @@ export default function flowEditor(component) {
     return candidates[0] || { nodeSequence: [anchorId], edgeSequence: [] };
   }
 
+  function buildLanePath(laneId) {
+    const graph = enabledGraph();
+    const laneNodes = graph.nodes.filter((node) => node.laneId === laneId);
+    if (!laneNodes.length) return null;
+    const laneIds = new Set(laneNodes.map((node) => node.id));
+    const laneEdges = graph.edges.filter((edge) => laneIds.has(edge.source) && laneIds.has(edge.target));
+    const laneGraph = { nodes: laneNodes, nodeIds: laneIds, edges: laneEdges };
+    if (!laneEdges.length) {
+      const ordered = [...laneNodes].sort((left, right) => (Number(left.position.x) || 0) - (Number(right.position.x) || 0) || (Number(left.position.y) || 0) - (Number(right.position.y) || 0));
+      return {
+        nodeSequence: ordered.map((node) => node.id),
+        edgeSequence: [],
+        nodeIds: new Set(ordered.map((node) => node.id)),
+        edgeIds: new Set(),
+      };
+    }
+    const incomingInside = new Set(laneEdges.map((edge) => edge.target));
+    const starts = laneNodes
+      .filter((node) => !incomingInside.has(node.id))
+      .sort((left, right) => (Number(left.position.x) || 0) - (Number(right.position.x) || 0) || (Number(left.position.y) || 0) - (Number(right.position.y) || 0));
+    const candidates = (starts.length ? starts : laneNodes).map((node) => buildForwardRoute(node.id, laneGraph));
+    const best = candidates.sort((left, right) => (right.nodeSequence?.length || 0) - (left.nodeSequence?.length || 0))[0];
+    if (!best) return null;
+    return {
+      nodeSequence: best.nodeSequence,
+      edgeSequence: best.edgeSequence,
+      nodeIds: new Set(best.nodeSequence),
+      edgeIds: new Set(best.edgeSequence),
+    };
+  }
+
   function buildReadablePath() {
     const graph = enabledGraph();
     if (!graph.nodes.length) return null;
@@ -620,24 +690,36 @@ export default function flowEditor(component) {
       if (selectedEdge && selectedEdge.enabled !== false && graph.nodeIds.has(selectedEdge.source) && graph.nodeIds.has(selectedEdge.target)) {
         const sourceNode = getNode(selectedEdge.source);
         if (sourceNode?.type === "decision") state.branchChoices[sourceNode.id] = selectedEdge.id;
-        const prefix = pathToAnchor(effectiveStarts, selectedEdge.source, graph);
         const middle = { nodeSequence: [selectedEdge.source, selectedEdge.target], edgeSequence: [selectedEdge.id] };
         const suffix = buildForwardRoute(selectedEdge.target, graph);
-        return combinePaths(prefix, middle, suffix);
+        return combinePaths(middle, suffix);
       }
     }
 
-    let anchorId = null;
-    if (state.selected?.kind === "node" && graph.nodeIds.has(state.selected.id)) anchorId = state.selected.id;
-    if (!anchorId && state.selected?.kind === "lane") {
-      const laneNodes = graph.nodes.filter((node) => node.laneId === state.selected.id).sort((left, right) => left.position.x - right.position.x);
-      anchorId = laneNodes[0]?.id || null;
+    if (state.selected?.kind === "lane") {
+      return buildLanePath(state.selected.id);
     }
-    if (!anchorId) anchorId = effectiveStarts[0];
 
-    const prefix = pathToAnchor(effectiveStarts, anchorId, graph);
+    if (state.selected?.kind === "node" && graph.nodeIds.has(state.selected.id)) {
+      const node = getNode(state.selected.id);
+      const suffix = buildForwardRoute(state.selected.id, graph);
+      return {
+        nodeSequence: suffix.nodeSequence,
+        edgeSequence: suffix.edgeSequence,
+        nodeIds: new Set(suffix.nodeSequence),
+        edgeIds: new Set(suffix.edgeSequence),
+        title: node?.data?.label || "Rota selecionada",
+      };
+    }
+
+    const anchorId = effectiveStarts[0];
     const suffix = buildForwardRoute(anchorId, graph);
-    return combinePaths(prefix, suffix);
+    return {
+      nodeSequence: suffix.nodeSequence,
+      edgeSequence: suffix.edgeSequence,
+      nodeIds: new Set(suffix.nodeSequence),
+      edgeIds: new Set(suffix.edgeSequence),
+    };
   }
 
   function focusContainsNode(nodeId) {
@@ -768,17 +850,32 @@ export default function flowEditor(component) {
     };
   }
 
-  function edgePath(source, target, type = "smoothstep") {
+  function edgePath(source, target, type = "smoothstep", edge = null) {
     if (type === "straight") return `M ${source.x} ${source.y} L ${target.x} ${target.y}`;
     const direction = target.x >= source.x ? 1 : -1;
-    const clearance = Math.max(42, Math.min(90, Math.abs(target.x - source.x) * .22));
-    const exitX = source.x + direction * clearance;
-    const entryX = target.x - direction * clearance;
-    const middle = (exitX + entryX) / 2;
-    if (type === "step") {
-      return `M ${source.x} ${source.y} L ${middle} ${source.y} L ${middle} ${target.y} L ${target.x} ${target.y}`;
+    const outgoing = edge ? orderedOutgoingEdges(edge.source) : [];
+    const incoming = edge ? orderedIncomingEdges(edge.target) : [];
+    const outIndex = Math.max(0, outgoing.findIndex((item) => item.id === edge?.id));
+    const inIndex = Math.max(0, incoming.findIndex((item) => item.id === edge?.id));
+    const outTrack = outgoing.length ? outIndex - (outgoing.length - 1) / 2 : 0;
+    const inTrack = incoming.length ? inIndex - (incoming.length - 1) / 2 : 0;
+    const exitX = source.x + direction * (36 + Math.abs(outTrack) * 16);
+    const entryX = target.x - direction * (36 + Math.abs(inTrack) * 16);
+    const verticalOffset = (outTrack - inTrack) * 12;
+    let bridgeX = (exitX + entryX) / 2 + direction * outTrack * 14;
+    let bridgeY = ((source.y + target.y) / 2) + verticalOffset;
+
+    if (direction === 1) bridgeX = Math.max(exitX + 22, Math.min(entryX - 22, bridgeX));
+    else bridgeX = Math.min(exitX - 22, Math.max(entryX + 22, bridgeX));
+
+    if (Math.abs(target.x - source.x) < 140 || direction === -1) {
+      bridgeY = ((source.y + target.y) / 2) + verticalOffset + (outTrack * 10);
+      const elbowX = source.x + direction * (52 + Math.abs(outTrack) * 18);
+      const targetElbowX = target.x - direction * (52 + Math.abs(inTrack) * 18);
+      return `M ${source.x} ${source.y} L ${elbowX} ${source.y} L ${elbowX} ${bridgeY} L ${targetElbowX} ${bridgeY} L ${targetElbowX} ${target.y} L ${target.x} ${target.y}`;
     }
-    return `M ${source.x} ${source.y} L ${exitX} ${source.y} C ${middle} ${source.y}, ${middle} ${target.y}, ${entryX} ${target.y} L ${target.x} ${target.y}`;
+
+    return `M ${source.x} ${source.y} L ${exitX} ${source.y} L ${bridgeX} ${source.y} L ${bridgeX} ${target.y} L ${entryX} ${target.y} L ${target.x} ${target.y}`;
   }
 
   function svgNode(tag, attrs = {}) {
@@ -795,7 +892,7 @@ export default function flowEditor(component) {
       if (!sourceNode || !targetNode) return;
       const source = nodeCenter(sourceNode, "source", edge.sourceHandle);
       const target = nodeCenter(targetNode, "target");
-      const path = edgePath(source, target, edge.type);
+      const path = edgePath(source, target, edge.type, edge);
       const edgeClasses = ["edge-group"];
       if (edge.enabled === false) edgeClasses.push("disabled");
       if (state.selected?.kind === "edge" && state.selected.id === edge.id) edgeClasses.push("selected");
@@ -833,7 +930,7 @@ export default function flowEditor(component) {
     const node = getNode(state.connecting.source);
     if (!node) return;
     const source = nodeCenter(node, "source", state.connecting.sourceHandle);
-    const path = edgePath(source, state.pointerWorld, "smoothstep");
+    const path = edgePath(source, state.pointerWorld, "smoothstep", null);
     const temp = svgNode("path", { d: path, class: "edge-path temp-edge", "stroke-dasharray": "7 5", opacity: ".8" });
     edgeLayer.appendChild(temp);
   }
@@ -915,7 +1012,10 @@ export default function flowEditor(component) {
       overlay.hidden = !state.playback.running;
       const progress = $('[data-role="playback-progress"]');
       const title = $('[data-role="playback-title"]');
-      if (title) title.textContent = state.playback.paused ? "Reprodução pausada" : "Reproduzindo fluxo";
+      if (title) {
+        const baseTitle = state.selected?.kind === "lane" ? "Reproduzindo raia" : (state.selected?.kind === "node" ? "Reproduzindo a partir do card" : "Reproduzindo fluxo");
+        title.textContent = state.playback.paused ? `${baseTitle} — pausado` : baseTitle;
+      }
       if (progress) progress.textContent = state.playback.running
         ? `Etapa ${Math.max(1, state.playback.index + 1)} de ${state.playback.nodeSequence.length}`
         : "";
@@ -932,7 +1032,12 @@ export default function flowEditor(component) {
     $('[data-role="connection-hint"]').textContent = state.connecting ? "Selecione a entrada do elemento de destino" : "";
     $('[data-role="empty-state"]').style.display = state.doc.nodes.length || state.doc.lanes.length ? "none" : "grid";
     const focusStatus = $('[data-role="focus-status"]');
-    if (focusStatus) focusStatus.textContent = state.focusPath ? `${state.focusPath.nodeSequence.length} etapas destacadas` : "";
+    if (focusStatus) {
+      if (!state.focusPath) focusStatus.textContent = "";
+      else if (state.selected?.kind === "lane") focusStatus.textContent = `${state.focusPath.nodeSequence.length} etapas destacadas na raia`;
+      else if (state.selected?.kind === "node") focusStatus.textContent = `${state.focusPath.nodeSequence.length} etapas a partir do card selecionado`;
+      else focusStatus.textContent = `${state.focusPath.nodeSequence.length} etapas destacadas`;
+    }
     const focusButton = $('[data-role="focus-button"]');
     if (focusButton) {
       focusButton.classList.toggle("is-active", Boolean(state.focusPath));
@@ -1908,7 +2013,7 @@ export default function flowEditor(component) {
     const intro = el("div", "route-choice-intro");
     intro.append(
       el("strong", "", node.data.label || "Decisão"),
-      el("span", "", "Selecione a saída que deve ser usada no destaque e na reprodução. A escolha ficará salva no fluxo."),
+      el("span", "", "Selecione a saída que deve ser usada no destaque e na reprodução a partir deste ponto. A escolha ficará salva no fluxo."),
     );
     const list = el("div", "route-choice-list");
     branches.forEach((edge, index) => {
@@ -1957,7 +2062,8 @@ export default function flowEditor(component) {
     state.focusPath = path;
     renderAll();
     setTimeout(() => fitNodeIds(path.nodeIds), 40);
-    toast(`Rota completa destacada com ${path.nodeSequence.length} etapas.`, "success");
+    const scopeLabel = state.selected?.kind === "lane" ? "Raia destacada" : (state.selected?.kind === "node" ? "Sequência destacada" : "Rota completa destacada");
+    toast(`${scopeLabel} com ${path.nodeSequence.length} etapas.`, "success");
   }
 
   function toggleFocusPath() {
@@ -2007,7 +2113,8 @@ export default function flowEditor(component) {
     state.playback.currentNodeId = null;
     state.playback.currentEdgeId = null;
     renderAll();
-    toast("Reprodução concluída até o fim do fluxo.", "success");
+    const doneMessage = state.selected?.kind === "lane" ? "Reprodução da raia concluída." : (state.selected?.kind === "node" ? "Reprodução concluída a partir do card selecionado." : "Reprodução concluída até o fim do fluxo.");
+    toast(doneMessage, "success");
   }
 
   function advancePlayback() {

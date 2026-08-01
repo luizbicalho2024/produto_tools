@@ -16,7 +16,7 @@ Antes da geração do pacote foram executadas as seguintes verificações:
 
 A conexão real com o MongoDB Atlas deve ser validada no ambiente de destino, pois depende dos Secrets do Streamlit Cloud e das regras de Network Access do cluster.
 
-## Validações visuais 2.3
+## Validações visuais 2.4
 
 - Faixa colorida respeitando nós em formato de pílula, arredondados e assimétricos.
 - Propriedades exibidas no inspetor horizontal superior.

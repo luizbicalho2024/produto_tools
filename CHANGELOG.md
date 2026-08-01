@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.4.0 — 2026-08-01
+
+- Play e destaque iniciados a partir de qualquer card selecionado.
+- Destaque e reprodução focados na raia selecionada.
+- Realce visual da raia atual e das raias já percorridas.
+- Roteamento ortogonal com trilhas separadas para reduzir cruzamentos e sobreposição de conexões.
+- Atualização visual do login, gestão de acesso e editor inspirada no design system do MongoDB.
+- Paleta clara e escura unificada com tons verdes, superfícies profundas e maior contraste.
+
 ## 2.3.0 — 2026-08-01
 
 - Mundo do canvas dimensionado dinamicamente para fluxos com dezenas de milhares de pixels.

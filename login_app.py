@@ -12,11 +12,21 @@ apply_global_styles()
 
 st.markdown(
     """
-    <div style="max-width:560px;margin:5vh auto 1.4rem;text-align:center">
-      <div style="width:62px;height:62px;border-radius:18px;margin:0 auto 14px;display:grid;place-items:center;color:white;background:linear-gradient(135deg,#4f46e5,#7c3aed);font-size:24px;font-weight:800">PT</div>
-      <h1 style="margin:0;color:#0f172a;font-size:2rem">Produto Tools</h1>
-      <p style="color:#64748b;margin:.45rem 0 0">Editor visual de processos com usuários compartilhados do Simulador de Telemetria.</p>
-    </div>
+    <section class="pt-login-card">
+      <div class="pt-login-mark">PT</div>
+      <h1>Produto Tools</h1>
+      <p>Editor visual de processos com autenticação compartilhada, persistência no MongoDB Atlas e experiência inspirada no design system do MongoDB.</p>
+    </section>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    """
+    <section class="pt-soft-card" style="max-width:620px;margin:0 auto 1rem;">
+      <strong style="display:block;margin-bottom:.35rem;">O que você encontra aqui</strong>
+      <span style="display:block;color:var(--pt-muted);">Editor de fluxos com raias, auto-organização para processos grandes, destaque de caminhos, reprodução a partir de qualquer card e armazenamento versionado no MongoDB.</span>
+    </section>
     """,
     unsafe_allow_html=True,
 )

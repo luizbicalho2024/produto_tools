@@ -1,4 +1,4 @@
-# Arquitetura do Produto Tools 2.3
+# Arquitetura do Produto Tools 2.4
 
 ## Visão geral
 

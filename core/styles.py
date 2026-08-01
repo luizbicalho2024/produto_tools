@@ -36,29 +36,29 @@ def apply_global_styles(*, full_width: bool = False) -> None:
     theme = get_ui_theme()
     if theme == "dark":
         palette = {
-            "bg": "#07101f",
-            "panel": "#0f172a",
-            "panel_soft": "#111c2f",
-            "text": "#e5e7eb",
-            "muted": "#94a3b8",
-            "line": "#283548",
-            "input": "#111827",
-            "hero_a": "#111827",
-            "hero_b": "#1e1b4b",
-            "shadow": "rgba(0,0,0,.32)",
+            "bg": "#00141f",
+            "panel": "#001e2b",
+            "panel_soft": "#082631",
+            "text": "#f5fbf7",
+            "muted": "#9bc3b3",
+            "line": "#173c36",
+            "input": "#08212c",
+            "hero_a": "#001e2b",
+            "hero_b": "#082631",
+            "shadow": "rgba(0,0,0,.34)",
         }
     else:
         palette = {
-            "bg": "#f8fafc",
+            "bg": "#f4f8fb",
             "panel": "#ffffff",
-            "panel_soft": "#f1f5f9",
-            "text": "#0f172a",
-            "muted": "#64748b",
-            "line": "#e2e8f0",
+            "panel_soft": "#f7fafc",
+            "text": "#102a43",
+            "muted": "#486581",
+            "line": "#d9e2ec",
             "input": "#ffffff",
             "hero_a": "#ffffff",
-            "hero_b": "#eef2ff",
-            "shadow": "rgba(15,23,42,.06)",
+            "hero_b": "#eefbf5",
+            "shadow": "rgba(16,42,67,.08)",
         }
 
     max_width = "100%" if full_width else "1680px"
@@ -68,8 +68,8 @@ def apply_global_styles(*, full_width: bool = False) -> None:
         f"""
         <style>
         :root {{
-          --pt-primary: #4f46e5;
-          --pt-primary-dark: #3730a3;
+          --pt-primary: #00a35c;
+          --pt-primary-dark: #00684a;
           --pt-bg: {palette['bg']};
           --pt-panel: {palette['panel']};
           --pt-panel-soft: {palette['panel_soft']};
@@ -93,18 +93,22 @@ def apply_global_styles(*, full_width: bool = False) -> None:
         }}
         [data-testid="stSidebar"] * {{color: var(--pt-text);}}
         [data-testid="stHeader"] {{background: color-mix(in srgb, var(--pt-bg) 88%, transparent);}}
+        div[data-testid="stToolbar"] {{right: .6rem;}}
         [data-testid="stMetric"],
         [data-testid="stForm"],
-        [data-testid="stVerticalBlockBorderWrapper"] {{
-          background: var(--pt-panel);
+        [data-testid="stVerticalBlockBorderWrapper"],
+        div[data-testid="stExpander"] {{
+          background: color-mix(in srgb, var(--pt-panel) 96%, transparent);
           border-color: var(--pt-line) !important;
           color: var(--pt-text);
+          border-radius: 18px !important;
+          box-shadow: 0 14px 36px var(--pt-shadow);
         }}
         [data-testid="stMetric"] {{
           border: 1px solid var(--pt-line);
-          border-radius: 14px;
-          padding: .72rem .9rem;
-          box-shadow: 0 4px 16px var(--pt-shadow);
+          border-radius: 18px;
+          padding: .85rem .95rem;
+          box-shadow: 0 10px 30px var(--pt-shadow);
         }}
         [data-testid="stMetricLabel"],
         [data-testid="stMetricDelta"],
@@ -119,20 +123,52 @@ def apply_global_styles(*, full_width: bool = False) -> None:
         }}
         input, textarea {{color: var(--pt-text) !important;}}
         .stButton > button, .stDownloadButton > button {{
-          border-radius: 10px;
-          min-height: 2.5rem;
-          font-weight: 600;
+          border-radius: 999px;
+          min-height: 2.65rem;
+          font-weight: 700;
+          border: 1px solid var(--pt-line);
+          box-shadow: 0 8px 22px var(--pt-shadow);
+        }}
+        .stButton > button[kind="primary"], .stForm button[kind="primary"] {{
+          background: linear-gradient(135deg, var(--pt-primary) 0%, var(--pt-primary-dark) 100%);
+          color: white;
+          border-color: color-mix(in srgb, var(--pt-primary) 60%, var(--pt-line));
         }}
         .pt-hero {{
           border: 1px solid var(--pt-line);
-          border-radius: 16px;
-          padding: .9rem 1.05rem;
+          border-radius: 24px;
+          padding: 1rem 1.15rem;
           background: linear-gradient(135deg, {palette['hero_a']} 0%, {palette['hero_b']} 100%);
-          margin-bottom: .7rem;
-          box-shadow: 0 5px 18px var(--pt-shadow);
+          margin-bottom: .8rem;
+          box-shadow: 0 18px 42px var(--pt-shadow);
         }}
-        .pt-hero h1 {{font-size: 1.5rem; margin: 0 0 .25rem 0; color: var(--pt-text);}}
+        .pt-hero h1 {{font-size: 1.55rem; margin: 0 0 .28rem 0; color: var(--pt-text);}}
         .pt-hero p {{margin: 0; color: var(--pt-muted);}}
+        .pt-login-card {{
+          max-width: 620px;
+          margin: 4vh auto 1.4rem;
+          padding: 1.25rem;
+          border-radius: 28px;
+          border: 1px solid var(--pt-line);
+          background: linear-gradient(135deg, {palette['hero_a']} 0%, {palette['hero_b']} 100%);
+          box-shadow: 0 22px 54px var(--pt-shadow);
+          text-align: center;
+        }}
+        .pt-login-mark {{
+          width: 74px; height: 74px; border-radius: 24px; margin: 0 auto 16px;
+          display:grid; place-items:center; color:white; font-size:28px; font-weight:800;
+          background: linear-gradient(135deg, var(--pt-primary) 0%, var(--pt-primary-dark) 100%);
+          box-shadow: 0 16px 34px color-mix(in srgb, var(--pt-primary) 26%, transparent);
+        }}
+        .pt-login-card h1 {{margin:0; font-size:2rem; color:var(--pt-text);}}
+        .pt-login-card p {{margin:.45rem 0 0; color:var(--pt-muted);}}
+        .pt-soft-card {{
+          border: 1px solid var(--pt-line);
+          border-radius: 20px;
+          padding: .95rem 1rem;
+          background: color-mix(in srgb, var(--pt-panel) 96%, transparent);
+          box-shadow: 0 12px 30px var(--pt-shadow);
+        }}
         hr {{border-color: var(--pt-line) !important;}}
         </style>
         """,

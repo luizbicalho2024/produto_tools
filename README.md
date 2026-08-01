@@ -1,8 +1,14 @@
-# Produto Tools 2.3 — Fluxos grandes, raias e decisões navegáveis
+# Produto Tools 2.4 — Navegação por cards e raias
 
 Aplicação Streamlit com editor visual de processos, autenticação compartilhada com o **Simulador-Telemetria** e persistência dos fluxos no MongoDB Atlas.
 
-## Recursos visuais do editor 2.3
+## Recursos visuais do editor 2.4
+
+- Play e destaque a partir do card selecionado.
+- Play e destaque de uma raia selecionada.
+- Realce da raia atual durante a reprodução.
+- Conexões ortogonais com trilhas separadas para reduzir cruzamentos.
+- Interface inspirada no design system do MongoDB em modo claro e escuro.
 
 - Inspetor de propriedades horizontal na parte superior.
 - Canvas ocupando toda a largura restante da página.
