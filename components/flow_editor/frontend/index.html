@@ -28,9 +28,14 @@
       <button type="button" data-action="analytics" class="button-soft">Indicadores</button>
       <button type="button" data-action="theme" data-role="theme-button" title="Alternar modo claro e escuro">☾ Escuro</button>
       <button type="button" data-action="import">Importar JSON</button>
-      <button type="button" data-action="export">JSON</button>
-      <button type="button" data-action="export-svg">SVG</button>
-      <button type="button" data-action="export-png">PNG</button>
+      <details class="toolbar-dropdown" data-role="download-menu">
+        <summary title="Baixar ou exportar o fluxo">Baixar ▾</summary>
+        <div class="toolbar-dropdown-menu">
+          <button type="button" data-action="export"><span>JSON</span><small>Editar ou importar depois</small></button>
+          <button type="button" data-action="export-svg"><span>SVG</span><small>Imagem vetorial</small></button>
+          <button type="button" data-action="export-png"><span>PNG</span><small>Imagem para apresentação</small></button>
+        </div>
+      </details>
       <button type="button" data-action="sync-draft" class="button-soft" title="Sincronizar o rascunho local com o MongoDB">☁ Rascunho</button>
       <button type="button" data-action="save" class="button-primary">Salvar versão</button>
       <input data-role="file-input" type="file" accept="application/json,.json" hidden>
@@ -136,11 +141,11 @@
           <div class="lane-layer" data-role="lane-layer"></div>
           <svg class="edge-layer" data-role="edge-layer" xmlns="http://www.w3.org/2000/svg">
             <defs>
-              <marker id="arrow-enabled" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
-                <path d="M0,0 L0,6 L9,3 z" fill="context-stroke"></path>
+              <marker id="arrow-enabled" markerWidth="14" markerHeight="14" refX="12" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+                <path d="M0,0 L0,10 L13,5 z" fill="context-stroke"></path>
               </marker>
-              <marker id="arrow-disabled" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
-                <path d="M0,0 L0,6 L9,3 z" fill="context-stroke"></path>
+              <marker id="arrow-disabled" markerWidth="14" markerHeight="14" refX="12" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+                <path d="M0,0 L0,10 L13,5 z" fill="context-stroke"></path>
               </marker>
             </defs>
           </svg>

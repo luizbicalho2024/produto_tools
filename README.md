@@ -1,6 +1,18 @@
-# Produto Tools 3.2.1 Professional
+# Produto Tools 3.2.2 Professional
 
 Aplicação Streamlit para modelagem, governança e publicação de processos, com autenticação compartilhada, persistência no MongoDB Atlas e projetos compostos por vários fluxos vinculados.
+
+
+## Novidades da versão 3.2.2
+
+- cada card exibe quantas linhas recebe e envia, com atalhos para destacar suas conexões;
+- as setas terminam antes do card, permanecendo visíveis mesmo quando a linha passa atrás de outro elemento;
+- origem de cada conexão marcada por terminal circular;
+- exportações JSON, SVG e PNG agrupadas no menu **Baixar**;
+- relatórios PDF, HTML e CSV agrupados em **Baixar relatórios**;
+- validação com explicação simples, impacto e instrução de correção;
+- mapa de relações com tela cheia, filtros por tipo e fluxo, destaque e isolamento;
+- páginas de qualidade mostram os cards afetados, o tipo do problema e como corrigir.
 
 ## Correção 3.2.1 — Compatibilidade do login
 
@@ -153,7 +165,7 @@ produto_tools/
 ├── login_app.py
 ├── database.py
 ├── requirements.txt
-├── atualizar_produto_tools_v3_2_main.ps1
+├── atualizar_produto_tools_v3_2_2_main.ps1
 ├── components/
 │   └── flow_editor/
 ├── core/
@@ -207,12 +219,12 @@ node --check components/flow_editor/frontend/main.js
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-Unblock-File .\atualizar_produto_tools_v3_2_main.ps1
-.\atualizar_produto_tools_v3_2_main.ps1
+Unblock-File .\atualizar_produto_tools_v3_2_2_main.ps1
+.\atualizar_produto_tools_v3_2_2_main.ps1
 ```
 
 Sem testes locais:
 
 ```powershell
-.\atualizar_produto_tools_v3_2_main.ps1 -SkipTests
+.\atualizar_produto_tools_v3_2_2_main.ps1 -SkipTests
 ```

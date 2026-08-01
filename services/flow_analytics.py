@@ -208,3 +208,74 @@ def build_raci_rows(document: dict[str, Any]) -> list[dict[str, str]]:
             "SLA (min)": str(data.get("slaMinutes") or ""),
         })
     return rows
+
+
+def issue_detail_rows(document: dict[str, Any], analysis: dict[str, Any] | None = None) -> list[dict[str, str]]:
+    """Return human-readable quality issues with the exact affected card names."""
+    report = analysis or analyze_document(document)
+    node_map = {str(node.get("id")): node for node in document.get("nodes", [])}
+    lane_map = {str(lane.get("id")): str(lane.get("name") or "Sem raia") for lane in document.get("lanes", [])}
+
+    definitions = {
+        "inaccessible": (
+            "Erro",
+            "Card não alcançável",
+            "Nenhum caminho iniciado no card Início chega a esta etapa.",
+            "Conecte uma etapa anterior ao card ou remova-o quando não fizer parte do processo.",
+        ),
+        "cycles": (
+            "Atenção",
+            "Card participa de um ciclo",
+            "O processo pode retornar a uma etapa anterior e repetir indefinidamente.",
+            "Confirme se o retorno é intencional e identifique claramente a condição de saída.",
+        ),
+        "missing_description": (
+            "Recomendação",
+            "Descrição ausente",
+            "O card não explica o que deve ser realizado.",
+            "Preencha uma descrição curta com objetivo, regra e resultado esperado.",
+        ),
+        "missing_owner": (
+            "Recomendação",
+            "Responsável ausente",
+            "Não está claro quem executa ou acompanha a etapa.",
+            "Informe o responsável ou associe o card à raia correta.",
+        ),
+        "missing_sla_critical": (
+            "Atenção",
+            "Etapa crítica sem SLA",
+            "O card é de alta criticidade, mas não possui tempo esperado de atendimento.",
+            "Defina o SLA em minutos para permitir acompanhamento e análise de gargalos.",
+        ),
+        "decisions_invalid": (
+            "Erro",
+            "Decisão incompleta",
+            "A decisão possui menos de duas saídas ou alguma saída está sem condição.",
+            "Crie pelo menos duas saídas e nomeie cada condição, por exemplo Sim e Não.",
+        ),
+        "subprocess_unlinked": (
+            "Recomendação",
+            "Subprocesso sem fluxo vinculado",
+            "O card indica um subprocesso, mas não abre nenhum fluxo detalhado.",
+            "Vincule um fluxo auxiliar ou altere o tipo do card para Atividade.",
+        ),
+    }
+
+    rows: list[dict[str, str]] = []
+    for issue_key, node_ids in (report.get("issues") or {}).items():
+        if not isinstance(node_ids, list) or issue_key not in definitions:
+            continue
+        severity, problem, explanation, action = definitions[issue_key]
+        for node_id in node_ids:
+            node = node_map.get(str(node_id), {})
+            data = node.get("data") or {}
+            rows.append({
+                "Card ID": str(node_id),
+                "Card": str(data.get("label") or node_id),
+                "Raia": lane_map.get(str(node.get("laneId") or ""), "Sem raia"),
+                "Gravidade": severity,
+                "Problema": problem,
+                "Por que importa": explanation,
+                "Como corrigir": action,
+            })
+    return rows

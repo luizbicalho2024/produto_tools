@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.2.2 — Legibilidade de conexões, mapa e qualidade acionável
+
+- indicadores permanentes de entradas e saídas em cada card;
+- setas das conexões posicionadas fora do card e origem marcada por terminal visual;
+- downloads do canvas e relatórios agrupados em menus;
+- problemas identificados com linguagem simples, impacto e orientação de correção;
+- mapa de relações com tela cheia, filtros por tipo e fluxo, destaque e isolamento;
+- qualidade consolidada detalhando cards afetados e o problema específico;
+- Central de Processos com detalhes acionáveis de qualidade.
+
 ## 3.2.1 — Compatibilidade do seletor de tema e login
 
 - Corrige o `TypeError` no login causado por incompatibilidade entre chamadas com `compact=True` e versões anteriores de `core.styles`.

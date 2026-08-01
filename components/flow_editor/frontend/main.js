@@ -1172,7 +1172,42 @@ export default function flowEditor(component) {
         outputPorts.push(outputPort);
       }
 
-      nodeEl.append(accent, content, inputPort, ...outputPorts);
+      const incomingCount = state.doc.edges.filter((edge) => edge.enabled !== false && edge.target === node.id).length;
+      const outgoingCount = state.doc.edges.filter((edge) => edge.enabled !== false && edge.source === node.id).length;
+      const incomingIndicator = el("button", "node-flow-indicator incoming", incomingCount ? `← ${incomingCount}` : "←");
+      incomingIndicator.type = "button";
+      incomingIndicator.title = incomingCount
+        ? `${incomingCount} conexão(ões) chegam neste card. Clique para destacar.`
+        : "Nenhuma conexão chega neste card.";
+      incomingIndicator.classList.toggle("empty", incomingCount === 0);
+      incomingIndicator.addEventListener("pointerdown", (event) => event.stopPropagation());
+      incomingIndicator.addEventListener("click", (event) => {
+        event.stopPropagation();
+        selectItem("node", node.id);
+        state.edgeVisibility = "selection";
+        const control = $('[data-role="edge-visibility"]');
+        if (control) control.value = "selection";
+        renderEdges();
+        renderHeaderAndStatus();
+      });
+      const outgoingIndicator = el("button", "node-flow-indicator outgoing", outgoingCount ? `${outgoingCount} →` : "→");
+      outgoingIndicator.type = "button";
+      outgoingIndicator.title = outgoingCount
+        ? `${outgoingCount} conexão(ões) saem deste card. Clique para destacar.`
+        : "Nenhuma conexão sai deste card.";
+      outgoingIndicator.classList.toggle("empty", outgoingCount === 0);
+      outgoingIndicator.addEventListener("pointerdown", (event) => event.stopPropagation());
+      outgoingIndicator.addEventListener("click", (event) => {
+        event.stopPropagation();
+        selectItem("node", node.id);
+        state.edgeVisibility = "selection";
+        const control = $('[data-role="edge-visibility"]');
+        if (control) control.value = "selection";
+        renderEdges();
+        renderHeaderAndStatus();
+      });
+
+      nodeEl.append(accent, content, inputPort, ...outputPorts, incomingIndicator, outgoingIndicator);
       nodeEl.addEventListener("pointerdown", (event) => beginNodeDrag(event, node.id));
       nodeEl.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -1227,8 +1262,9 @@ export default function flowEditor(component) {
       const index = clamp(match ? Number(match[1]) : 0, 0, count - 1);
       y = node.position.y + ((index + 1) / (count + 1)) * dimensions.height;
     }
+    const endpointGap = 12;
     return {
-      x: node.position.x + (side === "source" ? dimensions.width : 0),
+      x: node.position.x + (side === "source" ? dimensions.width + endpointGap : -endpointGap),
       y,
     };
   }
@@ -1416,7 +1452,10 @@ export default function flowEditor(component) {
       const hit = svgNode("path", { d: path, class: "edge-hit" });
       const underlay = svgNode("path", { d: path, class: "edge-underlay" });
       const visible = svgNode("path", { d: path, class: "edge-path" });
-      group.append(hit, underlay, visible);
+      const sourceTerminal = svgNode("circle", {
+        cx: source.x, cy: source.y, r: 3.8, class: "edge-source-terminal",
+      });
+      group.append(hit, underlay, visible, sourceTerminal);
       if (edge.label) {
         const mx = route.labelX;
         const my = route.labelY;
@@ -2484,6 +2523,10 @@ export default function flowEditor(component) {
     setTimeout(fitView, 40);
   }
 
+  function validationIssue(level, category, title, explanation, fix, target = null) {
+    return { level, category, title, explanation, fix, message: `${title}: ${explanation}`, target };
+  }
+
   function validationReport() {
     const issues = [];
     const activeNodes = state.doc.nodes.filter((node) => node.data.enabled !== false);
@@ -2491,41 +2534,109 @@ export default function flowEditor(component) {
     const activeIds = new Set(activeNodes.map((node) => node.id));
     const starts = activeNodes.filter((node) => node.type === "start");
     const ends = activeNodes.filter((node) => node.type === "end");
-    if (!starts.length) issues.push({ level: "error", message: "O fluxo não possui um elemento de início." });
-    if (!ends.length) issues.push({ level: "error", message: "O fluxo não possui um elemento de fim." });
-    if (starts.length > 1) issues.push({ level: "warning", message: `O fluxo possui ${starts.length} elementos de início.` });
+    if (!starts.length) issues.push(validationIssue(
+      "error", "Estrutura", "Falta o início do processo",
+      "Não existe um card do tipo Início para indicar onde a execução começa.",
+      "Adicione um card Início e conecte-o à primeira etapa.",
+    ));
+    if (!ends.length) issues.push(validationIssue(
+      "error", "Estrutura", "Falta o encerramento do processo",
+      "Não existe um card do tipo Fim para indicar onde a execução termina.",
+      "Adicione um card Fim e conecte a última etapa a ele.",
+    ));
+    if (starts.length > 1) issues.push(validationIssue(
+      "warning", "Estrutura", "Há mais de um ponto de início",
+      `Foram encontrados ${starts.length} cards de início. Isso pode deixar o leitor sem saber por onde começar.`,
+      "Mantenha apenas um início ou identifique claramente quando cada início deve ser usado.",
+    ));
     activeNodes.forEach((node) => {
-      if (!String(node.data.label || "").trim()) issues.push({ level: "error", message: `O elemento ${node.id} está sem nome.`, target: { kind: "node", id: node.id } });
+      const label = String(node.data.label || node.id || "Card sem nome");
+      if (!String(node.data.label || "").trim()) issues.push(validationIssue(
+        "error", "Identificação", "Card sem nome",
+        `O card ${node.id} não possui um título visível.`,
+        "Informe um nome curto que descreva a ação realizada.",
+        { kind: "node", id: node.id },
+      ));
       const incoming = activeEdges.filter((edge) => edge.target === node.id && activeIds.has(edge.source));
       const outgoing = activeEdges.filter((edge) => edge.source === node.id && activeIds.has(edge.target));
-      if (node.type !== "start" && !incoming.length) issues.push({ level: "warning", message: `“${node.data.label}” não possui conexão de entrada.`, target: { kind: "node", id: node.id } });
-      if (node.type !== "end" && !outgoing.length) issues.push({ level: "warning", message: `“${node.data.label}” não possui conexão de saída.`, target: { kind: "node", id: node.id } });
+      if (node.type !== "start" && !incoming.length) issues.push(validationIssue(
+        "warning", "Conexões", `“${label}” não recebe nenhuma linha`,
+        "O card está isolado na entrada e pode nunca ser alcançado durante o processo.",
+        "Conecte uma etapa anterior ao lado esquerdo deste card ou transforme-o em um ponto de início.",
+        { kind: "node", id: node.id },
+      ));
+      if (node.type !== "end" && !outgoing.length) issues.push(validationIssue(
+        "warning", "Conexões", `“${label}” não envia nenhuma linha`,
+        "O fluxo para neste card sem indicar o que acontece depois.",
+        "Conecte este card à próxima etapa ou transforme-o em um card Fim.",
+        { kind: "node", id: node.id },
+      ));
       if (node.type === "decision") {
         if (outgoing.length < 2) {
-          issues.push({ level: "error", message: `A decisão “${node.data.label}” deve possuir no mínimo duas conexões de saída.`, target: { kind: "node", id: node.id } });
+          issues.push(validationIssue(
+            "error", "Decisões", `A decisão “${label}” possui somente ${outgoing.length} saída(s)`,
+            "Uma decisão precisa mostrar pelo menos dois resultados possíveis, como Sim e Não.",
+            "Crie outra conexão de saída ou altere o tipo do card para Atividade quando não houver ramificação.",
+            { kind: "node", id: node.id },
+          ));
         }
         const usedHandles = outgoing.map((edge) => edge.sourceHandle || "branch-0");
         if (new Set(usedHandles).size < outgoing.length) {
-          issues.push({ level: "warning", message: `A decisão “${node.data.label}” possui saídas usando o mesmo conector visual. Use conectores diferentes para melhorar a leitura.`, target: { kind: "node", id: node.id } });
+          issues.push(validationIssue(
+            "warning", "Decisões", `As saídas de “${label}” estão no mesmo ponto visual`,
+            "Duas ou mais linhas saem pelo mesmo conector e podem parecer uma única ramificação.",
+            "Use conectores de saída diferentes no lado direito do card.",
+            { kind: "node", id: node.id },
+          ));
         }
         outgoing.filter((edge) => !String(edge.label || edge.condition || "").trim()).forEach((edge) => {
-          issues.push({ level: "warning", message: `Uma saída da decisão “${node.data.label}” está sem rótulo ou condição.`, target: { kind: "edge", id: edge.id } });
+          issues.push(validationIssue(
+            "warning", "Decisões", `Uma saída de “${label}” não informa a condição`,
+            "O leitor não consegue saber quando deve seguir essa linha.",
+            "Selecione a linha e informe um rótulo, como Sim, Não, Aprovado ou Reprovado.",
+            { kind: "edge", id: edge.id },
+          ));
         });
       }
-      if (!node.laneId && state.doc.lanes.length) issues.push({ level: "warning", message: `“${node.data.label}” está fora de uma raia.`, target: { kind: "node", id: node.id } });
+      if (!node.laneId && state.doc.lanes.length) issues.push(validationIssue(
+        "warning", "Raias", `“${label}” não está associado a uma raia`,
+        "Não é possível identificar qual área ou participante executa a etapa.",
+        "Mova o card para a raia correta ou escolha a raia nas propriedades.",
+        { kind: "node", id: node.id },
+      ));
       if (node.laneId && state.doc.lanes.length) {
         const laneBox = laneGeometry().map.get(node.laneId);
         if (!laneBox || node.position.y < laneBox.top + LANE_HEADER_HEIGHT || node.position.y + NODE_HEIGHT > laneBox.bottom) {
-          issues.push({ level: "error", message: `“${node.data.label}” não está posicionado dentro dos limites da raia selecionada.`, target: { kind: "node", id: node.id } });
+          issues.push(validationIssue(
+            "error", "Layout", `“${label}” ficou fora dos limites da raia`,
+            "Parte do card está posicionada fora da área destinada ao responsável.",
+            "Use o botão Organizar ou arraste o card completamente para dentro da raia.",
+            { kind: "node", id: node.id },
+          ));
         }
       }
     });
     activeEdges.forEach((edge) => {
-      if (!activeIds.has(edge.source) || !activeIds.has(edge.target)) issues.push({ level: "error", message: `A conexão ${edge.id} aponta para um elemento inexistente ou inativo.`, target: { kind: "edge", id: edge.id } });
-      if (edge.source === edge.target) issues.push({ level: "error", message: `A conexão ${edge.id} liga um elemento a ele mesmo.`, target: { kind: "edge", id: edge.id } });
+      if (!activeIds.has(edge.source) || !activeIds.has(edge.target)) issues.push(validationIssue(
+        "error", "Conexões", "Linha apontando para um card ausente",
+        `A conexão ${edge.id} usa uma origem ou destino que não existe ou está desativado.`,
+        "Exclua a linha e crie novamente a conexão entre cards ativos.",
+        { kind: "edge", id: edge.id },
+      ));
+      if (edge.source === edge.target) issues.push(validationIssue(
+        "error", "Conexões", "Card conectado a ele mesmo",
+        `A conexão ${edge.id} sai e retorna para o mesmo card.`,
+        "Exclua a linha ou conecte-a ao card correto.",
+        { kind: "edge", id: edge.id },
+      ));
     });
     state.doc.lanes.filter((lane) => lane.enabled !== false).forEach((lane) => {
-      if (!activeNodes.some((node) => node.laneId === lane.id)) issues.push({ level: "warning", message: `A raia “${lane.name}” está vazia.`, target: { kind: "lane", id: lane.id } });
+      if (!activeNodes.some((node) => node.laneId === lane.id)) issues.push(validationIssue(
+        "warning", "Raias", `A raia “${lane.name}” está vazia`,
+        "A área aparece no diagrama, mas não possui nenhuma etapa ativa.",
+        "Adicione etapas, desative a raia ou exclua-a quando não for necessária.",
+        { kind: "lane", id: lane.id },
+      ));
     });
     return issues;
   }
@@ -2535,25 +2646,58 @@ export default function flowEditor(component) {
     const modal = $('[data-role="modal"]');
     const body = $('[data-role="modal-body"]');
     const title = $('[data-role="modal-title"]');
-    title.textContent = "Validação do fluxo";
+    title.textContent = "Problemas identificados";
     body.innerHTML = "";
     if (!issues.length) {
-      body.appendChild(el("div", "validation-ok", "Fluxo válido. Nenhum problema estrutural foi encontrado."));
+      body.appendChild(el("div", "validation-ok", "Tudo certo. O fluxo não possui problemas estruturais conhecidos."));
     } else {
-      const list = el("div", "validation-list");
+      const errors = issues.filter((item) => item.level === "error").length;
+      const warnings = issues.length - errors;
+      const summary = el("div", "validation-summary");
+      summary.append(
+        el("div", "validation-summary-card error", `${errors} precisa(m) de correção`),
+        el("div", "validation-summary-card warning", `${warnings} recomendação(ões)`),
+      );
+      const intro = el("div", "validation-help");
+      intro.append(
+        el("strong", "", "Como usar esta lista"),
+        el("span", "", "Clique em um item para localizar o card ou a linha. Cada problema explica o impacto e a ação recomendada."),
+      );
+      const groups = new Map();
       issues.forEach((issue) => {
-        const item = el("button", `validation-item ${issue.level}`);
-        item.type = "button";
-        item.append(el("span", "", issue.level === "error" ? "●" : "▲"), el("span", "", issue.message));
-        if (issue.target) {
-          item.addEventListener("click", () => {
-            modal.hidden = true;
-            selectItem(issue.target.kind, issue.target.id);
-          });
-        }
-        list.appendChild(item);
+        if (!groups.has(issue.category)) groups.set(issue.category, []);
+        groups.get(issue.category).push(issue);
       });
-      body.appendChild(list);
+      const list = el("div", "validation-groups");
+      groups.forEach((categoryIssues, category) => {
+        const section = el("section", "validation-group");
+        section.append(el("h4", "", `${category} · ${categoryIssues.length}`));
+        const items = el("div", "validation-list");
+        categoryIssues.forEach((issue) => {
+          const item = el("button", `validation-item ${issue.level}`);
+          item.type = "button";
+          const icon = el("span", "validation-severity-icon", issue.level === "error" ? "!" : "i");
+          const content = el("span", "validation-content");
+          content.append(
+            el("strong", "", issue.title),
+            el("span", "", issue.explanation),
+            el("small", "", `Como corrigir: ${issue.fix}`),
+          );
+          const action = el("span", "validation-locate", issue.target ? "Localizar →" : "");
+          item.append(icon, content, action);
+          if (issue.target) {
+            item.addEventListener("click", () => {
+              modal.hidden = true;
+              selectItem(issue.target.kind, issue.target.id);
+              if (issue.target.kind === "node") fitNodeIds(new Set([issue.target.id]));
+            });
+          }
+          items.appendChild(item);
+        });
+        section.appendChild(items);
+        list.appendChild(section);
+      });
+      body.append(summary, intro, list);
     }
     modal.hidden = false;
   }
@@ -3090,7 +3234,11 @@ export default function flowEditor(component) {
     const width = worldWidth();
     const height = worldHeight();
     const geometry = laneGeometry();
-    const parts = [`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`, `<rect width="100%" height="100%" fill="${state.uiTheme === "dark" ? "#00141f" : "#f4f8fb"}"/>`];
+    const parts = [
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+      `<defs><marker id="export-arrow" markerWidth="14" markerHeight="14" refX="12" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L0,10 L13,5 z" fill="#486581"/></marker></defs>`,
+      `<rect width="100%" height="100%" fill="${state.uiTheme === "dark" ? "#00141f" : "#f4f8fb"}"/>`,
+    ];
     geometry.sorted.forEach((lane) => {
       const box = geometry.map.get(lane.id);
       parts.push(`<rect x="34" y="${box.top}" width="${width - 68}" height="${box.height}" rx="14" fill="${escapeXml(lane.color || "#e8f5f0")}" fill-opacity="0.48" stroke="#9fb3c8"/>`);
@@ -3100,7 +3248,7 @@ export default function flowEditor(component) {
       const sourceNode = getNode(edge.source), targetNode = getNode(edge.target);
       if (!sourceNode || !targetNode) return;
       const d = edgePath(nodeCenter(sourceNode, "source", edge.sourceHandle), nodeCenter(targetNode, "target"), "step", edge);
-      parts.push(`<path d="${d}" fill="none" stroke="#486581" stroke-width="2"/>`);
+      parts.push(`<path d="${d}" fill="none" stroke="#486581" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#export-arrow)"/>`);
     });
     state.doc.nodes.forEach((node) => {
       const size = nodeDimensions(node), meta = NODE_TYPES[node.type] || NODE_TYPES.task;
@@ -3154,6 +3302,10 @@ export default function flowEditor(component) {
   }
 
   function toolbarAction(action) {
+    if (String(action || "").startsWith("export")) {
+      const downloadMenu = $('[data-role="download-menu"]');
+      if (downloadMenu) downloadMenu.open = false;
+    }
     const rect = viewport.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;

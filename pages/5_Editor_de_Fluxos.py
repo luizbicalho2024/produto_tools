@@ -18,7 +18,7 @@ from core.configuration import (
 )
 from core.styles import apply_global_styles, get_ui_theme, page_header
 from schemas.flowchart_schema import demo_flowchart_document, new_flowchart_document, normalize_document
-from services.flow_analytics import analyze_document, build_raci_rows
+from services.flow_analytics import analyze_document, build_raci_rows, issue_detail_rows
 from services.flow_diff import compare_documents
 from services.flowchart_repository import (
     FlowPermissionError,
@@ -546,14 +546,34 @@ with manage_tabs[4]:
         score_cols[index].metric(label, f"{analysis['scores'][key]}%")
     count_df = pd.DataFrame([{"Indicador": key, "Valor": value} for key, value in analysis["counts"].items()])
     st.dataframe(count_df, use_container_width=True, hide_index=True)
-    r1, r2, r3, r4 = st.columns(4)
     safe_name = record["name"].replace(" ", "_").lower()
-    r1.download_button("Relatório PDF", pdf_report(editor_document), f"{safe_name}.pdf", "application/pdf", use_container_width=True)
-    r2.download_button("Relatório HTML", html_report(editor_document), f"{safe_name}.html", "text/html", use_container_width=True)
-    r3.download_button("Etapas CSV", nodes_csv(editor_document), f"{safe_name}_etapas.csv", "text/csv", use_container_width=True)
-    r4.download_button("Matriz RACI", raci_csv(editor_document), f"{safe_name}_raci.csv", "text/csv", use_container_width=True)
+    with st.popover("Baixar relatórios", use_container_width=False):
+        st.download_button("Relatório PDF", pdf_report(editor_document), f"{safe_name}.pdf", "application/pdf", use_container_width=True)
+        st.download_button("Relatório HTML", html_report(editor_document), f"{safe_name}.html", "text/html", use_container_width=True)
+        st.download_button("Etapas CSV", nodes_csv(editor_document), f"{safe_name}_etapas.csv", "text/csv", use_container_width=True)
+        st.download_button("Matriz RACI", raci_csv(editor_document), f"{safe_name}_raci.csv", "text/csv", use_container_width=True)
     with st.expander("Problemas identificados"):
-        st.json(analysis["issues"], expanded=False)
+        issue_rows = issue_detail_rows(editor_document, analysis)
+        if issue_rows:
+            error_count = sum(1 for item in issue_rows if item["Gravidade"] == "Erro")
+            warning_count = len(issue_rows) - error_count
+            st.markdown(
+                f"**{error_count} item(ns) precisam de correção e {warning_count} são recomendações.** "
+                "A tabela informa qual card está afetado, por que isso importa e como corrigir."
+            )
+            st.dataframe(
+                pd.DataFrame(issue_rows),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Card ID": None,
+                    "Card": st.column_config.TextColumn("Card afetado", width="medium"),
+                    "Por que importa": st.column_config.TextColumn("Por que isso é um problema", width="large"),
+                    "Como corrigir": st.column_config.TextColumn("Como corrigir", width="large"),
+                },
+            )
+        else:
+            st.success("Nenhum problema de qualidade foi identificado neste fluxo.")
 
 with manage_tabs[5]:
     template_name = st.text_input("Nome do template", value=f"Template — {record['name']}")

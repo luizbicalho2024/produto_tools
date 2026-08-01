@@ -4,7 +4,7 @@
 param(
     [string]$RepositoryUrl = "https://github.com/luizbicalho2024/produto_tools.git",
     [string]$Branch = "main",
-    [string]$CommitMessage = "Corrige compatibilidade do login e seletor de tema no Produto Tools 3.2.1",
+    [string]$CommitMessage = "Melhora conexoes, mapa de relacoes e qualidade acionavel no Produto Tools 3.2.2",
     [switch]$SkipTests
 )
 
@@ -72,7 +72,7 @@ $Destination = Join-Path $Parent ("produto_tools_publicacao_" + $Timestamp)
 $OriginalLocation = Get-Location
 
 try {
-    Write-Step "Produto Tools 3.2.1 - Publicacao segura"
+    Write-Step "Produto Tools 3.2.2 - Publicacao segura"
     Write-Host ("Origem: " + $Source)
     Write-Host ("Clone:  " + $Destination)
 
@@ -89,6 +89,8 @@ try {
         "components\flow_editor\frontend\styles.css",
         "services\flowchart_repository.py",
         "services\project_repository.py",
+        "services\flow_analytics.py",
+        "tests\test_release_322.py",
         "schemas\flowchart_schema.py",
         "examples\sigyo_modular_project.zip"
     )
@@ -142,6 +144,11 @@ try {
                 -Launcher $PythonLauncher `
                 -Arguments @("-c", "from pathlib import Path; files=[Path('login_app.py'),Path('core/auth.py')]; bad=[str(p) for p in files if 'compact=True' in p.read_text(encoding='utf-8')]; bad and (_ for _ in ()).throw(RuntimeError('Chamadas incompativeis do seletor de tema: '+', '.join(bad)))") `
                 -FailureMessage "Falha na validacao de compatibilidade do seletor de tema."
+
+            Invoke-PythonCommand `
+                -Launcher $PythonLauncher `
+                -Arguments @("-c", "from pathlib import Path; required={'components/flow_editor/frontend/index.html':['download-menu'],'components/flow_editor/frontend/main.js':['node-flow-indicator incoming','Problemas identificados'],'pages/4_Mapa_de_Relacoes.py':['requestFullscreen','typeFilter','flowFilter']}; missing=[f'{path}: {token}' for path,tokens in required.items() for token in tokens if token not in Path(path).read_text(encoding='utf-8')]; missing and (_ for _ in ()).throw(RuntimeError('Recursos 3.2.2 ausentes: '+', '.join(missing)))") `
+                -FailureMessage "Falha na validacao dos recursos da versao 3.2.2."
 
             $NodeCommand = Get-Command node -ErrorAction SilentlyContinue
             if ($null -ne $NodeCommand) {
@@ -300,7 +307,7 @@ try {
     Assert-NativeSuccess "Falha ao enviar as alteracoes para o GitHub."
 
     Write-Host ""
-    Write-Host "Produto Tools 3.2.1 publicado com sucesso." -ForegroundColor Green
+    Write-Host "Produto Tools 3.2.2 publicado com sucesso." -ForegroundColor Green
     Write-Host ("Repositorio: " + $RepositoryUrl)
     Write-Host ("Branch:      " + $Branch)
     Write-Host ("Clone local: " + $Destination)

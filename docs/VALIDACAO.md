@@ -1,4 +1,4 @@
-# Validação — Produto Tools 3.2
+# Validação — Produto Tools 3.2.2
 
 ## Comandos
 

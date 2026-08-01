@@ -8,7 +8,7 @@ import streamlit as st
 from core.auth import render_account_sidebar, require_login
 from core.configuration import WORKFLOW_STATUS_LABELS
 from core.styles import apply_global_styles, page_header
-from services.flow_analytics import analyze_document
+from services.flow_analytics import analyze_document, issue_detail_rows
 from services.flowchart_repository import get_flowchart, list_comments, list_flowcharts
 from services.project_repository import list_projects
 
@@ -69,6 +69,7 @@ for item in flows:
     if not record:
         continue
     analysis = analyze_document(record["document"])
+    quality_details = issue_detail_rows(record["document"], analysis)
     comments = list_comments(item["id"], include_resolved=False)
     rows.append({
         "ID": item["id"],
@@ -83,6 +84,9 @@ for item in flows:
         "Elementos": analysis["counts"]["nodes"],
         "Decisões": analysis["counts"]["decisions"],
         "Comentários abertos": len(comments),
+        "Cards com problema": ", ".join(dict.fromkeys(detail["Card"] for detail in quality_details)) or "Nenhum",
+        "Tipos de problema": ", ".join(dict.fromkeys(detail["Problema"] for detail in quality_details)) or "Nenhum",
+        "Detalhes de qualidade": quality_details,
         "Atualizado em": fmt(item.get("updated_at")),
     })
 
@@ -97,17 +101,37 @@ col3.metric("Em revisão", in_review)
 col4.metric("Qualidade média", f"{average_quality}/100", help=f"{open_comments} comentários abertos no portfólio")
 
 if rows:
-    frame = pd.DataFrame(rows)
+    frame = pd.DataFrame([{key: value for key, value in row.items() if key != "Detalhes de qualidade"} for row in rows])
     st.dataframe(
         frame,
         use_container_width=True,
         hide_index=True,
         column_config={
             "Qualidade": st.column_config.ProgressColumn("Qualidade", min_value=0, max_value=100, format="%d/100"),
+            "Cards com problema": st.column_config.TextColumn("Cards com problema", width="large"),
+            "Tipos de problema": st.column_config.TextColumn("Tipos de problema", width="large"),
             "ID": None,
             "Projeto ID": None,
         },
     )
+    with st.expander("Entender e corrigir os problemas de qualidade", expanded=False):
+        quality_name = st.selectbox("Processo", [row["Processo"] for row in rows], key="central_quality_process")
+        quality_row = next(row for row in rows if row["Processo"] == quality_name)
+        quality_details = quality_row.get("Detalhes de qualidade") or []
+        if quality_details:
+            st.dataframe(
+                pd.DataFrame(quality_details),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Card ID": None,
+                    "Card": st.column_config.TextColumn("Card afetado", width="medium"),
+                    "Por que importa": st.column_config.TextColumn("Por que isso é um problema", width="large"),
+                    "Como corrigir": st.column_config.TextColumn("Como corrigir", width="large"),
+                },
+            )
+        else:
+            st.success("Este processo não possui problemas de qualidade identificados.")
     selected_name = st.selectbox("Abrir processo", [row["Processo"] for row in rows])
     selected = next(row for row in rows if row["Processo"] == selected_name)
     if st.button("Abrir no editor", type="primary"):

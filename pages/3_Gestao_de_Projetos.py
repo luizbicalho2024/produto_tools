@@ -413,10 +413,52 @@ with main_tabs[4]:
     qcols[2].metric("Vínculos quebrados", analysis["broken_count"])
     qcols[3].metric("Fluxos órfãos", len(analysis["orphans"]))
     if analysis["quality_rows"]:
-        st.dataframe(pd.DataFrame([{
-            "Fluxo": item["name"], "Qualidade": item["quality_score"],
-            "Problemas": item["issues"], "Elementos": item["nodes"], "Conexões": item["edges"],
-        } for item in analysis["quality_rows"]]), use_container_width=True, hide_index=True)
+        quality_frame = pd.DataFrame([{
+            "Fluxo": item["name"],
+            "Qualidade": item["quality_score"],
+            "Problemas": item["issues"],
+            "Cards com problema": ", ".join(item.get("affected_cards") or []) or "Nenhum",
+            "Tipos de problema": ", ".join(item.get("problem_names") or []) or "Nenhum",
+            "Elementos": item["nodes"],
+            "Conexões": item["edges"],
+        } for item in analysis["quality_rows"]])
+        st.dataframe(
+            quality_frame,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Qualidade": st.column_config.ProgressColumn("Qualidade", min_value=0, max_value=100, format="%d/100"),
+                "Cards com problema": st.column_config.TextColumn("Cards com problema", width="large"),
+                "Tipos de problema": st.column_config.TextColumn("Tipos de problema", width="large"),
+            },
+        )
+        st.markdown("#### Detalhes para correção")
+        detail_flow_id = st.selectbox(
+            "Escolha um fluxo para ver exatamente o que deve ser corrigido",
+            [item["flow_id"] for item in analysis["quality_rows"]],
+            format_func=lambda value: flow_by_id[value]["name"],
+            key="quality_detail_flow",
+        )
+        detail_row = next(item for item in analysis["quality_rows"] if item["flow_id"] == detail_flow_id)
+        details = detail_row.get("issue_details") or []
+        if details:
+            st.dataframe(
+                pd.DataFrame(details),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Card ID": None,
+                    "Card": st.column_config.TextColumn("Card afetado", width="medium"),
+                    "Por que importa": st.column_config.TextColumn("Por que isso é um problema", width="large"),
+                    "Como corrigir": st.column_config.TextColumn("Como corrigir", width="large"),
+                },
+            )
+            if st.button("Abrir este fluxo para corrigir", type="primary", key="open_quality_flow"):
+                st.session_state["selected_flowchart_id"] = detail_flow_id
+                st.session_state["selected_project_id"] = selected_project_id
+                st.switch_page("pages/5_Editor_de_Fluxos.py")
+        else:
+            st.success("Este fluxo não possui problemas de qualidade identificados.")
     if flows:
         impacted_id = st.selectbox("Analisar impacto de alteração em", [item["id"] for item in flows], format_func=lambda value: flow_by_id[value]["name"], key="impact_flow")
         impacts = project_impact(selected_project_id, username, impacted_id, is_admin=is_admin)

@@ -24,7 +24,7 @@ from core.configuration import (
     PROJECTS_COLLECTION,
 )
 from schemas.flowchart_schema import normalize_document, repair_import_document, validate_document
-from services.flow_analytics import analyze_document
+from services.flow_analytics import analyze_document, issue_detail_rows
 from services.flowchart_repository import (
     can_edit,
     document_hash,
@@ -495,6 +495,9 @@ def analyze_project(project_id: str, username: str, *, is_admin: bool = False) -
         total_edges += len(record["document"].get("edges", []))
         issue_count = sum(len(value) for value in analysis.get("issues", {}).values() if isinstance(value, list))
         total_issues += issue_count
+        details = issue_detail_rows(record["document"], analysis)
+        affected_cards = list(dict.fromkeys(item["Card"] for item in details))
+        problem_names = list(dict.fromkeys(item["Problema"] for item in details))
         quality_rows.append({
             "flow_id": record["id"],
             "name": record["name"],
@@ -502,6 +505,9 @@ def analyze_project(project_id: str, username: str, *, is_admin: bool = False) -
             "issues": issue_count,
             "nodes": len(record["document"].get("nodes", [])),
             "edges": len(record["document"].get("edges", [])),
+            "affected_cards": affected_cards,
+            "problem_names": problem_names,
+            "issue_details": details,
         })
     average_quality = round(sum(item["quality_score"] for item in quality_rows) / len(quality_rows)) if quality_rows else 0
     score = max(0, min(100, average_quality - len(graph["broken"]) * 8 - len(cycles) * 10 - len(orphans) * 2))
