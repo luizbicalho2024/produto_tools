@@ -452,7 +452,7 @@ st.divider()
 flow_catalog = [{"id": item["id"], "name": item["name"], "status": item.get("workflow_status", "draft")} for item in flows]
 comments_for_editor = serialize_comments(list_comments(selected_id, include_resolved=True))
 
-component_key = f"flow_editor_v3_{selected_id}_{record['revision']}"
+component_key = f"flow_editor_v303_{selected_id}_{record['revision']}"
 result = flow_editor(
     editor_document,
     key=component_key,

@@ -138,7 +138,7 @@ def new_flowchart_document(name: str = "Novo processo", owner_email: str = "") -
             "showMiniMap": True,
             "showGrid": True,
             "layoutPreset": "readable",
-            "edgeRouting": "corridor",
+            "edgeRouting": "corridor-v2",
             "autosaveSeconds": 10,
             "interactivePlayback": True,
         },
@@ -192,6 +192,8 @@ def normalize_document(document: dict[str, Any], owner_email: str = "") -> dict[
     status = str(flow.get("status") or "draft")
     flow["status"] = "published" if status == "active" else (status if status in FLOW_STATUSES else "draft")
     flow.setdefault("orientation", "LR")
+    if flow.get("orientation") not in {"LR", "RL"}:
+        flow["orientation"] = "LR"
     flow.setdefault("createdAt", now_iso())
     flow["updatedAt"] = now_iso()
     flow.setdefault("createdBy", owner_email)
@@ -201,11 +203,23 @@ def normalize_document(document: dict[str, Any], owner_email: str = "") -> dict[
     defaults = {
         "snapToGrid": True, "gridSize": 20, "autoLayout": False,
         "showMiniMap": True, "showGrid": True, "layoutPreset": "readable",
-        "edgeRouting": "corridor", "autosaveSeconds": 10,
+        "edgeRouting": "corridor-v2", "autosaveSeconds": 10,
         "interactivePlayback": True,
     }
     for key, value in defaults.items():
         settings.setdefault(key, value)
+    preset_aliases = {
+        "compact-readable-v2": "compact",
+        "compact-readable": "compact",
+        "balanced": "readable",
+        "legible": "readable",
+    }
+    settings["layoutPreset"] = preset_aliases.get(str(settings.get("layoutPreset") or ""), str(settings.get("layoutPreset") or "readable"))
+    if settings["layoutPreset"] not in {"compact", "readable", "preserve"}:
+        settings["layoutPreset"] = "readable"
+    if str(settings.get("edgeRouting") or "") not in {"corridor", "corridor-v2", "orthogonal", "straight"}:
+        settings["edgeRouting"] = "corridor-v2"
+    settings["autosaveSeconds"] = max(5, min(300, int(settings.get("autosaveSeconds") or 10)))
     doc.setdefault("viewport", {"x": 0, "y": 0, "zoom": 1})
     doc.setdefault("lanes", [])
     doc.setdefault("nodes", [])

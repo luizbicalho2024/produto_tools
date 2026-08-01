@@ -16,8 +16,10 @@ const DEFAULT_WORLD_HEIGHT = 2600;
 const WORLD_PADDING_X = 260;
 const WORLD_PADDING_Y = 140;
 const LANE_HEADER_HEIGHT = 38;
-const LANE_CONTENT_TOP = 58;
-const LANE_BOTTOM_PADDING = 28;
+const LANE_CONTENT_TOP = 82;
+const LANE_EDGE_CHANNEL_TOP = 46;
+const LANE_EDGE_TRACK_GAP = 9;
+const LANE_BOTTOM_PADDING = 34;
 const LANE_ROW_GAP = 104;
 const LEVEL_GAP = 260;
 const MIN_ZOOM = 0.04;
@@ -39,6 +41,43 @@ function uid(prefix) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function draftStorageKey(flowId, revision) {
+  return `produto_tools_draft:${String(flowId || "unknown")}:${Number(revision) || 1}`;
+}
+
+function readLocalDraft(flowId, revision) {
+  try {
+    const raw = localStorage.getItem(draftStorageKey(flowId, revision));
+    if (!raw) return null;
+    const payload = JSON.parse(raw);
+    if (!payload || Number(payload.revision) !== Number(revision) || !payload.document) return null;
+    return payload;
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeLocalDraft(flowId, revision, documentValue) {
+  try {
+    const payload = { revision: Number(revision) || 1, savedAt: nowIso(), document: clone(documentValue) };
+    localStorage.setItem(draftStorageKey(flowId, revision), JSON.stringify(payload));
+    return payload;
+  } catch (_) {
+    return null;
+  }
+}
+
+function pruneLocalDrafts(flowId, keepRevision) {
+  try {
+    const prefix = `produto_tools_draft:${String(flowId || "unknown")}:`;
+    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+      const key = localStorage.key(index);
+      if (!key || !key.startsWith(prefix)) continue;
+      if (key !== draftStorageKey(flowId, keepRevision)) localStorage.removeItem(key);
+    }
+  } catch (_) { /* armazenamento local indisponível */ }
 }
 
 function clamp(value, min, max) {
@@ -68,6 +107,17 @@ function normalizeDocument(input) {
     interactivePlayback: true,
     ...(doc.settings || {}),
   };
+  const presetAliases = {
+    "compact-readable-v2": "compact",
+    "compact-readable": "compact",
+    "balanced": "readable",
+    "legible": "readable",
+  };
+  doc.settings.layoutPreset = presetAliases[doc.settings.layoutPreset] || doc.settings.layoutPreset;
+  if (!["compact", "readable", "preserve"].includes(doc.settings.layoutPreset)) doc.settings.layoutPreset = "readable";
+  if (!["corridor", "corridor-v2", "orthogonal", "straight"].includes(doc.settings.edgeRouting)) doc.settings.edgeRouting = "corridor-v2";
+  doc.settings.autosaveSeconds = clamp(Number(doc.settings.autosaveSeconds) || 10, 5, 300);
+  if (!["LR", "RL"].includes(doc.flow.orientation)) doc.flow.orientation = "LR";
   doc.viewport = { x: 0, y: 0, zoom: 1, ...(doc.viewport || {}) };
   doc.lanes = Array.isArray(doc.lanes) ? doc.lanes : [];
   doc.nodes = Array.isArray(doc.nodes) ? doc.nodes : [];
@@ -151,8 +201,15 @@ export default function flowEditor(component) {
     return node;
   };
 
+  const incomingDocument = normalizeDocument(data?.document);
+  const incomingRevision = Number(data?.revision) || 1;
+  const localDraft = readLocalDraft(incomingDocument.flow.id, incomingRevision);
+  const incomingUpdatedAt = Date.parse(incomingDocument.flow?.updatedAt || "") || 0;
+  const localSavedAt = Date.parse(localDraft?.savedAt || "") || 0;
+  const restoredLocalDraft = Boolean(localDraft?.document && localSavedAt >= incomingUpdatedAt);
+
   const state = {
-    doc: normalizeDocument(data?.document),
+    doc: restoredLocalDraft ? normalizeDocument(localDraft.document) : incomingDocument,
     selected: null,
     connecting: null,
     pointerWorld: { x: 0, y: 0 },
@@ -161,20 +218,21 @@ export default function flowEditor(component) {
     dragging: null,
     panning: null,
     spaceDown: false,
-    dirty: false,
+    dirty: restoredLocalDraft,
     destroyed: false,
     permission: String(data?.permission || "viewer"),
-    revision: Number(data?.revision) || 1,
+    revision: incomingRevision,
     flowCatalog: Array.isArray(data?.flowCatalog) ? data.flowCatalog : [],
     comments: Array.isArray(data?.comments) ? data.comments : [],
     autosaveSeconds: Math.max(5, Number(data?.autosaveSeconds || data?.document?.settings?.autosaveSeconds) || 10),
     autosaveTimer: null,
-    lastAutosaveFingerprint: "",
+    lastAutosaveFingerprint: restoredLocalDraft ? JSON.stringify(localDraft.document) : "",
+    lastLocalDraftAt: restoredLocalDraft ? String(localDraft.savedAt || "") : "",
     searchQuery: "",
     searchResults: [],
     searchIndex: -1,
-    viewMode: "all",
-    edgeVisibility: "all",
+    viewMode: localStorage.getItem("produto_tools_view_mode") || "all",
+    edgeVisibility: localStorage.getItem("produto_tools_edge_visibility") || "all",
     routeExplorer: null,
     paletteCollapsed: localStorage.getItem("produto_tools_palette_collapsed") === "true",
     inspectorCollapsed: localStorage.getItem("produto_tools_inspector_collapsed") === "true",
@@ -197,6 +255,13 @@ export default function flowEditor(component) {
       waitingDecisionId: null,
     },
   };
+
+  if (!["all", "executive", "operational", "technical", "exceptions", "selected-lane"].includes(state.viewMode) || state.viewMode === "selected-lane") {
+    state.viewMode = "all";
+  }
+  if (!["all", "selection", "cross-lane", "none"].includes(state.edgeVisibility)) {
+    state.edgeVisibility = "all";
+  }
 
   state.doc.nodes.forEach((node) => {
     if (node.type === "decision" && node.data.preferredEdgeId) {
@@ -351,24 +416,50 @@ export default function flowEditor(component) {
     state.autosaveTimer = null;
   }
 
+  function updateSaveState(message, tone = "muted") {
+    const status = $('[data-role="save-state"]');
+    if (!status) return;
+    status.textContent = message;
+    const tones = {
+      muted: "var(--fe-muted)",
+      pending: "var(--fe-warning)",
+      success: "var(--fe-primary)",
+      error: "var(--fe-danger)",
+    };
+    status.style.color = tones[tone] || tones.muted;
+  }
+
+  function persistLocalDraft() {
+    if (!canModify() || !state.dirty) return;
+    const fingerprint = fingerprintDocument();
+    if (fingerprint === state.lastAutosaveFingerprint) return;
+    const payload = writeLocalDraft(state.doc.flow.id, state.revision, state.doc);
+    if (!payload) {
+      updateSaveState("Falha ao salvar o rascunho local", "error");
+      return;
+    }
+    state.lastAutosaveFingerprint = fingerprint;
+    state.lastLocalDraftAt = payload.savedAt;
+    updateSaveState("Rascunho salvo neste navegador", "success");
+  }
+
   function scheduleAutosave() {
     if (!canModify()) return;
     clearAutosaveTimer();
-    state.autosaveTimer = setTimeout(() => {
-      const fingerprint = fingerprintDocument();
-      if (!state.dirty || fingerprint === state.lastAutosaveFingerprint) return;
-      const status = $('[data-role="save-state"]');
-      if (status) { status.textContent = "Salvando rascunho..."; status.style.color = "var(--fe-primary)"; }
-      state.lastAutosaveFingerprint = fingerprint;
-      setTriggerValue("autosave", { document: clone(state.doc), revision: state.revision, savedAt: nowIso() });
-    }, state.autosaveSeconds * 1000);
+    state.autosaveTimer = setTimeout(persistLocalDraft, Math.min(2500, Math.max(700, state.autosaveSeconds * 120)));
+  }
+
+  function syncDraftToMongo() {
+    if (!canModify()) return toast("Seu acesso é somente leitura.", "warning");
+    persistLocalDraft();
+    updateSaveState("Sincronizando rascunho com o MongoDB...", "pending");
+    setTriggerValue("autosave", { document: clone(state.doc), revision: state.revision, savedAt: nowIso(), explicit: true });
   }
 
   function markDirty() {
     state.dirty = true;
     state.doc.flow.updatedAt = nowIso();
-    const status = $('[data-role="save-state"]');
-    if (status) { status.textContent = `Alterações pendentes · autosave em ${state.autosaveSeconds}s`; status.style.color = "#d97706"; }
+    updateSaveState("Alterações pendentes", "pending");
     scheduleAutosave();
   }
 
@@ -443,7 +534,9 @@ export default function flowEditor(component) {
       item.dataset.search = `${meta.label} ${meta.description}`.toLowerCase();
       const icon = el("div", "palette-icon", meta.icon);
       icon.style.color = meta.color;
-      icon.style.background = meta.soft;
+      icon.style.background = state.uiTheme === "dark"
+        ? `color-mix(in srgb, ${meta.color} 22%, var(--fe-panel))`
+        : meta.soft;
       const text = el("div");
       text.append(el("strong", "", meta.label), el("small", "", meta.description));
       item.append(icon, text);
@@ -477,9 +570,16 @@ export default function flowEditor(component) {
       laneEl.style.top = `${box.top}px`;
       laneEl.style.height = `${box.height}px`;
       laneEl.style.width = `${Math.max(600, worldWidth() - 68)}px`;
-      laneEl.style.background = lane.color || "#EEF2FF";
+      laneEl.style.setProperty("--lane-color", lane.color || "#EEF2FF");
+      laneEl.style.background = state.uiTheme === "dark"
+        ? `color-mix(in srgb, ${lane.color || "#EEF2FF"} 10%, var(--fe-panel))`
+        : (lane.color || "#EEF2FF");
       laneEl.classList.toggle("selected", state.selected?.kind === "lane" && state.selected.id === lane.id);
       laneEl.classList.toggle("disabled", lane.enabled === false);
+      const laneNodes = state.doc.nodes.filter((node) => node.laneId === lane.id);
+      const visibleLaneNodes = laneNodes.filter(nodeMatchesView);
+      laneEl.classList.toggle("view-empty", state.viewMode !== "all" && visibleLaneNodes.length === 0);
+      laneEl.classList.toggle("view-active", state.viewMode !== "all" && visibleLaneNodes.length > 0);
       const lanePlayback = lanePlaybackState(lane.id);
       laneEl.classList.toggle("play-current", lanePlayback === "current");
       laneEl.classList.toggle("play-visited", lanePlayback === "visited");
@@ -495,7 +595,8 @@ export default function flowEditor(component) {
       const header = el("header", "lane-header");
       const color = el("span", "lane-color");
       color.style.background = lane.color || "#EEF2FF";
-      header.append(color, el("strong", "", lane.name), el("small", "", `${state.doc.nodes.filter((n) => n.laneId === lane.id).length} itens`));
+      const countLabel = state.viewMode === "all" ? `${laneNodes.length} itens` : `${visibleLaneNodes.length}/${laneNodes.length} visíveis`;
+      header.append(color, el("strong", "", lane.name), el("small", "", countLabel));
       const handle = el("span", "lane-handle", "↕");
       handle.title = "Arraste para redimensionar a raia";
       header.appendChild(handle);
@@ -880,11 +981,45 @@ export default function flowEditor(component) {
     return /(erro|falha|recus|cancel|bloque|expir|indispon|pendente|corrigir|reprocess|exce[cç][aã]o)/i.test(nodeSearchText(node));
   }
 
+  function selectedLaneId() {
+    if (state.selected?.kind === "lane") return state.selected.id;
+    if (state.selected?.kind === "node") return getNode(state.selected.id)?.laneId || null;
+    if (state.selected?.kind === "edge") {
+      const edge = getEdge(state.selected.id);
+      if (!edge) return null;
+      const sourceLane = getNode(edge.source)?.laneId || null;
+      const targetLane = getNode(edge.target)?.laneId || null;
+      return sourceLane === targetLane ? sourceLane : sourceLane || targetLane;
+    }
+    return null;
+  }
+
+  function isExecutiveNode(node) {
+    const level = String(node.data?.level || "operational");
+    const tags = (node.data?.tags || []).join(" ");
+    return level === "executive"
+      || ["start", "end", "decision", "subprocess"].includes(node.type)
+      || ["high", "critical"].includes(String(node.data?.criticality || ""))
+      || /(^|\s)(fase|macro|executivo)(\s|$)/i.test(tags);
+  }
+
+  function isTechnicalNode(node) {
+    return String(node.data?.level || "operational") === "technical"
+      || node.type === "api"
+      || ["integration", "governance", "security", "database", "infrastructure"].includes(String(node.data?.category || "").toLowerCase());
+  }
+
   function nodeMatchesView(node) {
     if (state.viewMode === "all") return true;
     if (state.viewMode === "exceptions") return isExceptionNode(node);
-    if (state.viewMode === "selected-lane") return state.selected?.kind === "lane" ? node.laneId === state.selected.id : true;
-    return String(node.data?.level || "operational") === state.viewMode;
+    if (state.viewMode === "selected-lane") {
+      const laneId = selectedLaneId();
+      return Boolean(laneId) && node.laneId === laneId;
+    }
+    if (state.viewMode === "executive") return isExecutiveNode(node);
+    if (state.viewMode === "technical") return isTechnicalNode(node);
+    if (state.viewMode === "operational") return !isTechnicalNode(node) || String(node.data?.level || "") === "operational";
+    return true;
   }
 
   function visibleNodeIds() {
@@ -893,7 +1028,7 @@ export default function flowEditor(component) {
 
   function updateSearch(query, move = 0) {
     state.searchQuery = String(query || "").trim().toLowerCase();
-    state.searchResults = state.searchQuery ? state.doc.nodes.filter((node) => nodeSearchText(node).includes(state.searchQuery)).map((node) => node.id) : [];
+    state.searchResults = state.searchQuery ? state.doc.nodes.filter((node) => nodeMatchesView(node) && nodeSearchText(node).includes(state.searchQuery)).map((node) => node.id) : [];
     if (!state.searchResults.length) state.searchIndex = -1;
     else if (move) state.searchIndex = (state.searchIndex + move + state.searchResults.length) % state.searchResults.length;
     else state.searchIndex = 0;
@@ -920,7 +1055,9 @@ export default function flowEditor(component) {
       nodeEl.style.left = `${node.position.x}px`;
       nodeEl.style.top = `${node.position.y}px`;
       nodeEl.style.setProperty("--node-color", meta.color);
-      nodeEl.style.setProperty("--node-soft", meta.soft);
+      nodeEl.style.setProperty("--node-soft", state.uiTheme === "dark"
+        ? `color-mix(in srgb, ${meta.color} 22%, var(--fe-panel))`
+        : meta.soft);
       nodeEl.classList.toggle("selected", state.selected?.kind === "node" && state.selected.id === node.id);
       nodeEl.classList.toggle("disabled", node.data.enabled === false);
       nodeEl.classList.toggle("locked", node.data.locked === true);
@@ -928,7 +1065,7 @@ export default function flowEditor(component) {
       nodeEl.classList.toggle("focus-dimmed", Boolean(state.focusPath) && !focusContainsNode(node.id));
       nodeEl.classList.toggle("play-visited", state.playback.visitedNodeIds.has(node.id));
       nodeEl.classList.toggle("play-current", state.playback.currentNodeId === node.id);
-      nodeEl.classList.toggle("view-dimmed", !nodeMatchesView(node));
+      nodeEl.classList.toggle("view-hidden", !nodeMatchesView(node));
       nodeEl.classList.toggle("search-match", state.searchResults.includes(node.id));
       nodeEl.classList.toggle("search-current", state.searchResults[state.searchIndex] === node.id);
       nodeEl.classList.toggle("critical", node.data.criticality === "critical");
@@ -1041,32 +1178,128 @@ export default function flowEditor(component) {
     };
   }
 
-  function edgePath(source, target, type = "smoothstep", edge = null) {
-    if (type === "straight") return `M ${source.x} ${source.y} L ${target.x} ${target.y}`;
-    const direction = target.x >= source.x ? 1 : -1;
-    const outgoing = edge ? orderedOutgoingEdges(edge.source) : [];
-    const incoming = edge ? orderedIncomingEdges(edge.target) : [];
-    const outIndex = Math.max(0, outgoing.findIndex((item) => item.id === edge?.id));
-    const inIndex = Math.max(0, incoming.findIndex((item) => item.id === edge?.id));
-    const outTrack = outgoing.length ? outIndex - (outgoing.length - 1) / 2 : 0;
-    const inTrack = incoming.length ? inIndex - (incoming.length - 1) / 2 : 0;
-    const exitX = source.x + direction * (36 + Math.abs(outTrack) * 16);
-    const entryX = target.x - direction * (36 + Math.abs(inTrack) * 16);
-    const verticalOffset = (outTrack - inTrack) * 12;
-    let bridgeX = (exitX + entryX) / 2 + direction * outTrack * 14;
-    let bridgeY = ((source.y + target.y) / 2) + verticalOffset;
+  function verticalCorridorIsClear(x, y1, y2, ignoredNodeIds = new Set()) {
+    const top = Math.min(y1, y2) - 8;
+    const bottom = Math.max(y1, y2) + 8;
+    return state.doc.nodes.every((node) => {
+      if (ignoredNodeIds.has(node.id) || !nodeMatchesView(node)) return true;
+      const size = nodeDimensions(node);
+      const left = Number(node.position.x) - 20;
+      const right = Number(node.position.x) + size.width + 20;
+      const nodeTop = Number(node.position.y) - 12;
+      const nodeBottom = Number(node.position.y) + size.height + 12;
+      const overlapsY = bottom >= nodeTop && top <= nodeBottom;
+      return !overlapsY || x < left || x > right;
+    });
+  }
 
-    if (direction === 1) bridgeX = Math.max(exitX + 22, Math.min(entryX - 22, bridgeX));
-    else bridgeX = Math.min(exitX - 22, Math.max(entryX + 22, bridgeX));
+  function findVerticalCorridor(preferredX, y1, y2, minX, maxX, ignoredNodeIds = new Set()) {
+    const lower = Math.min(minX, maxX);
+    const upper = Math.max(minX, maxX);
+    const base = clamp(preferredX, lower, upper);
+    const candidates = [base];
+    for (let step = 1; step <= 18; step += 1) {
+      const offset = step * 24;
+      candidates.push(clamp(base - offset, lower, upper));
+      candidates.push(clamp(base + offset, lower, upper));
+    }
+    const uniqueCandidates = [...new Set(candidates.map((value) => Math.round(value)))];
+    return uniqueCandidates.find((candidate) => verticalCorridorIsClear(candidate, y1, y2, ignoredNodeIds)) ?? base;
+  }
 
-    if (Math.abs(target.x - source.x) < 140 || direction === -1) {
-      bridgeY = ((source.y + target.y) / 2) + verticalOffset + (outTrack * 10);
-      const elbowX = source.x + direction * (52 + Math.abs(outTrack) * 18);
-      const targetElbowX = target.x - direction * (52 + Math.abs(inTrack) * 18);
-      return `M ${source.x} ${source.y} L ${elbowX} ${source.y} L ${elbowX} ${bridgeY} L ${targetElbowX} ${bridgeY} L ${targetElbowX} ${target.y} L ${target.x} ${target.y}`;
+  function edgeRoute(source, target, type = "smoothstep", edge = null) {
+    if (type === "straight" || !edge) {
+      return {
+        d: `M ${source.x} ${source.y} L ${target.x} ${target.y}`,
+        labelX: (source.x + target.x) / 2,
+        labelY: (source.y + target.y) / 2 - 8,
+      };
     }
 
-    return `M ${source.x} ${source.y} L ${exitX} ${source.y} L ${bridgeX} ${source.y} L ${bridgeX} ${target.y} L ${entryX} ${target.y} L ${target.x} ${target.y}`;
+    const sourceNode = getNode(edge.source);
+    const targetNode = getNode(edge.target);
+    if (!sourceNode || !targetNode) {
+      return { d: `M ${source.x} ${source.y} L ${target.x} ${target.y}`, labelX: (source.x + target.x) / 2, labelY: (source.y + target.y) / 2 - 8 };
+    }
+
+    const geometry = laneGeometry();
+    const sourceLane = geometry.map.get(sourceNode.laneId);
+    const targetLane = geometry.map.get(targetNode.laneId);
+    const outgoing = orderedOutgoingEdges(edge.source);
+    const incoming = orderedIncomingEdges(edge.target);
+    const outgoingIndex = Math.max(0, outgoing.findIndex((item) => item.id === edge.id));
+    const incomingIndex = Math.max(0, incoming.findIndex((item) => item.id === edge.id));
+    const globalIndex = Math.max(0, state.doc.edges.findIndex((item) => item.id === edge.id));
+    const outgoingTrack = (outgoingIndex + globalIndex) % 4;
+    const incomingTrack = (incomingIndex + globalIndex * 2) % 4;
+    const sourceRouteY = sourceLane
+      ? sourceLane.top + LANE_EDGE_CHANNEL_TOP + outgoingTrack * LANE_EDGE_TRACK_GAP
+      : source.y - 26 - outgoingTrack * 9;
+    const targetRouteY = targetLane
+      ? targetLane.top + LANE_EDGE_CHANNEL_TOP + incomingTrack * LANE_EDGE_TRACK_GAP
+      : target.y - 26 - incomingTrack * 9;
+
+    const forward = target.x >= source.x + 80;
+    const sourceExitX = source.x + 22 + outgoingTrack * 6;
+    const targetEntryX = target.x - 22 - incomingTrack * 6;
+
+    if (forward && sourceExitX < targetEntryX - 18) {
+      const preferredCorridorX = sourceExitX + (targetEntryX - sourceExitX) * .68;
+      const corridorX = findVerticalCorridor(
+        preferredCorridorX,
+        sourceRouteY,
+        targetRouteY,
+        sourceExitX + 18,
+        targetEntryX - 18,
+        new Set([edge.source, edge.target]),
+      );
+      const d = [
+        `M ${source.x} ${source.y}`,
+        `L ${sourceExitX} ${source.y}`,
+        `L ${sourceExitX} ${sourceRouteY}`,
+        `L ${corridorX} ${sourceRouteY}`,
+        `L ${corridorX} ${targetRouteY}`,
+        `L ${targetEntryX} ${targetRouteY}`,
+        `L ${targetEntryX} ${target.y}`,
+        `L ${target.x} ${target.y}`,
+      ].join(" ");
+      return {
+        d,
+        labelX: (sourceExitX + corridorX) / 2,
+        labelY: sourceRouteY - 9,
+      };
+    }
+
+    // Retornos e ligações muito próximas usam um corredor externo para não cruzar cards.
+    const outerTrack = globalIndex % 8;
+    const outerPreferredX = Math.max(source.x, target.x) + 96 + outerTrack * 24;
+    const outerX = findVerticalCorridor(
+      outerPreferredX,
+      sourceRouteY,
+      targetRouteY,
+      Math.max(source.x, target.x) + 72,
+      Math.max(source.x, target.x) + 360,
+      new Set([edge.source, edge.target]),
+    );
+    const d = [
+      `M ${source.x} ${source.y}`,
+      `L ${sourceExitX} ${source.y}`,
+      `L ${sourceExitX} ${sourceRouteY}`,
+      `L ${outerX} ${sourceRouteY}`,
+      `L ${outerX} ${targetRouteY}`,
+      `L ${targetEntryX} ${targetRouteY}`,
+      `L ${targetEntryX} ${target.y}`,
+      `L ${target.x} ${target.y}`,
+    ].join(" ");
+    return {
+      d,
+      labelX: outerX + 8,
+      labelY: (sourceRouteY + targetRouteY) / 2,
+    };
+  }
+
+  function edgePath(source, target, type = "smoothstep", edge = null) {
+    return edgeRoute(source, target, type, edge).d;
   }
 
   function svgNode(tag, attrs = {}) {
@@ -1092,7 +1325,8 @@ export default function flowEditor(component) {
       }
       const source = nodeCenter(sourceNode, "source", edge.sourceHandle);
       const target = nodeCenter(targetNode, "target");
-      const path = edgePath(source, target, edge.type, edge);
+      const route = edgeRoute(source, target, edge.type, edge);
+      const path = route.d;
       const edgeClasses = ["edge-group"];
       if (edge.enabled === false) edgeClasses.push("disabled");
       if (state.selected?.kind === "edge" && state.selected.id === edge.id) edgeClasses.push("selected");
@@ -1104,11 +1338,12 @@ export default function flowEditor(component) {
       const sourceMeta = NODE_TYPES[sourceNode.type] || NODE_TYPES.task;
       group.style.setProperty("--edge-color", sourceMeta.color);
       const hit = svgNode("path", { d: path, class: "edge-hit" });
+      const underlay = svgNode("path", { d: path, class: "edge-underlay" });
       const visible = svgNode("path", { d: path, class: "edge-path" });
-      group.append(hit, visible);
+      group.append(hit, underlay, visible);
       if (edge.label) {
-        const mx = (source.x + target.x) / 2;
-        const my = (source.y + target.y) / 2;
+        const mx = route.labelX;
+        const my = route.labelY;
         const width = clamp(edge.label.length * 6 + 18, 46, 170);
         const bg = svgNode("rect", { x: mx - width / 2, y: my - 11, width, height: 22, class: "edge-label-bg" });
         const label = svgNode("text", { x: mx, y: my + 1, class: "edge-label" });
@@ -1150,10 +1385,13 @@ export default function flowEditor(component) {
       item.style.top = `${box.top * scaleY}px`;
       item.style.width = `${Math.max(2, (worldWidth() - 68) * scaleX)}px`;
       item.style.height = `${Math.max(1, box.height * scaleY)}px`;
-      item.style.background = lane.color;
+      item.style.background = state.uiTheme === "dark"
+        ? `color-mix(in srgb, ${lane.color || "#EEF2FF"} 18%, var(--fe-panel))`
+        : lane.color;
       minimap.appendChild(item);
     });
     state.doc.nodes.forEach((node) => {
+      if (!nodeMatchesView(node)) return;
       const item = el("div", "minimap-node");
       item.style.left = `${node.position.x * scaleX}px`;
       item.style.top = `${node.position.y * scaleY}px`;
@@ -1243,6 +1481,12 @@ export default function flowEditor(component) {
       focusButton.classList.toggle("is-active", Boolean(state.focusPath));
       focusButton.textContent = state.focusPath ? "× Limpar destaque" : "◎ Destacar caminho";
     }
+    const viewControl = $('[data-role="view-mode"]');
+    const edgeControl = $('[data-role="edge-visibility"]');
+    if (viewControl && viewControl.value !== state.viewMode) viewControl.value = state.viewMode;
+    if (edgeControl && edgeControl.value !== state.edgeVisibility) edgeControl.value = state.edgeVisibility;
+    root.dataset.viewMode = state.viewMode;
+    root.dataset.edgeVisibility = state.edgeVisibility;
     applyPanelState();
     applyTheme(state.uiTheme, false);
     updatePlaybackUi();
@@ -1345,11 +1589,11 @@ export default function flowEditor(component) {
     status.disabled = true;
     const flowTags = textInput("flow-tags", (state.doc.flow.tags || []).join(", "), "Ex.: comercial, financeiro");
     bindCommit(flowTags, (input) => { state.doc.flow.tags = input.value.split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 30); });
-    const orientation = selectInput("flow-orientation", state.doc.flow.orientation, [["LR", "Esquerda → direita"], ["TB", "Cima → baixo"], ["RL", "Direita → esquerda"], ["BT", "Baixo → cima"]]);
+    const orientation = selectInput("flow-orientation", state.doc.flow.orientation, [["LR", "Esquerda → direita"], ["RL", "Direita → esquerda"]]);
     bindCommit(orientation, (input) => { state.doc.flow.orientation = input.value; });
     const layoutPreset = selectInput("layout-preset", state.doc.settings.layoutPreset || "readable", [["compact", "Compacto"], ["readable", "Legível"], ["preserve", "Preservar posições"]]);
     bindCommit(layoutPreset, (input) => { state.doc.settings.layoutPreset = input.value; });
-    const edgeRouting = selectInput("edge-routing", state.doc.settings.edgeRouting || "corridor", [["corridor", "Corredores por raia"], ["orthogonal", "Ortogonal"], ["straight", "Linha reta"]]);
+    const edgeRouting = selectInput("edge-routing", state.doc.settings.edgeRouting || "corridor-v2", [["corridor-v2", "Corredores inteligentes"], ["corridor", "Corredores simples"], ["orthogonal", "Ortogonal"], ["straight", "Linha reta"]]);
     bindCommit(edgeRouting, (input) => { state.doc.settings.edgeRouting = input.value; state.doc.edges.forEach((edge) => { edge.type = input.value === "straight" ? "straight" : "step"; }); });
     propertiesBody.append(
       fieldGroup("Nome", name),
@@ -1388,7 +1632,7 @@ export default function flowEditor(component) {
       node.laneId = input.value || null;
       if (node.laneId) {
         const box = laneGeometry().map.get(node.laneId);
-        node.position.y = clamp(node.position.y, box.top + 48, box.bottom - NODE_HEIGHT - 10);
+        node.position.y = constrainNodeYToLane(node, node.position.y);
       }
     });
     const sla = numberInput("sla", node.data.slaMinutes, 0);
@@ -1568,7 +1812,12 @@ export default function flowEditor(component) {
       const source = edge ? getNode(edge.source) : null;
       if (edge && source?.type === "decision") state.branchChoices[source.id] = edge.id;
     }
+    if (state.viewMode === "selected-lane" && !selectedLaneId()) {
+      state.viewMode = "all";
+      localStorage.setItem("produto_tools_view_mode", "all");
+    }
     renderAll();
+    if (state.viewMode === "selected-lane") setTimeout(() => fitNodeIds(visibleNodeIds()), 20);
   }
 
   function addNode(type, x, y, laneId = null) {
@@ -1779,6 +2028,10 @@ export default function flowEditor(component) {
   }
 
   function fitView() {
+    if (state.viewMode !== "all") {
+      const filteredIds = visibleNodeIds();
+      if (filteredIds.size) return fitNodeIds(filteredIds);
+    }
     if (!state.doc.nodes.length && !state.doc.lanes.length) {
       state.doc.viewport = { x: 0, y: 0, zoom: 1 };
       return renderViewport();
@@ -1818,7 +2071,7 @@ export default function flowEditor(component) {
     });
     const width = Math.max(240, maxX - minX);
     const height = Math.max(160, maxY - minY);
-    const zoom = clamp(Math.min((rect.width - 90) / width, (rect.height - 90) / height), .38, 1.35);
+    const zoom = clamp(Math.min((rect.width - 90) / width, (rect.height - 90) / height), MIN_ZOOM, 1.35);
     state.doc.viewport.zoom = zoom;
     state.doc.viewport.x = (rect.width - width * zoom) / 2 - minX * zoom;
     state.doc.viewport.y = (rect.height - height * zoom) / 2 - minY * zoom;
@@ -1866,10 +2119,17 @@ export default function flowEditor(component) {
     return lane;
   }
 
-  function computeLayoutLevels(nodes, edges) {
+  function computeLayoutLevels(nodes, edges, preserveExisting = false) {
     const xValues = nodes.map((node) => Number(node.position.x) || 0).sort((a, b) => a - b);
     const xSpread = xValues.length ? xValues[xValues.length - 1] - xValues[0] : 0;
-    if (nodes.length >= 40 && xSpread >= LEVEL_GAP * 5) {
+    const layoutNodeMap = new Map(nodes.map((node) => [node.id, node]));
+    const backwardEdges = edges.filter((edge) => {
+      const source = layoutNodeMap.get(edge.source);
+      const target = layoutNodeMap.get(edge.target);
+      return source && target && Number(target.position.x) <= Number(source.position.x) + 20;
+    }).length;
+    const highlyCyclic = backwardEdges >= Math.max(4, Math.floor(nodes.length * .05));
+    if ((preserveExisting || highlyCyclic) && nodes.length >= 40 && xSpread >= LEVEL_GAP * 5) {
       const columns = [];
       xValues.forEach((value) => {
         const last = columns[columns.length - 1];
@@ -1978,23 +2238,39 @@ export default function flowEditor(component) {
   }
 
   function layoutDocumentInPlace() {
-    if (!state.doc.nodes.length) return { columns: 0, moved: 0 };
+    if (!state.doc.nodes.length) return { columns: 0, moved: 0, overlaps: 0, outside: 0 };
     ensureUnassignedLane();
     const layoutNodes = [...state.doc.nodes];
     const activeIds = new Set(layoutNodes.map((node) => node.id));
     const layoutEdges = state.doc.edges.filter((edge) => edge.enabled !== false && activeIds.has(edge.source) && activeIds.has(edge.target));
-    const levels = computeLayoutLevels(layoutNodes, layoutEdges);
-    const maxLevel = Math.max(0, ...levels.values());
     const preset = state.doc.settings.layoutPreset || "readable";
-    const levelGap = preset === "compact" ? 220 : (preset === "preserve" ? 250 : 290);
-    const rowGap = preset === "compact" ? 88 : 108;
+    const levels = computeLayoutLevels(layoutNodes, layoutEdges, preset === "preserve");
+    let maxLevel = Math.max(0, ...levels.values());
+    const levelGap = preset === "compact" ? 260 : (preset === "preserve" ? 270 : 340);
+    const rowGap = preset === "compact" ? 94 : 116;
+    const connectedIds = new Set();
+    layoutEdges.forEach((edge) => { connectedIds.add(edge.source); connectedIds.add(edge.target); });
+
+    // Mantém observações, fases e elementos isolados distribuídos ao longo do processo.
+    const originalXs = layoutNodes.map((node) => Number(node.position.x) || 0);
+    const minOriginalX = Math.min(...originalXs, 0);
+    const maxOriginalX = Math.max(...originalXs, 1);
+    const spread = Math.max(1, maxOriginalX - minOriginalX);
+    layoutNodes.forEach((node) => {
+      if (connectedIds.has(node.id)) return;
+      const relative = ((Number(node.position.x) || 0) - minOriginalX) / spread;
+      const inferred = Math.max(0, Math.round(relative * Math.max(1, maxLevel)));
+      levels.set(node.id, inferred);
+    });
+    maxLevel = Math.max(0, ...levels.values());
+
     const neighborMap = new Map(layoutNodes.map((node) => [node.id, []]));
     layoutEdges.forEach((edge) => {
       neighborMap.get(edge.source)?.push(edge.target);
       neighborMap.get(edge.target)?.push(edge.source);
     });
-    const laneBuckets = new Map();
 
+    const laneBuckets = new Map();
     layoutNodes.forEach((node) => {
       const laneId = node.laneId || "lane_unassigned";
       const level = levels.get(node.id) || 0;
@@ -2004,13 +2280,35 @@ export default function flowEditor(component) {
       buckets.get(level).push(node);
     });
 
+    // Quatro varreduras baricêntricas reduzem cruzamentos entre ramificações.
+    const rank = new Map(layoutNodes.map((node) => [node.id, Number(node.position.y) || 0]));
+    for (let sweep = 0; sweep < 4; sweep += 1) {
+      const reverse = sweep % 2 === 1;
+      laneBuckets.forEach((levelsForLane) => {
+        const entries = [...levelsForLane.entries()].sort((left, right) => reverse ? right[0] - left[0] : left[0] - right[0]);
+        entries.forEach(([, items]) => {
+          items.sort((left, right) => {
+            const score = (node) => {
+              const neighbors = (neighborMap.get(node.id) || []).filter((id) => rank.has(id));
+              if (!neighbors.length) return rank.get(node.id) || 0;
+              return neighbors.reduce((sum, id) => sum + (rank.get(id) || 0), 0) / neighbors.length;
+            };
+            return score(left) - score(right)
+              || (Number(left.position.y) || 0) - (Number(right.position.y) || 0)
+              || String(left.data.label || "").localeCompare(String(right.data.label || ""));
+          });
+          items.forEach((node, index) => rank.set(node.id, index));
+        });
+      });
+    }
+
     state.doc.lanes.forEach((lane) => {
       const levelsForLane = laneBuckets.get(lane.id);
       const maxRows = levelsForLane
         ? Math.max(1, ...[...levelsForLane.values()].map((items) => items.length))
         : 1;
       const requiredHeight = LANE_CONTENT_TOP + maxRows * rowGap + LANE_BOTTOM_PADDING;
-      lane.height = clamp(Math.max(Number(lane.height) || 240, requiredHeight), 150, 1200);
+      lane.height = clamp(Math.max(180, requiredHeight), 180, 1800);
       lane.collapsed = false;
     });
 
@@ -2020,32 +2318,27 @@ export default function flowEditor(component) {
     laneBuckets.forEach((levelsForLane, laneId) => {
       const laneBox = geometry.map.get(laneId);
       if (!laneBox) return;
-      [...levelsForLane.entries()].sort((a, b) => a[0] - b[0]).forEach(([level, items]) => {
-        const ordered = [...items].sort((left, right) => {
-          const barycenter = (node) => {
-            const neighbors = (neighborMap.get(node.id) || []).map((id) => getNode(id)).filter(Boolean);
-            if (!neighbors.length) return Number(node.position.y) || 0;
-            return neighbors.reduce((sum, item) => sum + (Number(item.position.y) || 0), 0) / neighbors.length;
-          };
-          return barycenter(left) - barycenter(right)
-            || (Number(left.position.y) || 0) - (Number(right.position.y) || 0)
-            || String(left.data.label || "").localeCompare(String(right.data.label || ""));
-        });
-        ordered.forEach((node, row) => {
+      [...levelsForLane.entries()].sort((left, right) => left[0] - right[0]).forEach(([level, items]) => {
+        items.sort((left, right) => (rank.get(left.id) || 0) - (rank.get(right.id) || 0));
+        items.forEach((node, row) => {
           if (node.data.locked === true) return;
           const visualLevel = orientation === "RL" ? maxLevel - level : level;
-          const nextX = preset === "preserve" ? Math.max(80, Number(node.position.x) || 120) : 120 + visualLevel * levelGap;
+          const nextX = preset === "preserve"
+            ? Math.max(90, Number(node.position.x) || 120)
+            : 120 + visualLevel * levelGap;
           const nextY = laneBox.top + LANE_CONTENT_TOP + row * rowGap;
-          if (node.position.x !== nextX || node.position.y !== nextY) moved += 1;
-          node.position.x = nextX;
-          node.position.y = nextY;
+          if (Math.abs(node.position.x - nextX) > 0.1 || Math.abs(node.position.y - nextY) > 0.1) moved += 1;
+          node.position.x = snap(nextX);
+          node.position.y = snap(nextY);
         });
       });
     });
 
     normalizeNodesIntoLanes();
     updateWorldSize();
-    return { columns: maxLevel + 1, moved };
+    const problems = countLayoutProblems();
+    state.doc.settings.edgeRouting = "corridor-v2";
+    return { columns: maxLevel + 1, moved, overlaps: problems.overlaps, outside: problems.outside };
   }
 
   function countLayoutProblems() {
@@ -2085,7 +2378,10 @@ export default function flowEditor(component) {
     mutate(() => {
       summary = layoutDocumentInPlace();
     });
-    toast(`Fluxo organizado em ${summary.columns} colunas; ${summary.moved} elementos reposicionados.`, "success");
+    const problemText = summary.overlaps || summary.outside
+      ? ` Restaram ${summary.overlaps} sobreposições e ${summary.outside} itens fora de raia, normalmente por posições bloqueadas.`
+      : " Nenhum card ficou sobreposto ou fora das raias.";
+    toast(`Fluxo organizado em ${summary.columns} colunas; ${summary.moved} elementos reposicionados.${problemText}`, summary.overlaps || summary.outside ? "warning" : "success");
     setTimeout(fitView, 40);
   }
 
@@ -2233,6 +2529,8 @@ export default function flowEditor(component) {
     state.doc.flow.updatedAt = nowIso();
     $('[data-role="save-state"]').textContent = "Salvando versão...";
     $('[data-role="save-state"]').style.color = "var(--fe-primary)";
+    persistLocalDraft();
+    updateSaveState("Salvando versão no MongoDB...", "pending");
     setTriggerValue("save", { document: clone(state.doc), revision: state.revision, validationErrors: issues.length });
   }
 
@@ -2252,6 +2550,7 @@ export default function flowEditor(component) {
 
   function toggleTheme() {
     applyTheme(state.uiTheme === "dark" ? "light" : "dark", true);
+    palette();
     renderAll();
   }
 
@@ -2738,6 +3037,7 @@ export default function flowEditor(component) {
     else if (action === "export-png") exportPng();
     else if (action === "search-prev") updateSearch(state.searchQuery, -1);
     else if (action === "search-next") updateSearch(state.searchQuery, 1);
+    else if (action === "sync-draft") syncDraftToMongo();
     else if (action === "save") save();
     else if (action === "add-lane") addLane();
     else if (action === "close-modal") $('[data-role="modal"]').hidden = true;
@@ -2777,8 +3077,36 @@ export default function flowEditor(component) {
     const canvasSearch = $('[data-role="canvas-search"]');
     canvasSearch?.addEventListener("input", (event) => updateSearch(event.target.value, 0));
     canvasSearch?.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); updateSearch(event.target.value, event.shiftKey ? -1 : 1); } });
-    $('[data-role="view-mode"]')?.addEventListener("change", (event) => { state.viewMode = event.target.value; renderAll(); if (state.viewMode !== "all") setTimeout(() => fitNodeIds(visibleNodeIds()), 30); });
-    $('[data-role="edge-visibility"]')?.addEventListener("change", (event) => { state.edgeVisibility = event.target.value; renderEdges(); });
+    $('[data-role="view-mode"]')?.addEventListener("change", (event) => {
+      const requested = event.target.value;
+      if (requested === "selected-lane" && !selectedLaneId()) {
+        state.viewMode = "all";
+        event.target.value = "all";
+        localStorage.setItem("produto_tools_view_mode", "all");
+        toast("Selecione uma raia, um card ou uma conexão antes de usar a visão por raia.", "warning");
+        renderAll();
+        return;
+      }
+      state.viewMode = requested;
+      localStorage.setItem("produto_tools_view_mode", state.viewMode);
+      renderAll();
+      if (state.viewMode !== "all") setTimeout(() => fitNodeIds(visibleNodeIds()), 30);
+    });
+    $('[data-role="edge-visibility"]')?.addEventListener("change", (event) => {
+      const requested = event.target.value;
+      if (requested === "selection" && !state.selected && !state.focusPath) {
+        state.edgeVisibility = "all";
+        event.target.value = "all";
+        localStorage.setItem("produto_tools_edge_visibility", "all");
+        toast("Selecione um card, conexão ou caminho antes de filtrar as linhas pela seleção.", "warning");
+        renderEdges();
+        return;
+      }
+      state.edgeVisibility = requested;
+      localStorage.setItem("produto_tools_edge_visibility", state.edgeVisibility);
+      renderEdges();
+      renderHeaderAndStatus();
+    });
     $('[data-role="interactive-play"]')?.addEventListener("change", (event) => { state.doc.settings.interactivePlayback = event.target.checked; markDirty(); });
     fileInput.addEventListener("change", () => importJson(fileInput.files?.[0]));
     $$('[data-setting]').forEach((input) => input.addEventListener("change", () => {
@@ -2810,6 +3138,14 @@ export default function flowEditor(component) {
 
   palette();
   bindEvents();
+  pruneLocalDrafts(state.doc.flow.id, state.revision);
+  if (restoredLocalDraft) {
+    updateSaveState("Rascunho local recuperado", "success");
+    setTimeout(() => toast("As alterações locais foram recuperadas sem recarregar o editor.", "success"), 120);
+  } else {
+    state.lastAutosaveFingerprint = fingerprintDocument();
+    updateSaveState("Alterações sincronizadas", "muted");
+  }
   const interactiveControl = $('[data-role="interactive-play"]');
   if (interactiveControl) interactiveControl.checked = state.doc.settings.interactivePlayback !== false;
   ensureUnassignedLane();

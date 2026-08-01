@@ -1,89 +1,65 @@
-# Produto Tools 3.0 Professional
+# Produto Tools 3.0.3 Professional — Editor de Processos
 
-Plataforma Streamlit para modelagem, simulação, governança e documentação de processos. Utiliza os mesmos usuários do **Simulador-Telemetria** e grava fluxos, versões, rascunhos, comentários, aprovações, templates e presença no MongoDB Atlas.
+Aplicação Streamlit com editor visual de processos, autenticação compartilhada com o **Simulador-Telemetria** e persistência dos fluxos no MongoDB Atlas.
 
-## Principais recursos
+## Correções de estabilidade 3.0.3
 
-### Modelagem e navegação
+- O autosave é feito primeiro no navegador e não recarrega a página durante a edição.
+- O botão **Rascunho** sincroniza explicitamente a cópia local com o MongoDB.
+- Alterações locais são restauradas automaticamente após reruns do Streamlit.
+- O modo escuro cobre controles, menus, modais, cards, raias e campos.
+- Os filtros de visão ocultam elementos incompatíveis e enquadram apenas o conjunto filtrado.
+- O botão **Organizar** redistribui cards por raia, reserva canais para conexões e reduz sobreposições.
+- As linhas usam corredores ortogonais, procuram colunas livres entre raias e recebem halo visual para melhorar a leitura em processos extensos.
 
-- Canvas amplo, grade, zoom, minimapa, tela cheia, modo claro e escuro.
-- Raias redimensionáveis, recolhíveis e reproduzíveis.
-- Elementos de início, fim, atividade, decisão, subprocesso, evento, espera, documento, API e observação.
-- Decisões com no mínimo duas saídas independentes e condições nomeadas.
-- Subprocessos vinculados a outros fluxos; duplo clique abre o detalhe e mantém navegação de retorno.
-- Busca global por nome, descrição, responsável, tag, categoria, ID ou raia.
-- Visões completa, executiva, operacional, técnica, exceções e raia selecionada.
-- Filtros de linhas: todas, relacionadas à seleção, somente entre raias ou ocultas.
 
-### Layout e fluxos extensos
+## Recursos visuais do editor 2.3
 
-- Mundo e zoom dinâmicos para processos com milhares de pixels.
-- Auto-organização por camadas e raias.
-- Modos compacto, legível e preservação das posições.
-- Ordenação por vizinhança para reduzir cruzamentos.
-- Roteamento ortogonal em corredores, com separação das entradas e saídas.
-- Importação do fluxo SIGYO Modular com mais de cem elementos usada como regressão automatizada.
+- Inspetor de propriedades horizontal na parte superior.
+- Canvas ocupando toda a largura restante da página.
+- Paleta de elementos recolhível para liberar espaço.
+- Tela cheia nativa para usar o monitor inteiro.
+- Modo claro e escuro.
+- Nós arredondados com faixa de cor corrigida.
+- Importação e organização automática de fluxos extensos, com mundo dinâmico e zoom de até 4%.
+- Elementos reposicionados dentro das respectivas raias, com expansão automática da altura quando necessário.
+- Decisões com no mínimo duas saídas visuais e validação estrutural no frontend e no backend.
+- Seleção explícita da ramificação padrão de cada decisão.
+- Destaque de uma rota completa em fluxos grandes, evitando encerrar no primeiro fim ou exceção próximos.
+- Reprodução da rota escolhida com **Play**, pausa, parada, velocidade e centralização automática em cada etapa.
 
-### Rotas e simulação
+## Fluxos grandes e decisões
 
-- Destaque e Play a partir de qualquer card, conexão ou raia.
-- Explorador de rotas com origem, destino e estratégia:
-  - principal;
-  - mais curta;
-  - mais longa;
-  - todos os caminhos entre origem e destino;
-  - comparação das ramificações de uma decisão;
-  - todas as etapas anteriores;
-  - todas as etapas posteriores;
-  - exceções posteriores.
-- Simulação interativa: ao chegar a uma decisão, o Play pausa e solicita a escolha da condição.
-- Pausar, continuar, parar, alterar velocidade e centralizar automaticamente a etapa atual.
+Ao importar um JSON com muitos elementos, o editor: 
 
-### Governança e colaboração
+1. calcula o tamanho necessário do mundo;
+2. preserva as raias e ajusta suas alturas;
+3. agrupa os elementos em colunas de leitura;
+4. evita sobreposições;
+5. enquadra o fluxo completo com zoom reduzido;
+6. atribui conectores separados às saídas de decisões.
 
-- Estados: rascunho, em revisão, aprovado, publicado e arquivado.
-- Perfis por fluxo: visualizador, editor, revisor e aprovador.
-- Visibilidade privada ou para toda a organização.
-- Histórico das transições e comentários da aprovação.
-- Comentários em fluxo, card, conexão e raia, com menções e resolução.
-- Presença temporária dos usuários que estão visualizando o processo.
-- Controle de concorrência por revisão otimista; conflitos podem ser recarregados, salvos como cópia ou sobrescritos pelo proprietário.
-- Rascunho automático no MongoDB sem criar uma versão formal para cada movimento.
+Para definir qual ramificação será usada no destaque e no Play, selecione uma decisão e escolha **Saída padrão para destaque e Play** no inspetor superior. Também é possível selecionar diretamente uma conexão de saída antes de destacar a rota.
 
-### Versionamento, qualidade e relatórios
+## O que mudou nesta versão
 
-- Versões imutáveis e restauração como nova versão.
-- Comparação entre versões com elementos, linhas e raias adicionados, removidos ou alterados.
-- Índice de qualidade para estrutura, documentação, responsáveis, SLA e subprocessos.
-- Indicadores de decisões, integrações, exceções, ciclos, transições entre raias e caminho mais longo.
-- Exportações:
-  - JSON;
-  - SVG;
-  - PNG;
-  - PDF;
-  - HTML;
-  - CSV de etapas;
-  - matriz RACI em CSV.
-- Biblioteca de templates incorporados e templates personalizados.
-- Central de Processos com portfólio, filtros, qualidade e pendências.
-- Gestão de Acesso com diretório, métricas e auditoria.
+- O SQLite foi removido.
+- O login usa a mesma coleção `simulador_db.users` do Simulador-Telemetria.
+- Usuário, senha bcrypt, nome, e-mail, perfil e situação de acesso são compartilhados.
+- Os fluxos são armazenados no mesmo banco MongoDB, em coleções exclusivas do Produto Tools.
+- O histórico de versões também fica no MongoDB.
+- As páginas Consulta Sigyo, Consulta Logpay e Análise de Arredondamento foram removidas.
+- A Gestão de Acesso administra a coleção compartilhada; alterações afetam as duas aplicações.
 
-## Coleções no MongoDB
+## Coleções utilizadas
 
 ```text
 simulador_db
-├── users                               compartilhada com Simulador-Telemetria
-├── activity_logs                       auditoria compartilhada
-├── produto_tools_flowcharts            estado atual dos processos
-├── produto_tools_flowchart_versions    versões formais
-├── produto_tools_flowchart_drafts      autosave por usuário
-├── produto_tools_flowchart_comments    comentários por objeto
-├── produto_tools_flowchart_approvals   histórico de governança
-├── produto_tools_flowchart_templates   biblioteca personalizada
-└── produto_tools_flowchart_presence    presença com expiração automática
+├── users                              compartilhada com Simulador-Telemetria
+├── activity_logs                      compartilhada, com application=produto_tools
+├── produto_tools_flowcharts           versão atual dos fluxos
+└── produto_tools_flowchart_versions   histórico de versões
 ```
-
-Os documentos antigos da versão 1.0 são normalizados automaticamente para o schema 2.0 ao serem carregados e salvos. As coleções e os índices são criados automaticamente; não é necessário executar script de migração manual.
 
 ## Estrutura
 
@@ -92,46 +68,75 @@ produto_tools/
 ├── login_app.py
 ├── database.py
 ├── requirements.txt
-├── pages/
-│   ├── 1_Gestão_de_Acesso.py
-│   ├── 2_Central_de_Processos.py
-│   └── 5_Editor_de_Fluxos.py
 ├── core/
-├── schemas/
+│   ├── auth.py
+│   ├── configuration.py
+│   └── styles.py
 ├── services/
-│   ├── flow_analytics.py
-│   ├── flow_diff.py
-│   ├── flow_permissions.py
-│   ├── flowchart_repository.py
-│   ├── report_export.py
-│   └── template_library.py
-├── components/flow_editor/frontend/
-├── tests/
-└── .github/workflows/ci.yml
+│   └── flowchart_repository.py
+├── schemas/
+│   └── flowchart_schema.py
+├── components/
+│   └── flow_editor/
+│       ├── component.py
+│       └── frontend/
+│           ├── index.html
+│           ├── styles.css
+│           └── main.js
+└── pages/
+    ├── 1_Gestão_de_Acesso.py
+    └── 5_Editor_de_Fluxos.py
 ```
 
-## Streamlit Cloud
+## Publicação no Streamlit Cloud
 
-Arquivo principal:
-
-```text
-login_app.py
-```
-
-Secrets necessários:
+1. Envie todo o projeto para o GitHub.
+2. Crie ou edite o app no Streamlit Community Cloud.
+3. Defina o arquivo principal como `login_app.py`.
+4. Em **Settings > Secrets**, configure:
 
 ```toml
 MONGO_CONNECTION_STRING = "mongodb+srv://USUARIO:SENHA@cluster.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 MONGO_DB_NAME = "simulador_db"
 
 AUTH_COOKIE_NAME = "simulador_telemetria_auth"
-AUTH_COOKIE_KEY = "A_MESMA_CHAVE_SEGURA_USADA_NO_SIMULADOR"
+AUTH_COOKIE_KEY = "A_MESMA_CHAVE_USADA_NO_SIMULADOR"
 AUTH_COOKIE_EXPIRY_DAYS = 30
 ```
 
-Não envie `.streamlit/secrets.toml`, `.env` ou credenciais ao GitHub.
+Use a mesma conexão, banco, nome de cookie e chave do Simulador-Telemetria. O arquivo `.streamlit/secrets.toml.example` contém o modelo sem credenciais reais.
+
+## MongoDB Atlas
+
+Em **Network Access**, permita a saída do Streamlit Cloud. Para testes, pode ser usado `0.0.0.0/0`; em produção, aplique a política de rede mais restritiva disponível e mantenha usuário do banco com privilégios mínimos necessários.
+
+## Login compartilhado
+
+O Produto Tools lê diretamente os documentos existentes em `simulador_db.users`:
+
+```json
+{
+  "username": "usuario",
+  "name": "Nome do usuário",
+  "email": "usuario@empresa.com",
+  "hashed_password": "$2b$...",
+  "role": "user",
+  "active": true
+}
+```
+
+Os perfis aceitos são `user`, `head_comercial` e `admin`.
 
 ## Execução local
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+streamlit run login_app.py
+```
+
+No Windows PowerShell:
 
 ```powershell
 python -m venv .venv
@@ -140,26 +145,11 @@ pip install -r requirements.txt
 streamlit run login_app.py
 ```
 
-## Testes
+## Segurança
 
-```powershell
-pip install -r requirements-dev.txt
-python -m compileall -q .
-node --check components/flow_editor/frontend/main.js
-pytest -q
-```
-
-O workflow `.github/workflows/ci.yml` executa essas verificações em pushes e pull requests.
-
-## Publicação
-
-O arquivo `atualizar_produto_tools_v3_main.ps1`:
-
-1. valida se o pacote está na raiz correta;
-2. executa compilação, JavaScript e testes;
-3. clona a `main` em uma pasta temporária;
-4. preserva a pasta `.git`;
-5. bloqueia Secrets, bancos e caches;
-6. cria o commit;
-7. envia para o GitHub;
-8. interrompe imediatamente em caso de falha.
+- A URI do MongoDB e a chave do cookie não ficam no repositório.
+- `.streamlit/secrets.toml` está no `.gitignore`.
+- As senhas permanecem bcrypt, no mesmo formato usado pelo simulador.
+- Usuários inativos não conseguem autenticar.
+- O último administrador ativo não pode ser excluído.
+- O JSON do fluxo é validado novamente no backend antes da gravação.

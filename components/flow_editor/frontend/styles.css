@@ -680,3 +680,183 @@ button { color: inherit; }
 .analytics-card:hover { border-color: var(--fe-primary); background: var(--fe-primary-soft); transform: translateY(-1px); }
 .route-explorer-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 760px) { .route-explorer-actions { grid-template-columns: 1fr; } }
+
+/* Produto Tools 3.0.3 - contraste consistente, filtros reais e estados de layout */
+.flow-editor-shell {
+  --fe-shell-top: #fcfdff;
+  --fe-shell-bottom: #f8fbfc;
+  background: linear-gradient(180deg, var(--fe-shell-top) 0%, var(--fe-shell-bottom) 100%);
+}
+
+.flow-editor-shell[data-theme="dark"] {
+  --fe-shell-top: #001e2b;
+  --fe-shell-bottom: #00141f;
+}
+
+.flow-editor-shell,
+.flow-editor-shell button,
+.flow-editor-shell input,
+.flow-editor-shell textarea,
+.flow-editor-shell select,
+.flow-editor-shell option {
+  color: var(--fe-ink);
+}
+
+.flow-editor-shell input,
+.flow-editor-shell textarea,
+.flow-editor-shell select {
+  background-color: var(--fe-input);
+  border-color: var(--fe-line);
+  caret-color: var(--fe-primary);
+}
+
+.flow-editor-shell option,
+.flow-editor-shell optgroup {
+  color: var(--fe-ink);
+  background: var(--fe-panel);
+}
+
+.flow-editor-shell input::placeholder,
+.flow-editor-shell textarea::placeholder {
+  color: var(--fe-muted);
+  opacity: .9;
+}
+
+.flow-editor-shell input[type="checkbox"],
+.flow-editor-shell input[type="radio"] {
+  accent-color: var(--fe-primary);
+}
+
+.flow-editor-shell[data-theme="dark"] .toolbar-actions button:not(.button-primary):not(.button-play):not(.is-active),
+.flow-editor-shell[data-theme="dark"] .palette-wide-button,
+.flow-editor-shell[data-theme="dark"] .modal-card button,
+.flow-editor-shell[data-theme="dark"] .panel-toggle,
+.flow-editor-shell[data-theme="dark"] .property-actions button,
+.flow-editor-shell[data-theme="dark"] .canvas-search button {
+  color: var(--fe-ink);
+  background: var(--fe-input);
+  border-color: var(--fe-line);
+}
+
+.flow-editor-shell[data-theme="dark"] .toolbar-actions .button-primary,
+.flow-editor-shell[data-theme="dark"] .toolbar-actions .is-active,
+.flow-editor-shell[data-theme="dark"] .comment-panel button,
+.flow-editor-shell[data-theme="dark"] .route-explorer-actions .button-primary {
+  color: #001e2b;
+}
+
+.flow-editor-shell[data-theme="dark"] .toolbar-actions .button-play {
+  color: #001e2b;
+}
+
+.flow-editor-shell[data-theme="dark"] .toolbar-actions .button-soft,
+.flow-editor-shell[data-theme="dark"] .palette-wide-button {
+  color: var(--fe-primary);
+  background: var(--fe-primary-soft);
+}
+
+.flow-editor-shell[data-theme="dark"] .flow-node {
+  color: var(--fe-ink);
+  background: color-mix(in srgb, var(--node-color) 7%, var(--fe-panel));
+  border-color: color-mix(in srgb, var(--node-color) 28%, var(--fe-line));
+}
+
+.flow-editor-shell[data-theme="dark"] .flow-node.type-note {
+  color: var(--fe-ink);
+  background: color-mix(in srgb, #eab308 12%, var(--fe-panel));
+  border-color: color-mix(in srgb, #eab308 55%, var(--fe-line));
+}
+
+.flow-editor-shell[data-theme="dark"] .node-icon,
+.flow-editor-shell[data-theme="dark"] .node-badge,
+.flow-editor-shell[data-theme="dark"] .comment-item,
+.flow-editor-shell[data-theme="dark"] .route-choice,
+.flow-editor-shell[data-theme="dark"] .validation-item,
+.flow-editor-shell[data-theme="dark"] .analytics-card {
+  color: var(--fe-ink);
+}
+
+.flow-editor-shell[data-theme="dark"] .edge-label-bg {
+  fill: var(--fe-panel-soft);
+  stroke: var(--fe-line-strong);
+}
+
+.flow-editor-shell[data-theme="dark"] .edge-label {
+  fill: var(--fe-ink);
+}
+
+.flow-editor-shell[data-theme="dark"] .minimap-node.focus-member {
+  box-shadow: 0 0 0 1px var(--fe-ink);
+}
+
+.flow-node.view-hidden {
+  display: none;
+}
+
+.flow-lane.view-empty {
+  opacity: .2;
+  filter: grayscale(.75);
+}
+
+.flow-lane.view-active {
+  border-color: color-mix(in srgb, var(--fe-primary) 38%, var(--fe-line));
+}
+
+.flow-editor-shell[data-view-mode="selected-lane"] .flow-lane.view-empty {
+  opacity: .08;
+}
+
+.canvas-options select:focus,
+.canvas-search input:focus,
+.palette-search-wrap input:focus,
+.property-group input:focus,
+.property-group textarea:focus,
+.property-group select:focus {
+  border-color: var(--fe-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--fe-primary) 16%, transparent);
+}
+
+.layout-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.layout-summary > span {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--fe-line);
+  border-radius: 10px;
+  color: var(--fe-muted);
+  background: var(--fe-panel-soft);
+  font-size: 9px;
+}
+
+.layout-summary strong {
+  color: var(--fe-ink);
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .layout-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.edge-underlay {
+  fill: none;
+  stroke: color-mix(in srgb, var(--fe-canvas) 92%, var(--fe-panel));
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.edge-group.selected .edge-underlay,
+.edge-group.focus-member .edge-underlay,
+.edge-group.play-current .edge-underlay {
+  stroke-width: 9;
+}
+.edge-path {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

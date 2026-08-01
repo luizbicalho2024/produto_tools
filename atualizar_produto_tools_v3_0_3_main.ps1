@@ -4,7 +4,7 @@
 param(
     [string]$RepositoryUrl = "https://github.com/luizbicalho2024/produto_tools.git",
     [string]$Branch = "main",
-    [string]$CommitMessage = "Atualiza Produto Tools 3.0 Professional",
+    [string]$CommitMessage = "Corrige autosave, tema, filtros e layout do Produto Tools 3.0.3",
     [switch]$SkipTests
 )
 
@@ -72,7 +72,7 @@ $Destination = Join-Path $Parent ("produto_tools_publicacao_" + $Timestamp)
 $OriginalLocation = Get-Location
 
 try {
-    Write-Step "Produto Tools 3.0 - Publicacao segura"
+    Write-Step "Produto Tools 3.0.3 - Publicacao segura"
     Write-Host ("Origem: " + $Source)
     Write-Host ("Clone:  " + $Destination)
 
@@ -279,7 +279,7 @@ try {
     Assert-NativeSuccess "Falha ao enviar as alteracoes para o GitHub."
 
     Write-Host ""
-    Write-Host "Produto Tools 3.0 publicado com sucesso." -ForegroundColor Green
+    Write-Host "Produto Tools 3.0.3 publicado com sucesso." -ForegroundColor Green
     Write-Host ("Repositorio: " + $RepositoryUrl)
     Write-Host ("Branch:      " + $Branch)
     Write-Host ("Clone local: " + $Destination)

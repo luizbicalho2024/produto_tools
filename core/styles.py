@@ -122,12 +122,65 @@ def apply_global_styles(*, full_width: bool = False) -> None:
           color: var(--pt-text);
         }}
         input, textarea {{color: var(--pt-text) !important;}}
+        input::placeholder, textarea::placeholder {{color: var(--pt-muted) !important; opacity: .9;}}
+        div[data-baseweb="select"] span,
+        div[data-baseweb="input"] input,
+        div[data-baseweb="textarea"] textarea {{color: var(--pt-text) !important;}}
+        div[data-baseweb="popover"],
+        div[data-baseweb="popover"] > div,
+        ul[role="listbox"],
+        div[role="listbox"],
+        li[role="option"],
+        div[role="option"] {{
+          background: var(--pt-panel) !important;
+          color: var(--pt-text) !important;
+          border-color: var(--pt-line) !important;
+        }}
+        li[role="option"]:hover, div[role="option"]:hover,
+        li[role="option"][aria-selected="true"], div[role="option"][aria-selected="true"] {{
+          background: var(--pt-panel-soft) !important;
+          color: var(--pt-text) !important;
+        }}
+        [data-baseweb="tab-list"] {{background: transparent !important; gap: .35rem;}}
+        [data-baseweb="tab"] {{
+          color: var(--pt-muted) !important;
+          background: var(--pt-panel) !important;
+          border: 1px solid var(--pt-line) !important;
+          border-radius: 999px !important;
+          padding-inline: 1rem !important;
+        }}
+        [data-baseweb="tab"][aria-selected="true"] {{
+          color: #ffffff !important;
+          background: linear-gradient(135deg, var(--pt-primary), var(--pt-primary-dark)) !important;
+          border-color: var(--pt-primary) !important;
+        }}
+        [data-testid="stAlert"] {{
+          color: var(--pt-text) !important;
+          background: color-mix(in srgb, var(--pt-panel) 94%, transparent) !important;
+          border-color: var(--pt-line) !important;
+        }}
+        [data-testid="stDataFrame"], [data-testid="stTable"] {{
+          color: var(--pt-text) !important;
+          background: var(--pt-panel) !important;
+          border-radius: 16px;
+          overflow: hidden;
+        }}
         .stButton > button, .stDownloadButton > button {{
           border-radius: 999px;
           min-height: 2.65rem;
           font-weight: 700;
           border: 1px solid var(--pt-line);
           box-shadow: 0 8px 22px var(--pt-shadow);
+        }}
+        .stButton > button:not([kind="primary"]), .stDownloadButton > button {{
+          color: var(--pt-text) !important;
+          background: var(--pt-panel) !important;
+          border-color: var(--pt-line) !important;
+        }}
+        .stButton > button:not([kind="primary"]):hover, .stDownloadButton > button:hover {{
+          color: var(--pt-primary-dark) !important;
+          background: var(--pt-panel-soft) !important;
+          border-color: var(--pt-primary) !important;
         }}
         .stButton > button[kind="primary"], .stForm button[kind="primary"] {{
           background: linear-gradient(135deg, var(--pt-primary) 0%, var(--pt-primary-dark) 100%);

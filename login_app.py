@@ -15,6 +15,7 @@ st.markdown(
     <section class="pt-login-card">
       <div class="pt-login-mark">PT</div>
       <h1>Produto Tools</h1>
+      <p>Editor visual de processos com autenticação compartilhada, persistência no MongoDB Atlas e experiência inspirada no design system do MongoDB.</p>
     </section>
     """,
     unsafe_allow_html=True,
@@ -22,7 +23,10 @@ st.markdown(
 
 st.markdown(
     """
-    
+    <section class="pt-soft-card" style="max-width:620px;margin:0 auto 1rem;">
+      <strong style="display:block;margin-bottom:.35rem;">O que você encontra aqui</strong>
+      <span style="display:block;color:var(--pt-muted);">Editor de processos com governança, autosave, colaboração, simulação interativa, indicadores, templates e armazenamento versionado no MongoDB.</span>
+    </section>
     """,
     unsafe_allow_html=True,
 )
