@@ -11,7 +11,7 @@ st.set_page_config(page_title=f"Acesso | {APP_NAME}", page_icon="🧩", layout="
 apply_global_styles()
 
 with st.sidebar:
-    render_theme_selector(key="login_ui_theme", compact=True)
+    render_theme_selector(key="login_ui_theme")
 
 st.markdown(
     """

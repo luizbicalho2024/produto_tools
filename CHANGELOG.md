@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.2.1 — Compatibilidade do seletor de tema e login
+
+- Corrige o `TypeError` no login causado por incompatibilidade entre chamadas com `compact=True` e versões anteriores de `core.styles`.
+- Remove o argumento `compact` das chamadas do login e da barra lateral.
+- Mantém o parâmetro aceito na função para compatibilidade regressiva.
+- Substitui o seletor por um controle simples Claro/Escuro com persistência por sessão, URL e perfil.
+- Adiciona teste de regressão para impedir novas chamadas incompatíveis.
+
 ## 3.2.0 — Importação resiliente, tema persistente e mapa de relações
 
 - Corrige a importação de decisões com zero ou uma saída sem inventar regras de negócio.

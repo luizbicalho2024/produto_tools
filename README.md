@@ -1,6 +1,10 @@
-# Produto Tools 3.2 Professional
+# Produto Tools 3.2.1 Professional
 
 Aplicação Streamlit para modelagem, governança e publicação de processos, com autenticação compartilhada, persistência no MongoDB Atlas e projetos compostos por vários fluxos vinculados.
+
+## Correção 3.2.1 — Compatibilidade do login
+
+O seletor Claro/Escuro não depende mais do argumento `compact` nas páginas, evitando falhas quando o deploy contém uma versão anterior do módulo de estilos. A preferência continua persistida na URL e no perfil do usuário.
 
 ## Novidades da versão 3.2
 

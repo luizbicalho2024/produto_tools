@@ -57,18 +57,31 @@ def remember_ui_theme(theme: str) -> str:
     return selected
 
 
-def render_theme_selector(*, key: str = "global_ui_theme", compact: bool = False) -> str:
+def render_theme_selector(*, key: str = "global_ui_theme", compact: bool | None = None, **_: object) -> str:
+    """Renderiza um seletor de tema compatível com versões anteriores do app.
+
+    O parâmetro ``compact`` permanece aceito para não quebrar páginas antigas, mas o
+    widget usa apenas argumentos estáveis da API do Streamlit.
+    """
     current = get_ui_theme()
-    if key not in st.session_state:
-        st.session_state[key] = current
-    selected = st.selectbox(
+    labels = ["Claro", "Escuro"]
+    initial_index = 1 if current == "dark" else 0
+    widget_key = str(key or "global_ui_theme")
+
+    existing = st.session_state.get(widget_key)
+    if existing in THEME_LABELS:
+        st.session_state[widget_key] = THEME_LABELS[str(existing)]
+    elif existing not in labels:
+        st.session_state[widget_key] = labels[initial_index]
+
+    selected_label = st.radio(
         "Tema",
-        options=list(THEME_LABELS),
-        format_func=lambda value: "Claro" if value == "light" else "Escuro",
-        key=key,
-        label_visibility="collapsed" if compact else "visible",
-        help="A preferência é lembrada para este usuário.",
+        labels,
+        index=initial_index,
+        key=widget_key,
+        horizontal=True,
     )
+    selected = "dark" if selected_label == "Escuro" else "light"
     if selected != current:
         remember_ui_theme(selected)
         st.rerun()

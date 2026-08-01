@@ -212,6 +212,6 @@ def render_account_sidebar() -> None:
         st.write(f"**{user.get('name', 'Usuário')}**")
         st.caption(f"@{user.get('username', '')}")
         st.divider()
-        render_theme_selector(key="shared_ui_theme", compact=True)
+        render_theme_selector(key="shared_ui_theme")
         if st.button("Sair", use_container_width=True, key="global_logout"):
             perform_logout()
