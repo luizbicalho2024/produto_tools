@@ -17,6 +17,11 @@ from core.configuration import (
     ACTIVITY_LOGS_COLLECTION,
     FLOWCHARTS_COLLECTION,
     FLOWCHART_VERSIONS_COLLECTION,
+    FLOWCHART_DRAFTS_COLLECTION,
+    FLOWCHART_COMMENTS_COLLECTION,
+    FLOWCHART_APPROVALS_COLLECTION,
+    FLOWCHART_TEMPLATES_COLLECTION,
+    FLOWCHART_PRESENCE_COLLECTION,
     MONGO_DB_NAME,
     USERS_COLLECTION,
     VALID_USER_ROLES,
@@ -112,6 +117,33 @@ def initialize_database() -> bool:
             [("flowchart_id", ASCENDING), ("version", DESCENDING)],
             unique=True,
             name="uq_pt_flow_versions",
+        )
+        database[FLOWCHART_DRAFTS_COLLECTION].create_index(
+            [("flowchart_id", ASCENDING), ("username", ASCENDING)],
+            unique=True,
+            name="uq_pt_flow_drafts",
+        )
+        database[FLOWCHART_DRAFTS_COLLECTION].create_index(
+            [("updated_at", DESCENDING)], name="ix_pt_drafts_updated"
+        )
+        database[FLOWCHART_COMMENTS_COLLECTION].create_index(
+            [("flowchart_id", ASCENDING), ("resolved", ASCENDING), ("created_at", DESCENDING)],
+            name="ix_pt_comments_flow_status",
+        )
+        database[FLOWCHART_APPROVALS_COLLECTION].create_index(
+            [("flowchart_id", ASCENDING), ("created_at", DESCENDING)],
+            name="ix_pt_approvals_flow",
+        )
+        database[FLOWCHART_TEMPLATES_COLLECTION].create_index(
+            [("owner_username", ASCENDING), ("name", ASCENDING)],
+            name="ix_pt_templates_owner_name",
+        )
+        database[FLOWCHART_PRESENCE_COLLECTION].create_index(
+            [("flowchart_id", ASCENDING), ("last_seen", DESCENDING)],
+            name="ix_pt_presence_flow",
+        )
+        database[FLOWCHART_PRESENCE_COLLECTION].create_index(
+            [("expires_at", ASCENDING)], expireAfterSeconds=0, name="ttl_pt_presence"
         )
         database[ACTIVITY_LOGS_COLLECTION].create_index(
             [("timestamp", DESCENDING)], name="ix_logs_timestamp"
@@ -358,3 +390,19 @@ def add_log(user: str, action: str, details: Any = None) -> bool:
     except PyMongoError:
         log.exception("Falha ao registrar log.")
         return False
+
+
+def get_activity_logs(*, limit: int = 200, application: str = "produto_tools") -> list[dict[str, Any]]:
+    collection = get_collection(ACTIVITY_LOGS_COLLECTION)
+    if collection is None:
+        return []
+    try:
+        return list(
+            collection.find(
+                {"application": application},
+                {"_id": 0},
+            ).sort("timestamp", DESCENDING).limit(max(1, min(int(limit), 1000)))
+        )
+    except PyMongoError:
+        log.exception("Falha ao consultar logs de atividade.")
+        return []

@@ -25,7 +25,7 @@ st.markdown(
     """
     <section class="pt-soft-card" style="max-width:620px;margin:0 auto 1rem;">
       <strong style="display:block;margin-bottom:.35rem;">O que você encontra aqui</strong>
-      <span style="display:block;color:var(--pt-muted);">Editor de fluxos com raias, auto-organização para processos grandes, destaque de caminhos, reprodução a partir de qualquer card e armazenamento versionado no MongoDB.</span>
+      <span style="display:block;color:var(--pt-muted);">Editor de processos com governança, autosave, colaboração, simulação interativa, indicadores, templates e armazenamento versionado no MongoDB.</span>
     </section>
     """,
     unsafe_allow_html=True,
@@ -88,12 +88,21 @@ if st.session_state.get("authentication_status"):
     render_account_sidebar()
     st.success(f"Bem-vindo, **{profile['name']}**.")
     st.caption("As mesmas credenciais também são válidas no Simulador-Telemetria.")
-    st.page_link(
-        "pages/5_Editor_de_Fluxos.py",
-        label="Abrir Editor de Processos",
-        icon="🧩",
-        use_container_width=True,
-    )
+    col_portfolio, col_editor = st.columns(2)
+    with col_portfolio:
+        st.page_link(
+            "pages/2_Central_de_Processos.py",
+            label="Central de Processos",
+            icon="◫",
+            use_container_width=True,
+        )
+    with col_editor:
+        st.page_link(
+            "pages/5_Editor_de_Fluxos.py",
+            label="Abrir Editor Professional",
+            icon="◈",
+            use_container_width=True,
+        )
     if profile.get("role") == "admin":
         st.page_link(
             "pages/1_Gestão_de_Acesso.py",

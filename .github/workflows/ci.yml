@@ -1,0 +1,23 @@
+name: Produto Tools CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar dependências
+        run: pip install -r requirements-dev.txt
+      - name: Compilar Python
+        run: python -m compileall -q .
+      - name: Executar testes
+        run: pytest -q
+      - name: Validar JavaScript
+        run: node --check components/flow_editor/frontend/main.js

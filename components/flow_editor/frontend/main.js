@@ -62,6 +62,10 @@ function normalizeDocument(input) {
     autoLayout: false,
     showMiniMap: true,
     showGrid: true,
+    layoutPreset: "readable",
+    edgeRouting: "corridor",
+    autosaveSeconds: 10,
+    interactivePlayback: true,
     ...(doc.settings || {}),
   };
   doc.viewport = { x: 0, y: 0, zoom: 1, ...(doc.viewport || {}) };
@@ -72,6 +76,7 @@ function normalizeDocument(input) {
   doc.lanes.forEach((lane, index) => {
     lane.id ||= uid("lane");
     lane.name ||= `Raia ${index + 1}`;
+    lane.owner ||= "";
     lane.order = Number.isFinite(Number(lane.order)) ? Number(lane.order) : index + 1;
     lane.color ||= "#EEF2FF";
     lane.enabled = lane.enabled !== false;
@@ -93,10 +98,18 @@ function normalizeDocument(input) {
     node.data.slaMinutes = node.data.slaMinutes ?? null;
     node.data.tags = Array.isArray(node.data.tags) ? node.data.tags : [];
     node.data.preferredEdgeId = node.data.preferredEdgeId || null;
+    node.data.level = ["executive", "operational", "technical"].includes(node.data.level) ? node.data.level : (node.type === "api" ? "technical" : "operational");
+    node.data.category ||= node.type === "api" ? "integration" : "process";
+    node.data.criticality = ["low", "medium", "high", "critical"].includes(node.data.criticality) ? node.data.criticality : "medium";
+    node.data.linkedFlowId = node.data.linkedFlowId || null;
+    node.data.linkedFlowEntryNodeId = node.data.linkedFlowEntryNodeId || null;
+    node.data.linkedFlowExitNodeId = node.data.linkedFlowExitNodeId || null;
+    node.data.documentationUrl ||= "";
+    node.data.raci = node.data.raci && typeof node.data.raci === "object" ? node.data.raci : { responsible: "", accountable: "", consulted: [], informed: [] };
   });
   doc.edges.forEach((edge) => {
     edge.id ||= uid("edge");
-    edge.type ||= "smoothstep";
+    edge.type ||= "step";
     edge.label ||= "";
     edge.condition = edge.condition ?? "";
     edge.enabled = edge.enabled !== false;
@@ -150,6 +163,19 @@ export default function flowEditor(component) {
     spaceDown: false,
     dirty: false,
     destroyed: false,
+    permission: String(data?.permission || "viewer"),
+    revision: Number(data?.revision) || 1,
+    flowCatalog: Array.isArray(data?.flowCatalog) ? data.flowCatalog : [],
+    comments: Array.isArray(data?.comments) ? data.comments : [],
+    autosaveSeconds: Math.max(5, Number(data?.autosaveSeconds || data?.document?.settings?.autosaveSeconds) || 10),
+    autosaveTimer: null,
+    lastAutosaveFingerprint: "",
+    searchQuery: "",
+    searchResults: [],
+    searchIndex: -1,
+    viewMode: "all",
+    edgeVisibility: "all",
+    routeExplorer: null,
     paletteCollapsed: localStorage.getItem("produto_tools_palette_collapsed") === "true",
     inspectorCollapsed: localStorage.getItem("produto_tools_inspector_collapsed") === "true",
     uiTheme: String(data?.theme || localStorage.getItem("produto_tools_editor_theme") || "light") === "dark" ? "dark" : "light",
@@ -168,6 +194,7 @@ export default function flowEditor(component) {
       currentEdgeId: null,
       visitedNodeIds: new Set(),
       visitedEdgeIds: new Set(),
+      waitingDecisionId: null,
     },
   };
 
@@ -190,6 +217,7 @@ export default function flowEditor(component) {
   root.dataset.theme = state.uiTheme;
   root.classList.toggle("palette-collapsed", state.paletteCollapsed);
   root.classList.toggle("inspector-collapsed", state.inspectorCollapsed);
+  root.classList.toggle("read-only", !["owner", "editor", "reviewer", "approver"].includes(state.permission));
 
   function laneGeometry() {
     const sorted = [...state.doc.lanes].sort((a, b) => Number(a.order) - Number(b.order));
@@ -310,11 +338,38 @@ export default function flowEditor(component) {
     return null;
   }
 
+  function canModify() {
+    return ["owner", "editor", "reviewer", "approver"].includes(state.permission);
+  }
+
+  function fingerprintDocument() {
+    try { return JSON.stringify(state.doc); } catch (_) { return String(Date.now()); }
+  }
+
+  function clearAutosaveTimer() {
+    if (state.autosaveTimer) clearTimeout(state.autosaveTimer);
+    state.autosaveTimer = null;
+  }
+
+  function scheduleAutosave() {
+    if (!canModify()) return;
+    clearAutosaveTimer();
+    state.autosaveTimer = setTimeout(() => {
+      const fingerprint = fingerprintDocument();
+      if (!state.dirty || fingerprint === state.lastAutosaveFingerprint) return;
+      const status = $('[data-role="save-state"]');
+      if (status) { status.textContent = "Salvando rascunho..."; status.style.color = "var(--fe-primary)"; }
+      state.lastAutosaveFingerprint = fingerprint;
+      setTriggerValue("autosave", { document: clone(state.doc), revision: state.revision, savedAt: nowIso() });
+    }, state.autosaveSeconds * 1000);
+  }
+
   function markDirty() {
     state.dirty = true;
     state.doc.flow.updatedAt = nowIso();
-    $('[data-role="save-state"]').textContent = "Alterações não salvas";
-    $('[data-role="save-state"]').style.color = "#d97706";
+    const status = $('[data-role="save-state"]');
+    if (status) { status.textContent = `Alterações pendentes · autosave em ${state.autosaveSeconds}s`; status.style.color = "#d97706"; }
+    scheduleAutosave();
   }
 
   function checkpoint() {
@@ -324,6 +379,7 @@ export default function flowEditor(component) {
   }
 
   function mutate(callback, message = null) {
+    if (!canModify()) { toast("Seu acesso é somente leitura.", "warning"); return; }
     checkpoint();
     clearPlaybackTimer();
     state.playback.running = false;
@@ -722,12 +778,137 @@ export default function flowEditor(component) {
     };
   }
 
+  function reachableRoute(startId, graph, direction = "forward") {
+    const map = new Map(graph.nodes.map((node) => [node.id, []]));
+    graph.edges.forEach((edge) => {
+      const key = direction === "forward" ? edge.source : edge.target;
+      if (map.has(key)) map.get(key).push(edge);
+    });
+    const nodeSequence = [];
+    const edgeSequence = [];
+    const visited = new Set();
+    const queue = [startId];
+    while (queue.length) {
+      const current = queue.shift();
+      if (visited.has(current)) continue;
+      visited.add(current);
+      nodeSequence.push(current);
+      for (const edge of map.get(current) || []) {
+        edgeSequence.push(edge.id);
+        queue.push(direction === "forward" ? edge.target : edge.source);
+      }
+    }
+    return { nodeSequence, edgeSequence, nodeIds: new Set(nodeSequence), edgeIds: new Set(edgeSequence) };
+  }
+
+  function longestPathBetween(startId, endId, graph) {
+    let best = null;
+    let explored = 0;
+    const limit = Math.max(3000, graph.nodes.length * graph.nodes.length);
+    const outgoing = graphMaps(graph).outgoing;
+    function walk(nodeId, nodes, edges, visited) {
+      explored += 1;
+      if (explored > limit) return;
+      if (nodeId === endId) {
+        if (!best || nodes.length > best.nodeSequence.length) best = { nodeSequence: [...nodes], edgeSequence: [...edges] };
+        return;
+      }
+      for (const edge of outgoing.get(nodeId) || []) {
+        if (visited.has(edge.target)) continue;
+        walk(edge.target, [...nodes, edge.target], [...edges, edge.id], new Set([...visited, edge.target]));
+      }
+    }
+    walk(startId, [startId], [], new Set([startId]));
+    return best ? combinePaths(best) : null;
+  }
+
+  function routeFromExplorer(config) {
+    const graph = enabledGraph();
+    if (!graph.nodes.length) return null;
+    const startId = config?.startId || graph.nodes.find((node) => node.type === "start")?.id || graph.nodes[0].id;
+    const endId = config?.endId || graph.nodes.find((node) => node.type === "end")?.id || null;
+    const mode = config?.mode || "main";
+    if (mode === "descendants") return reachableRoute(startId, graph, "forward");
+    if (mode === "predecessors") return reachableRoute(startId, graph, "backward");
+    if (mode === "all-paths" && endId) {
+      const forward = reachableRoute(startId, graph, "forward");
+      const backward = reachableRoute(endId, graph, "backward");
+      const nodes = new Set([...forward.nodeIds].filter((id) => backward.nodeIds.has(id)));
+      if (!nodes.has(startId) || !nodes.has(endId)) return null;
+      const orderedNodes = graph.nodes
+        .filter((node) => nodes.has(node.id))
+        .sort((left, right) => (Number(left.position.x) || 0) - (Number(right.position.x) || 0) || (Number(left.position.y) || 0) - (Number(right.position.y) || 0));
+      const edges = graph.edges.filter((edge) => nodes.has(edge.source) && nodes.has(edge.target));
+      return {
+        nodeSequence: orderedNodes.map((node) => node.id),
+        edgeSequence: edges.map((edge) => edge.id),
+        nodeIds: nodes,
+        edgeIds: new Set(edges.map((edge) => edge.id)),
+        playable: false,
+      };
+    }
+    if (mode === "exceptions") {
+      const reachable = reachableRoute(startId, graph, "forward");
+      const exceptionIds = reachable.nodeSequence.filter((id) => isExceptionNode(getNode(id)));
+      const nodes = new Set(exceptionIds);
+      const edges = new Set(reachable.edgeSequence.filter((id) => { const edge = getEdge(id); return edge && (nodes.has(edge.source) || nodes.has(edge.target)); }));
+      return { nodeSequence: exceptionIds, edgeSequence: [...edges], nodeIds: nodes, edgeIds: edges };
+    }
+    if (mode === "longest" && endId) return longestPathBetween(startId, endId, graph);
+    if (mode === "shortest" && endId) {
+      const path = shortestPath([startId], new Set([endId]), graph.edges);
+      return path ? combinePaths(path) : null;
+    }
+    const route = buildForwardRoute(startId, graph);
+    return combinePaths(route);
+  }
+
   function focusContainsNode(nodeId) {
     return Boolean(state.focusPath?.nodeIds?.has(nodeId));
   }
 
   function focusContainsEdge(edgeId) {
     return Boolean(state.focusPath?.edgeIds?.has(edgeId));
+  }
+
+  function nodeSearchText(node) {
+    const lane = getLane(node.laneId);
+    return [node.id, node.type, node.data?.label, node.data?.description, node.data?.owner, node.data?.category, node.data?.criticality, lane?.name, ...(node.data?.tags || [])].join(" ").toLowerCase();
+  }
+
+  function isExceptionNode(node) {
+    return /(erro|falha|recus|cancel|bloque|expir|indispon|pendente|corrigir|reprocess|exce[cç][aã]o)/i.test(nodeSearchText(node));
+  }
+
+  function nodeMatchesView(node) {
+    if (state.viewMode === "all") return true;
+    if (state.viewMode === "exceptions") return isExceptionNode(node);
+    if (state.viewMode === "selected-lane") return state.selected?.kind === "lane" ? node.laneId === state.selected.id : true;
+    return String(node.data?.level || "operational") === state.viewMode;
+  }
+
+  function visibleNodeIds() {
+    return new Set(state.doc.nodes.filter(nodeMatchesView).map((node) => node.id));
+  }
+
+  function updateSearch(query, move = 0) {
+    state.searchQuery = String(query || "").trim().toLowerCase();
+    state.searchResults = state.searchQuery ? state.doc.nodes.filter((node) => nodeSearchText(node).includes(state.searchQuery)).map((node) => node.id) : [];
+    if (!state.searchResults.length) state.searchIndex = -1;
+    else if (move) state.searchIndex = (state.searchIndex + move + state.searchResults.length) % state.searchResults.length;
+    else state.searchIndex = 0;
+    const count = $('[data-role="search-count"]');
+    if (count) count.textContent = state.searchResults.length ? `${state.searchIndex + 1}/${state.searchResults.length}` : (state.searchQuery ? "0" : "");
+    if (state.searchIndex >= 0) {
+      const id = state.searchResults[state.searchIndex];
+      state.selected = { kind: "node", id };
+      centerOnNode(id);
+    }
+    renderNodes();
+    renderEdges();
+    renderProperties();
+    renderHeaderAndStatus();
+    renderMinimap();
   }
 
   function renderNodes() {
@@ -747,6 +928,12 @@ export default function flowEditor(component) {
       nodeEl.classList.toggle("focus-dimmed", Boolean(state.focusPath) && !focusContainsNode(node.id));
       nodeEl.classList.toggle("play-visited", state.playback.visitedNodeIds.has(node.id));
       nodeEl.classList.toggle("play-current", state.playback.currentNodeId === node.id);
+      nodeEl.classList.toggle("view-dimmed", !nodeMatchesView(node));
+      nodeEl.classList.toggle("search-match", state.searchResults.includes(node.id));
+      nodeEl.classList.toggle("search-current", state.searchResults[state.searchIndex] === node.id);
+      nodeEl.classList.toggle("critical", node.data.criticality === "critical");
+      nodeEl.classList.toggle("high-criticality", node.data.criticality === "high");
+      nodeEl.dataset.level = node.data.level || "operational";
 
       const accent = el("div", "node-accent");
       const content = el("div", "node-content");
@@ -807,6 +994,10 @@ export default function flowEditor(component) {
       nodeEl.addEventListener("dblclick", (event) => {
         event.stopPropagation();
         selectItem("node", node.id);
+        if (node.type === "subprocess" && node.data.linkedFlowId) {
+          setTriggerValue("open_flow", { flowId: node.data.linkedFlowId, sourceNodeId: node.id });
+          return;
+        }
         const labelInput = propertiesBody.querySelector('[data-field="label"]');
         labelInput?.focus();
         labelInput?.select();
@@ -886,10 +1077,19 @@ export default function flowEditor(component) {
 
   function renderEdges() {
     Array.from(edgeLayer.querySelectorAll(".edge-group, .temp-edge")).forEach((item) => item.remove());
+    const visibleIds = visibleNodeIds();
     state.doc.edges.forEach((edge) => {
       const sourceNode = getNode(edge.source);
       const targetNode = getNode(edge.target);
       if (!sourceNode || !targetNode) return;
+      if (!visibleIds.has(edge.source) || !visibleIds.has(edge.target)) return;
+      if (state.edgeVisibility === "none") return;
+      if (state.edgeVisibility === "cross-lane" && sourceNode.laneId === targetNode.laneId) return;
+      if (state.edgeVisibility === "selection") {
+        const selectedNodeId = state.selected?.kind === "node" ? state.selected.id : null;
+        const selectedEdgeId = state.selected?.kind === "edge" ? state.selected.id : null;
+        if (edge.id !== selectedEdgeId && edge.source !== selectedNodeId && edge.target !== selectedNodeId && !focusContainsEdge(edge.id)) return;
+      }
       const source = nodeCenter(sourceNode, "source", edge.sourceHandle);
       const target = nodeCenter(targetNode, "target");
       const path = edgePath(source, target, edge.type, edge);
@@ -1107,22 +1307,60 @@ export default function flowEditor(component) {
     control.addEventListener(eventName, () => mutate(() => callback(control)));
   }
 
+  function renderCommentPanel(targetKind, targetId) {
+    const panel = el("div", "comment-panel");
+    const title = el("div", "comment-panel-title");
+    const related = state.comments.filter((item) => item.target_kind === targetKind && String(item.target_id) === String(targetId));
+    title.append(el("strong", "", `Comentários (${related.filter((item) => !item.resolved).length} abertos)`));
+    const list = el("div", "comment-list");
+    related.slice(0, 5).forEach((item) => {
+      const row = el("div", `comment-item${item.resolved ? " resolved" : ""}`);
+      row.append(el("strong", "", `@${item.author || "usuário"}`), el("span", "", item.content || ""));
+      list.appendChild(row);
+    });
+    const input = el("textarea");
+    input.placeholder = "Adicionar comentário. Use @usuario para mencionar.";
+    const button = el("button", "", "Comentar");
+    button.type = "button";
+    button.disabled = !canModify();
+    button.addEventListener("click", () => {
+      const content = input.value.trim();
+      if (!content) return toast("Digite um comentário.", "warning");
+      const mentions = [...content.matchAll(/@([a-zA-Z0-9._-]+)/g)].map((match) => match[1].toLowerCase());
+      setTriggerValue("comment_create", { targetKind, targetId, content, mentions });
+      input.value = "";
+      toast("Comentário enviado.", "success");
+    });
+    panel.append(title, list, input, button);
+    return panel;
+  }
+
   function renderDocumentProperties() {
     $('[data-role="properties-caption"]').textContent = "Configurações do fluxo";
     const name = textInput("flow-name", state.doc.flow.name, "Nome do processo");
     bindCommit(name, (input) => { state.doc.flow.name = input.value.trim() || "Processo sem nome"; });
     const description = textarea("flow-description", state.doc.flow.description);
     bindCommit(description, (input) => { state.doc.flow.description = input.value; });
-    const status = selectInput("flow-status", state.doc.flow.status, [["draft", "Rascunho"], ["active", "Ativo"], ["archived", "Arquivado"]]);
-    bindCommit(status, (input) => { state.doc.flow.status = input.value; });
+    const status = selectInput("flow-status", state.doc.flow.status, [["draft", "Rascunho"], ["in_review", "Em revisão"], ["approved", "Aprovado"], ["published", "Publicado"], ["archived", "Arquivado"]]);
+    status.disabled = true;
+    const flowTags = textInput("flow-tags", (state.doc.flow.tags || []).join(", "), "Ex.: comercial, financeiro");
+    bindCommit(flowTags, (input) => { state.doc.flow.tags = input.value.split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 30); });
     const orientation = selectInput("flow-orientation", state.doc.flow.orientation, [["LR", "Esquerda → direita"], ["TB", "Cima → baixo"], ["RL", "Direita → esquerda"], ["BT", "Baixo → cima"]]);
     bindCommit(orientation, (input) => { state.doc.flow.orientation = input.value; });
+    const layoutPreset = selectInput("layout-preset", state.doc.settings.layoutPreset || "readable", [["compact", "Compacto"], ["readable", "Legível"], ["preserve", "Preservar posições"]]);
+    bindCommit(layoutPreset, (input) => { state.doc.settings.layoutPreset = input.value; });
+    const edgeRouting = selectInput("edge-routing", state.doc.settings.edgeRouting || "corridor", [["corridor", "Corredores por raia"], ["orthogonal", "Ortogonal"], ["straight", "Linha reta"]]);
+    bindCommit(edgeRouting, (input) => { state.doc.settings.edgeRouting = input.value; state.doc.edges.forEach((edge) => { edge.type = input.value === "straight" ? "straight" : "step"; }); });
     propertiesBody.append(
       fieldGroup("Nome", name),
       fieldGroup("Descrição", description),
-      fieldGroup("Status", status),
+      fieldGroup("Status de governança", status),
+      fieldGroup("Tags do fluxo", flowTags),
       fieldGroup("Orientação do layout", orientation),
+      fieldGroup("Organização", layoutPreset),
+      fieldGroup("Roteamento das linhas", edgeRouting),
       switchRow("Encaixar na grade", "Alinha movimentos ao espaçamento configurado", state.doc.settings.snapToGrid, () => mutate(() => { state.doc.settings.snapToGrid = !state.doc.settings.snapToGrid; })),
+      renderCommentPanel("flow", state.doc.flow.id),
     );
   }
 
@@ -1156,7 +1394,26 @@ export default function flowEditor(component) {
     const sla = numberInput("sla", node.data.slaMinutes, 0);
     bindCommit(sla, (input) => { node.data.slaMinutes = input.value === "" ? null : Math.max(0, Number(input.value)); });
     const tags = textInput("tags", node.data.tags.join(", "), "Ex.: contrato, aprovação");
-    bindCommit(tags, (input) => { node.data.tags = input.value.split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 12); });
+    bindCommit(tags, (input) => { node.data.tags = input.value.split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 30); });
+    const level = selectInput("level", node.data.level || "operational", [["executive", "Executivo"], ["operational", "Operacional"], ["technical", "Técnico"]]);
+    bindCommit(level, (input) => { node.data.level = input.value; });
+    const category = textInput("category", node.data.category || "process", "Ex.: integration, exception");
+    bindCommit(category, (input) => { node.data.category = input.value.trim() || "process"; });
+    const criticality = selectInput("criticality", node.data.criticality || "medium", [["low", "Baixa"], ["medium", "Média"], ["high", "Alta"], ["critical", "Crítica"]]);
+    bindCommit(criticality, (input) => { node.data.criticality = input.value; });
+    const documentationUrl = textInput("documentation-url", node.data.documentationUrl || "", "Link da documentação");
+    bindCommit(documentationUrl, (input) => { node.data.documentationUrl = input.value.trim(); });
+    const responsible = textInput("raci-responsible", node.data.raci?.responsible || node.data.owner || "", "Responsável (R)");
+    bindCommit(responsible, (input) => { node.data.raci ||= {}; node.data.raci.responsible = input.value; });
+    const accountable = textInput("raci-accountable", node.data.raci?.accountable || "", "Aprovador (A)");
+    bindCommit(accountable, (input) => { node.data.raci ||= {}; node.data.raci.accountable = input.value; });
+
+    let linkedFlowField = null;
+    if (node.type === "subprocess") {
+      const linked = selectInput("linked-flow", node.data.linkedFlowId || "", [["", "Sem fluxo vinculado"], ...state.flowCatalog.filter((flow) => flow.id !== state.doc.flow.id).map((flow) => [flow.id, flow.name])]);
+      bindCommit(linked, (input) => { node.data.linkedFlowId = input.value || null; });
+      linkedFlowField = fieldGroup("Fluxo detalhado vinculado", linked);
+    }
 
     let preferredBranchField = null;
     if (node.type === "decision") {
@@ -1193,13 +1450,17 @@ export default function flowEditor(component) {
     const propertyItems = [
       fieldGroup("Tipo", type), fieldGroup("Nome", label), fieldGroup("Descrição", description),
       fieldGroup("Responsável", owner), fieldGroup("Raia", lane), fieldGroup("SLA em minutos", sla),
-      fieldGroup("Tags separadas por vírgula", tags),
+      fieldGroup("Nível de visualização", level), fieldGroup("Categoria", category), fieldGroup("Criticidade", criticality),
+      fieldGroup("Tags separadas por vírgula", tags), fieldGroup("Documentação", documentationUrl),
+      fieldGroup("RACI — Responsável", responsible), fieldGroup("RACI — Aprovador", accountable),
     ];
+    if (linkedFlowField) propertyItems.push(linkedFlowField);
     if (preferredBranchField) propertyItems.push(preferredBranchField);
     propertyItems.push(
       coordinates,
       switchRow("Elemento ativo", "Itens inativos permanecem visíveis, mas são ignorados na validação principal", node.data.enabled, () => mutate(() => { node.data.enabled = !node.data.enabled; })),
       switchRow("Posição bloqueada", "Impede o arraste manual e o auto-layout", node.data.locked, () => mutate(() => { node.data.locked = !node.data.locked; })),
+      renderCommentPanel("node", node.id),
       actions,
     );
     propertiesBody.append(...propertyItems);
@@ -1234,6 +1495,7 @@ export default function flowEditor(component) {
       fieldGroup("Condição", condition),
       fieldGroup("Estilo", type),
       switchRow("Conexão ativa", "Conexões inativas são exibidas com linha tracejada", edge.enabled, () => mutate(() => { edge.enabled = !edge.enabled; })),
+      renderCommentPanel("edge", edge.id),
       actions,
     );
   }
@@ -1242,6 +1504,8 @@ export default function flowEditor(component) {
     $('[data-role="properties-caption"]').textContent = "Raia do processo";
     const name = textInput("lane-name", lane.name, "Nome da raia");
     bindCommit(name, (input) => { lane.name = input.value.trim() || "Raia"; });
+    const laneOwner = textInput("lane-owner", lane.owner || "", "Área ou papel responsável");
+    bindCommit(laneOwner, (input) => { lane.owner = input.value.trim(); });
     const order = numberInput("lane-order", lane.order, 1);
     bindCommit(order, (input) => { lane.order = Math.max(1, Number(input.value) || 1); });
     const height = numberInput("lane-height", lane.height, 110);
@@ -1258,11 +1522,13 @@ export default function flowEditor(component) {
     actions.append(addTask, remove);
     propertiesBody.append(
       fieldGroup("Nome", name),
+      fieldGroup("Responsável da raia", laneOwner),
       fieldGroup("Ordem", order),
       fieldGroup("Altura", height),
       fieldGroup("Cor", color),
       switchRow("Raia ativa", "Ao desativar, os itens internos permanecem disponíveis", lane.enabled, () => mutate(() => { lane.enabled = !lane.enabled; })),
       switchRow("Recolher raia", "Mostra somente o cabeçalho", lane.collapsed, () => mutate(() => { lane.collapsed = !lane.collapsed; })),
+      renderCommentPanel("lane", lane.id),
       actions,
     );
   }
@@ -1306,6 +1572,7 @@ export default function flowEditor(component) {
   }
 
   function addNode(type, x, y, laneId = null) {
+    if (!canModify()) return toast("Seu acesso é somente leitura.", "warning");
     const meta = NODE_TYPES[type] || NODE_TYPES.task;
     const id = uid("node");
     mutate(() => {
@@ -1321,6 +1588,7 @@ export default function flowEditor(component) {
   }
 
   function addLane() {
+    if (!canModify()) return toast("Seu acesso é somente leitura.", "warning");
     const order = state.doc.lanes.length + 1;
     const colors = ["#EEF2FF", "#ECFDF5", "#FFF7ED", "#FDF2F8", "#ECFEFF"];
     const id = uid("lane");
@@ -1331,6 +1599,7 @@ export default function flowEditor(component) {
   }
 
   function duplicateSelected() {
+    if (!canModify()) return toast("Seu acesso é somente leitura.", "warning");
     if (state.selected?.kind !== "node") return;
     const source = getNode(state.selected.id);
     if (!source) return;
@@ -1346,6 +1615,7 @@ export default function flowEditor(component) {
   }
 
   function deleteSelected() {
+    if (!canModify()) return toast("Seu acesso é somente leitura.", "warning");
     if (!state.selected) return;
     const selected = clone(state.selected);
     mutate(() => {
@@ -1363,6 +1633,7 @@ export default function flowEditor(component) {
   }
 
   function beginNodeDrag(event, nodeId) {
+    if (!canModify()) return;
     if (event.button !== 0 || event.target.classList.contains("node-port")) return;
     const node = getNode(nodeId);
     if (!node || node.data.locked) return;
@@ -1373,12 +1644,14 @@ export default function flowEditor(component) {
   }
 
   function beginLaneResize(event, laneId, initialHeight) {
+    if (!canModify()) return;
     event.stopPropagation();
     const start = worldPoint(event.clientX, event.clientY);
     state.dragging = { kind: "lane-resize", id: laneId, start, initialHeight, snapshot: clone(state.doc) };
   }
 
   function beginConnection(event, sourceId, sourceHandle = "output") {
+    if (!canModify()) return toast("Seu acesso é somente leitura.", "warning");
     event.stopPropagation();
     event.preventDefault();
     const source = getNode(sourceId);
@@ -1389,6 +1662,7 @@ export default function flowEditor(component) {
   }
 
   function finishConnection(event, targetId) {
+    if (!canModify()) return;
     event.stopPropagation();
     if (!state.connecting) return;
     const sourceId = state.connecting.source;
@@ -1711,6 +1985,14 @@ export default function flowEditor(component) {
     const layoutEdges = state.doc.edges.filter((edge) => edge.enabled !== false && activeIds.has(edge.source) && activeIds.has(edge.target));
     const levels = computeLayoutLevels(layoutNodes, layoutEdges);
     const maxLevel = Math.max(0, ...levels.values());
+    const preset = state.doc.settings.layoutPreset || "readable";
+    const levelGap = preset === "compact" ? 220 : (preset === "preserve" ? 250 : 290);
+    const rowGap = preset === "compact" ? 88 : 108;
+    const neighborMap = new Map(layoutNodes.map((node) => [node.id, []]));
+    layoutEdges.forEach((edge) => {
+      neighborMap.get(edge.source)?.push(edge.target);
+      neighborMap.get(edge.target)?.push(edge.source);
+    });
     const laneBuckets = new Map();
 
     layoutNodes.forEach((node) => {
@@ -1727,7 +2009,7 @@ export default function flowEditor(component) {
       const maxRows = levelsForLane
         ? Math.max(1, ...[...levelsForLane.values()].map((items) => items.length))
         : 1;
-      const requiredHeight = LANE_CONTENT_TOP + maxRows * LANE_ROW_GAP + LANE_BOTTOM_PADDING;
+      const requiredHeight = LANE_CONTENT_TOP + maxRows * rowGap + LANE_BOTTOM_PADDING;
       lane.height = clamp(Math.max(Number(lane.height) || 240, requiredHeight), 150, 1200);
       lane.collapsed = false;
     });
@@ -1740,14 +2022,20 @@ export default function flowEditor(component) {
       if (!laneBox) return;
       [...levelsForLane.entries()].sort((a, b) => a[0] - b[0]).forEach(([level, items]) => {
         const ordered = [...items].sort((left, right) => {
-          return (Number(left.position.y) || 0) - (Number(right.position.y) || 0)
+          const barycenter = (node) => {
+            const neighbors = (neighborMap.get(node.id) || []).map((id) => getNode(id)).filter(Boolean);
+            if (!neighbors.length) return Number(node.position.y) || 0;
+            return neighbors.reduce((sum, item) => sum + (Number(item.position.y) || 0), 0) / neighbors.length;
+          };
+          return barycenter(left) - barycenter(right)
+            || (Number(left.position.y) || 0) - (Number(right.position.y) || 0)
             || String(left.data.label || "").localeCompare(String(right.data.label || ""));
         });
         ordered.forEach((node, row) => {
           if (node.data.locked === true) return;
           const visualLevel = orientation === "RL" ? maxLevel - level : level;
-          const nextX = 120 + visualLevel * LEVEL_GAP;
-          const nextY = laneBox.top + LANE_CONTENT_TOP + row * LANE_ROW_GAP;
+          const nextX = preset === "preserve" ? Math.max(80, Number(node.position.x) || 120) : 120 + visualLevel * levelGap;
+          const nextY = laneBox.top + LANE_CONTENT_TOP + row * rowGap;
           if (node.position.x !== nextX || node.position.y !== nextY) moved += 1;
           node.position.x = nextX;
           node.position.y = nextY;
@@ -1791,6 +2079,7 @@ export default function flowEditor(component) {
   }
 
   function autoLayout() {
+    if (!canModify()) return toast("Seu acesso é somente leitura.", "warning");
     if (!state.doc.nodes.length) return toast("Adicione elementos antes de organizar", "info");
     let summary = null;
     mutate(() => {
@@ -1888,6 +2177,7 @@ export default function flowEditor(component) {
   }
 
   function importJson(file) {
+    if (!canModify()) return toast("Seu acesso é somente leitura.", "warning");
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
@@ -1936,12 +2226,14 @@ export default function flowEditor(component) {
   }
 
   function save() {
+    if (!canModify()) return toast("Seu acesso é somente leitura.", "warning");
     const issues = validationReport().filter((issue) => issue.level === "error");
-    if (issues.length) toast(`O fluxo possui ${issues.length} erro(s), mas será salvo como rascunho.`, "warning");
+    if (issues.length) toast(`O fluxo possui ${issues.length} erro(s) e será salvo como rascunho.`, "warning");
+    clearAutosaveTimer();
     state.doc.flow.updatedAt = nowIso();
-    $('[data-role="save-state"]').textContent = "Salvando...";
-    $('[data-role="save-state"]').style.color = "#4f46e5";
-    setTriggerValue("save", clone(state.doc));
+    $('[data-role="save-state"]').textContent = "Salvando versão...";
+    $('[data-role="save-state"]').style.color = "var(--fe-primary)";
+    setTriggerValue("save", { document: clone(state.doc), revision: state.revision, validationErrors: issues.length });
   }
 
   function togglePalettePanel() {
@@ -2093,6 +2385,7 @@ export default function flowEditor(component) {
     state.playback.currentEdgeId = null;
     state.playback.visitedNodeIds = new Set();
     state.playback.visitedEdgeIds = new Set();
+    state.playback.waitingDecisionId = null;
   }
 
   function stopPlayback(showMessage = true) {
@@ -2117,6 +2410,52 @@ export default function flowEditor(component) {
     toast(doneMessage, "success");
   }
 
+  function showPlaybackDecisionChooser(nodeId) {
+    const node = getNode(nodeId);
+    const branches = activeDecisionBranches(nodeId);
+    const interactive = $('[data-role="interactive-play"]')?.checked !== false;
+    if (!interactive || !node || branches.length < 2) return false;
+    state.playback.paused = true;
+    state.playback.waitingDecisionId = nodeId;
+    clearPlaybackTimer();
+    const modal = $('[data-role="modal"]');
+    const body = $('[data-role="modal-body"]');
+    const title = $('[data-role="modal-title"]');
+    title.textContent = "Simulação — escolha a decisão";
+    body.innerHTML = "";
+    const intro = el("div", "route-choice-intro");
+    intro.append(el("strong", "", node.data.label || "Decisão"), el("span", "", "A reprodução está pausada. Escolha a condição que deve ser seguida nesta execução."));
+    const list = el("div", "route-choice-list");
+    branches.forEach((edge, index) => {
+      const target = getNode(edge.target);
+      const button = el("button", "route-choice");
+      button.type = "button";
+      const text = el("span", "route-choice-text");
+      text.append(el("strong", "", edge.label || edge.condition || `Saída ${index + 1}`), el("small", "", `Próxima etapa: ${target?.data?.label || edge.target}`));
+      button.append(el("span", "route-choice-index", String(index + 1)), text, el("span", "route-choice-arrow", "→"));
+      button.addEventListener("click", () => {
+        const graph = enabledGraph();
+        const suffix = buildForwardRoute(edge.target, graph);
+        const currentIndex = state.playback.index;
+        const prefixNodes = state.playback.nodeSequence.slice(0, currentIndex + 1);
+        const prefixEdges = state.playback.edgeSequence.slice(0, Math.max(0, currentIndex));
+        state.playback.nodeSequence = [...prefixNodes, edge.target, ...suffix.nodeSequence.slice(1)];
+        state.playback.edgeSequence = [...prefixEdges, edge.id, ...suffix.edgeSequence];
+        state.branchChoices[nodeId] = edge.id;
+        state.playback.paused = false;
+        state.playback.waitingDecisionId = null;
+        modal.hidden = true;
+        renderAll();
+        state.playback.timer = setTimeout(advancePlayback, Math.min(400, playbackDelay()));
+      });
+      list.appendChild(button);
+    });
+    body.append(intro, list);
+    modal.hidden = false;
+    updatePlaybackUi();
+    return true;
+  }
+
   function advancePlayback() {
     if (!state.playback.running || state.playback.paused) return;
     state.playback.index += 1;
@@ -2137,6 +2476,9 @@ export default function flowEditor(component) {
     renderHeaderAndStatus();
     renderMinimap();
     centerOnNode(nodeId);
+
+    const currentNode = getNode(nodeId);
+    if (currentNode?.type === "decision" && showPlaybackDecisionChooser(nodeId)) return;
 
     state.playback.timer = setTimeout(() => {
       state.playback.currentEdgeId = null;
@@ -2178,6 +2520,197 @@ export default function flowEditor(component) {
     }
   }
 
+  function showRouteExplorer() {
+    const graph = enabledGraph();
+    const modal = $('[data-role="modal"]');
+    const body = $('[data-role="modal-body"]');
+    const title = $('[data-role="modal-title"]');
+    title.textContent = "Explorador de rotas";
+    body.innerHTML = "";
+    if (!graph.nodes.length) {
+      body.appendChild(el("div", "validation-ok", "O fluxo não possui elementos ativos."));
+      modal.hidden = false;
+      return;
+    }
+    const ordered = [...graph.nodes].sort((left, right) => (left.position.x - right.position.x) || (left.position.y - right.position.y));
+    const selectedNodeId = state.selected?.kind === "node" ? state.selected.id : "";
+    const defaultStart = selectedNodeId || ordered.find((node) => node.type === "start")?.id || ordered[0].id;
+    const defaultEnd = ordered.findLast?.((node) => node.type === "end")?.id || [...ordered].reverse().find((node) => node.type === "end")?.id || ordered[ordered.length - 1].id;
+    const start = selectInput("route-start", defaultStart, ordered.map((node) => [node.id, `${node.data.label} · ${getLane(node.laneId)?.name || "Sem raia"}`]));
+    const end = selectInput("route-end", defaultEnd, ordered.map((node) => [node.id, `${node.data.label} · ${getLane(node.laneId)?.name || "Sem raia"}`]));
+    const mode = selectInput("route-mode", "main", [
+      ["main", "Caminho principal"], ["shortest", "Caminho mais curto"], ["longest", "Caminho mais longo"],
+      ["all-paths", "Todos os caminhos entre origem e destino"],
+      ["descendants", "Todas as etapas posteriores"], ["predecessors", "Todas as etapas anteriores"], ["exceptions", "Somente exceções posteriores"],
+    ]);
+    const form = el("div", "route-explorer-form");
+    form.append(fieldGroup("Origem", start), fieldGroup("Destino", end), fieldGroup("Estratégia", mode));
+    const actions = el("div", "route-explorer-actions");
+    const highlight = el("button", "button-primary", "Destacar rota");
+    const play = el("button", "", "Reproduzir rota");
+    const compare = el("button", "", "Comparar ramificações");
+    const apply = (shouldPlay) => {
+      const path = routeFromExplorer({ startId: start.value, endId: end.value, mode: mode.value });
+      if (!path || !path.nodeSequence.length) return toast("Nenhuma rota foi encontrada com os critérios informados.", "warning");
+      state.routeExplorer = { startId: start.value, endId: end.value, mode: mode.value };
+      state.focusPath = path;
+      state.selected = { kind: "node", id: start.value };
+      modal.hidden = true;
+      renderAll();
+      setTimeout(() => fitNodeIds(path.nodeIds), 30);
+      if (shouldPlay && path.playable === false) {
+        toast("A visão de todos os caminhos é comparativa. Selecione uma ramificação para reproduzir.", "info");
+      } else if (shouldPlay) startPlayback(true);
+      else toast(`Rota destacada com ${path.nodeSequence.length} etapas.`, "success");
+    };
+    highlight.addEventListener("click", () => apply(false));
+    play.addEventListener("click", () => apply(true));
+    compare.addEventListener("click", () => {
+      const node = getNode(start.value);
+      const branches = activeDecisionBranches(start.value);
+      if (!node || node.type !== "decision" || branches.length < 2) {
+        return toast("Selecione uma decisão com pelo menos duas saídas como origem.", "warning");
+      }
+      body.innerHTML = "";
+      const intro = el("div", "route-choice-intro");
+      intro.append(el("strong", "", `Comparação — ${node.data.label}`), el("span", "", "As estimativas consideram a continuidade ativa de cada ramificação, sem repetir ciclos."));
+      const grid = el("div", "analytics-grid");
+      const maps = graphMaps(graph);
+      branches.forEach((edge, index) => {
+        const stats = continuationStats(edge.target, graph, maps, new Set([node.id]));
+        const card = el("div", "analytics-card");
+        card.append(
+          el("small", "", edge.label || edge.condition || `Saída ${index + 1}`),
+          el("strong", "", `${stats.count} etapas`),
+          el("span", "", `Profundidade ${stats.maxDepth} · finais normais ${stats.normalTerminals} · exceções ${stats.exceptionTerminals}`),
+        );
+        card.addEventListener("click", () => {
+          state.branchChoices[node.id] = edge.id;
+          node.data.preferredEdgeId = edge.id;
+          state.selected = { kind: "edge", id: edge.id };
+          state.focusPath = combinePaths({ nodeSequence: [node.id, edge.target], edgeSequence: [edge.id] }, buildForwardRoute(edge.target, graph));
+          modal.hidden = true;
+          renderAll();
+          setTimeout(() => fitNodeIds(state.focusPath.nodeIds), 30);
+        });
+        grid.appendChild(card);
+      });
+      body.append(intro, grid);
+    });
+    actions.append(highlight, play, compare);
+    body.append(form, actions);
+    modal.hidden = false;
+  }
+
+  function localAnalytics() {
+    const activeNodes = state.doc.nodes.filter((node) => node.data.enabled !== false);
+    const activeIds = new Set(activeNodes.map((node) => node.id));
+    const activeEdges = state.doc.edges.filter((edge) => edge.enabled !== false && activeIds.has(edge.source) && activeIds.has(edge.target));
+    const decisions = activeNodes.filter((node) => node.type === "decision");
+    const integrations = activeNodes.filter((node) => node.type === "api");
+    const subprocesses = activeNodes.filter((node) => node.type === "subprocess");
+    const documented = activeNodes.filter((node) => String(node.data.description || "").trim()).length;
+    const owned = activeNodes.filter((node) => String(node.data.owner || "").trim()).length;
+    const invalidDecisions = decisions.filter((node) => activeEdges.filter((edge) => edge.source === node.id).length < 2).length;
+    const critical = activeNodes.filter((node) => node.data.criticality === "critical").length;
+    const score = activeNodes.length ? Math.max(0, Math.round(100 - invalidDecisions * 8 - (activeNodes.length - documented) / activeNodes.length * 24 - (activeNodes.length - owned) / activeNodes.length * 18 - activeNodes.filter((node) => !node.laneId).length * 2)) : 100;
+    return { activeNodes, activeEdges, decisions, integrations, subprocesses, documented, owned, invalidDecisions, critical, score };
+  }
+
+  function showAnalytics() {
+    const metrics = localAnalytics();
+    const modal = $('[data-role="modal"]');
+    const body = $('[data-role="modal-body"]');
+    $('[data-role="modal-title"]').textContent = "Indicadores e qualidade do processo";
+    body.innerHTML = "";
+    const grid = el("div", "analytics-grid");
+    const values = [
+      ["Qualidade", `${metrics.score}/100`], ["Elementos", metrics.activeNodes.length], ["Conexões", metrics.activeEdges.length],
+      ["Decisões", metrics.decisions.length], ["Subprocessos", metrics.subprocesses.length], ["Integrações", metrics.integrations.length],
+      ["Documentados", `${metrics.documented}/${metrics.activeNodes.length}`], ["Com responsável", `${metrics.owned}/${metrics.activeNodes.length}`],
+      ["Críticos", metrics.critical],
+    ];
+    values.forEach(([label, value]) => {
+      const card = el("div", "analytics-card");
+      card.append(el("span", "", label), el("strong", "", String(value)));
+      grid.appendChild(card);
+    });
+    const note = el("div", metrics.invalidDecisions ? "validation-item error" : "validation-ok", metrics.invalidDecisions ? `${metrics.invalidDecisions} decisão(ões) possuem menos de duas saídas.` : "Todas as decisões ativas possuem pelo menos duas saídas.");
+    body.append(grid, note);
+    modal.hidden = false;
+  }
+
+  function escapeXml(value) {
+    return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
+  }
+
+  function buildSvgExport() {
+    const width = worldWidth();
+    const height = worldHeight();
+    const geometry = laneGeometry();
+    const parts = [`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`, `<rect width="100%" height="100%" fill="${state.uiTheme === "dark" ? "#00141f" : "#f4f8fb"}"/>`];
+    geometry.sorted.forEach((lane) => {
+      const box = geometry.map.get(lane.id);
+      parts.push(`<rect x="34" y="${box.top}" width="${width - 68}" height="${box.height}" rx="14" fill="${escapeXml(lane.color || "#e8f5f0")}" fill-opacity="0.48" stroke="#9fb3c8"/>`);
+      parts.push(`<text x="52" y="${box.top + 25}" font-family="Arial" font-size="13" font-weight="700" fill="#102a43">${escapeXml(lane.name)}</text>`);
+    });
+    state.doc.edges.forEach((edge) => {
+      const sourceNode = getNode(edge.source), targetNode = getNode(edge.target);
+      if (!sourceNode || !targetNode) return;
+      const d = edgePath(nodeCenter(sourceNode, "source", edge.sourceHandle), nodeCenter(targetNode, "target"), "step", edge);
+      parts.push(`<path d="${d}" fill="none" stroke="#486581" stroke-width="2"/>`);
+    });
+    state.doc.nodes.forEach((node) => {
+      const size = nodeDimensions(node), meta = NODE_TYPES[node.type] || NODE_TYPES.task;
+      const rx = node.type === "start" || node.type === "end" ? 34 : (node.type === "decision" ? 18 : 12);
+      parts.push(`<rect x="${node.position.x}" y="${node.position.y}" width="${size.width}" height="${size.height}" rx="${rx}" fill="#ffffff" stroke="${meta.color}" stroke-width="1.5"/>`);
+      parts.push(`<rect x="${node.position.x + 14}" y="${node.position.y}" width="${size.width - 28}" height="5" rx="3" fill="${meta.color}"/>`);
+      const label = String(node.data.label || "").slice(0, 32);
+      parts.push(`<text x="${node.position.x + 12}" y="${node.position.y + 34}" font-family="Arial" font-size="11" font-weight="700" fill="#102a43">${escapeXml(label)}</text>`);
+      parts.push(`<text x="${node.position.x + 12}" y="${node.position.y + 51}" font-family="Arial" font-size="9" fill="#486581">${escapeXml(String(node.data.owner || "").slice(0, 30))}</text>`);
+    });
+    parts.push("</svg>");
+    return parts.join("");
+  }
+
+  function downloadBlob(content, mime, filename) {
+    const blob = content instanceof Blob ? content : new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url; anchor.download = filename; anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1200);
+  }
+
+  function safeFlowName(extension) {
+    const name = (state.doc.flow.name || "fluxo").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").toLowerCase();
+    return `${name || "fluxo"}.${extension}`;
+  }
+
+  function exportSvg() {
+    downloadBlob(buildSvgExport(), "image/svg+xml;charset=utf-8", safeFlowName("svg"));
+    toast("SVG exportado.", "success");
+  }
+
+  function exportPng() {
+    const svg = buildSvgExport();
+    const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      const maxDimension = 10000;
+      const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.floor(image.width * scale));
+      canvas.height = Math.max(1, Math.floor(image.height * scale));
+      const context = canvas.getContext("2d");
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((png) => { if (png) downloadBlob(png, "image/png", safeFlowName("png")); }, "image/png");
+      URL.revokeObjectURL(url);
+    };
+    image.onerror = () => { URL.revokeObjectURL(url); toast("Não foi possível gerar o PNG neste navegador.", "error"); };
+    image.src = url;
+  }
+
   function toolbarAction(action) {
     const rect = viewport.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
@@ -2189,16 +2722,22 @@ export default function flowEditor(component) {
     else if (action === "zoom-reset") { state.doc.viewport = { x: 0, y: 0, zoom: 1 }; renderViewport(); renderMinimap(); }
     else if (action === "fit") fitView();
     else if (action === "fullscreen") toggleFullscreen();
+    else if (action === "route-explorer") showRouteExplorer();
     else if (action === "focus-path") toggleFocusPath();
     else if (action === "play") togglePlayback();
     else if (action === "stop") stopPlayback(true);
     else if (action === "layout") autoLayout();
     else if (action === "validate") showValidation();
+    else if (action === "analytics") showAnalytics();
     else if (action === "theme") toggleTheme();
     else if (action === "toggle-palette") togglePalettePanel();
     else if (action === "toggle-inspector") toggleInspectorPanel();
     else if (action === "import") fileInput.click();
     else if (action === "export") exportJson();
+    else if (action === "export-svg") exportSvg();
+    else if (action === "export-png") exportPng();
+    else if (action === "search-prev") updateSearch(state.searchQuery, -1);
+    else if (action === "search-next") updateSearch(state.searchQuery, 1);
     else if (action === "save") save();
     else if (action === "add-lane") addLane();
     else if (action === "close-modal") $('[data-role="modal"]').hidden = true;
@@ -2235,6 +2774,12 @@ export default function flowEditor(component) {
       const query = event.target.value.trim().toLowerCase();
       $$('.palette-item').forEach((item) => { item.style.display = !query || item.dataset.search.includes(query) ? "flex" : "none"; });
     });
+    const canvasSearch = $('[data-role="canvas-search"]');
+    canvasSearch?.addEventListener("input", (event) => updateSearch(event.target.value, 0));
+    canvasSearch?.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); updateSearch(event.target.value, event.shiftKey ? -1 : 1); } });
+    $('[data-role="view-mode"]')?.addEventListener("change", (event) => { state.viewMode = event.target.value; renderAll(); if (state.viewMode !== "all") setTimeout(() => fitNodeIds(visibleNodeIds()), 30); });
+    $('[data-role="edge-visibility"]')?.addEventListener("change", (event) => { state.edgeVisibility = event.target.value; renderEdges(); });
+    $('[data-role="interactive-play"]')?.addEventListener("change", (event) => { state.doc.settings.interactivePlayback = event.target.checked; markDirty(); });
     fileInput.addEventListener("change", () => importJson(fileInput.files?.[0]));
     $$('[data-setting]').forEach((input) => input.addEventListener("change", () => {
       mutate(() => { state.doc.settings[input.dataset.setting] = input.checked; });
@@ -2265,6 +2810,8 @@ export default function flowEditor(component) {
 
   palette();
   bindEvents();
+  const interactiveControl = $('[data-role="interactive-play"]');
+  if (interactiveControl) interactiveControl.checked = state.doc.settings.interactivePlayback !== false;
   ensureUnassignedLane();
   const initialLayoutProblems = countLayoutProblems();
   const repairedLargeLayout = state.doc.nodes.length >= 60
@@ -2287,5 +2834,6 @@ export default function flowEditor(component) {
     window.removeEventListener("resize", renderMinimap);
     document.removeEventListener("fullscreenchange", updateFullscreenButton);
     clearPlaybackTimer();
+    clearAutosaveTimer();
   };
 }

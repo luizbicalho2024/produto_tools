@@ -18,16 +18,20 @@
       <button type="button" data-action="fit" title="Enquadrar todo o conteúdo">Enquadrar</button>
       <button type="button" data-action="fullscreen" data-role="fullscreen-button" title="Usar o monitor inteiro">⛶ Expandir</button>
       <span class="toolbar-divider"></span>
-      <button type="button" data-action="focus-path" data-role="focus-button" class="button-soft" title="Destacar o caminho relacionado ao item selecionado">◎ Destacar caminho</button>
-      <button type="button" data-action="play" data-role="play-button" class="button-play" title="Reproduzir o caminho até o fim">▶ Play</button>
+      <button type="button" data-action="route-explorer" class="button-soft" title="Escolher origem, destino e estratégia da rota">⌘ Rotas</button>
+      <button type="button" data-action="focus-path" data-role="focus-button" class="button-soft" title="Destacar o caminho relacionado ao item selecionado">◎ Destacar</button>
+      <button type="button" data-action="play" data-role="play-button" class="button-play" title="Reproduzir a rota escolhida">▶ Play</button>
       <button type="button" data-action="stop" data-role="stop-button" title="Parar reprodução" disabled>■</button>
       <span class="toolbar-divider"></span>
       <button type="button" data-action="layout" class="button-soft">Organizar</button>
       <button type="button" data-action="validate" class="button-soft">Validar</button>
+      <button type="button" data-action="analytics" class="button-soft">Indicadores</button>
       <button type="button" data-action="theme" data-role="theme-button" title="Alternar modo claro e escuro">☾ Escuro</button>
       <button type="button" data-action="import">Importar JSON</button>
-      <button type="button" data-action="export">Exportar JSON</button>
-      <button type="button" data-action="save" class="button-primary">Salvar</button>
+      <button type="button" data-action="export">JSON</button>
+      <button type="button" data-action="export-svg">SVG</button>
+      <button type="button" data-action="export-png">PNG</button>
+      <button type="button" data-action="save" class="button-primary">Salvar versão</button>
       <input data-role="file-input" type="file" accept="application/json,.json" hidden>
     </div>
   </header>
@@ -79,7 +83,31 @@
         <span data-role="selection-label">Nenhum item selecionado</span>
         <span data-role="connection-hint"></span>
         <span data-role="focus-status"></span>
+        <div class="canvas-search">
+          <input data-role="canvas-search" type="search" placeholder="Buscar etapa, tag ou responsável" aria-label="Buscar no fluxo">
+          <button type="button" data-action="search-prev" title="Resultado anterior">‹</button>
+          <span data-role="search-count"></span>
+          <button type="button" data-action="search-next" title="Próximo resultado">›</button>
+        </div>
         <div class="canvas-options">
+          <label>Visão
+            <select data-role="view-mode" title="Nível de visualização">
+              <option value="all">Completa</option>
+              <option value="executive">Executiva</option>
+              <option value="operational">Operacional</option>
+              <option value="technical">Técnica</option>
+              <option value="exceptions">Exceções</option>
+              <option value="selected-lane">Raia selecionada</option>
+            </select>
+          </label>
+          <label>Linhas
+            <select data-role="edge-visibility" title="Visualização das conexões">
+              <option value="all">Todas</option>
+              <option value="selection">Somente seleção</option>
+              <option value="cross-lane">Entre raias</option>
+              <option value="none">Ocultar</option>
+            </select>
+          </label>
           <label class="play-speed-label">Velocidade
             <select data-role="play-speed" title="Velocidade da reprodução">
               <option value="1400">0,5×</option>
@@ -87,6 +115,7 @@
               <option value="450">2×</option>
             </select>
           </label>
+          <label><input data-role="interactive-play" type="checkbox" checked> Decisões interativas</label>
           <label><input data-setting="showGrid" type="checkbox"> Grade</label>
           <label><input data-setting="snapToGrid" type="checkbox"> Encaixar</label>
           <label><input data-setting="showMiniMap" type="checkbox"> Minimapa</label>

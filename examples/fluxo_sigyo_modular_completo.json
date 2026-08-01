@@ -1,0 +1,4578 @@
+{
+  "schemaVersion": "1.0.0",
+  "flow": {
+    "id": "flow_sigyo_modular_completo_v1",
+    "name": "SIGYO Modular — Fluxo Completo",
+    "description": "Fluxo ponta a ponta do SIGYO Modular: catálogo, preços, planos, simulação, proposta, aceite, assinatura digital, onboarding, contrato, assinatura comercial, empenho, provisionamento de ASTO/ELIQ/Verdio/BDT/App Off, operação, métricas, prévia, faturamento, pagamento, auditoria e ciclo de vida contratual.",
+    "status": "draft",
+    "orientation": "LR",
+    "createdAt": "2026-08-01T18:45:46.332526+00:00",
+    "updatedAt": "2026-08-01T18:45:46.332526+00:00",
+    "createdBy": "luiz.bicalho@rovemabank.com.br"
+  },
+  "settings": {
+    "snapToGrid": true,
+    "gridSize": 20,
+    "autoLayout": false,
+    "showMiniMap": true,
+    "showGrid": true
+  },
+  "viewport": {
+    "x": 20,
+    "y": 20,
+    "zoom": 0.18
+  },
+  "lanes": [
+    {
+      "id": "lane_comercial",
+      "name": "Comercial",
+      "orientation": "horizontal",
+      "order": 1,
+      "color": "#EEF2FF",
+      "collapsed": false,
+      "enabled": true,
+      "height": 340
+    },
+    {
+      "id": "lane_cliente",
+      "name": "Cliente ou Prospect",
+      "orientation": "horizontal",
+      "order": 2,
+      "color": "#F5F3FF",
+      "collapsed": false,
+      "enabled": true,
+      "height": 340
+    },
+    {
+      "id": "lane_juridico",
+      "name": "Jurídico e Assinatura Digital",
+      "orientation": "horizontal",
+      "order": 3,
+      "color": "#FFF7ED",
+      "collapsed": false,
+      "enabled": true,
+      "height": 340
+    },
+    {
+      "id": "lane_core",
+      "name": "SIGYO Core",
+      "orientation": "horizontal",
+      "order": 4,
+      "color": "#EFF6FF",
+      "collapsed": false,
+      "enabled": true,
+      "height": 340
+    },
+    {
+      "id": "lane_asto",
+      "name": "ASTO",
+      "orientation": "horizontal",
+      "order": 5,
+      "color": "#ECFDF5",
+      "collapsed": false,
+      "enabled": true,
+      "height": 340
+    },
+    {
+      "id": "lane_eliq",
+      "name": "ELIQ",
+      "orientation": "horizontal",
+      "order": 6,
+      "color": "#F0FDFA",
+      "collapsed": false,
+      "enabled": true,
+      "height": 340
+    },
+    {
+      "id": "lane_verdio",
+      "name": "Verdio",
+      "orientation": "horizontal",
+      "order": 7,
+      "color": "#F7FEE7",
+      "collapsed": false,
+      "enabled": true,
+      "height": 340
+    },
+    {
+      "id": "lane_bdt",
+      "name": "BDT",
+      "orientation": "horizontal",
+      "order": 8,
+      "color": "#FDF4FF",
+      "collapsed": false,
+      "enabled": true,
+      "height": 340
+    },
+    {
+      "id": "lane_appoff",
+      "name": "App Off",
+      "orientation": "horizontal",
+      "order": 9,
+      "color": "#FFF1F2",
+      "collapsed": false,
+      "enabled": true,
+      "height": 340
+    },
+    {
+      "id": "lane_financeiro",
+      "name": "Financeiro",
+      "orientation": "horizontal",
+      "order": 10,
+      "color": "#FFFBEB",
+      "collapsed": false,
+      "enabled": true,
+      "height": 340
+    },
+    {
+      "id": "lane_externo",
+      "name": "Serviços Externos",
+      "orientation": "horizontal",
+      "order": 11,
+      "color": "#F8FAFC",
+      "collapsed": false,
+      "enabled": true,
+      "height": 340
+    },
+    {
+      "id": "lane_governanca",
+      "name": "Governança, Segurança e Auditoria",
+      "orientation": "horizontal",
+      "order": 12,
+      "color": "#F1F5F9",
+      "collapsed": false,
+      "enabled": true,
+      "height": 340
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_start",
+      "type": "start",
+      "laneId": "lane_comercial",
+      "position": {
+        "x": 80,
+        "y": 70
+      },
+      "data": {
+        "label": "Estruturar oferta SIGYO",
+        "description": "Início do ciclo comercial e operacional do SIGYO Modular.",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Início",
+          "MultiMódulo"
+        ]
+      }
+    },
+    {
+      "id": "n_catalogo",
+      "type": "subprocess",
+      "laneId": "lane_comercial",
+      "position": {
+        "x": 340,
+        "y": 70
+      },
+      "data": {
+        "label": "Cadastrar catálogo comercial",
+        "description": "Cadastrar itens comerciais por módulo e produto. Tipos: recorrente, implantação, adesão, variável, percentual e avulso. Definir base de cobrança, recorrência, status e vigência.",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-001",
+          "Catálogo",
+          "Comercial"
+        ]
+      }
+    },
+    {
+      "id": "n_precos",
+      "type": "subprocess",
+      "laneId": "lane_comercial",
+      "position": {
+        "x": 620,
+        "y": 70
+      },
+      "data": {
+        "label": "Configurar preços e vigências",
+        "description": "Preço padrão e específico por cliente; vigência inicial/final; descontos em valor ou percentual; faixas de quantidade; impedir sobreposição; manter histórico e auditoria.",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-002",
+          "Preço",
+          "Vigência"
+        ]
+      }
+    },
+    {
+      "id": "n_planos",
+      "type": "subprocess",
+      "laneId": "lane_comercial",
+      "position": {
+        "x": 900,
+        "y": 70
+      },
+      "data": {
+        "label": "Montar planos multi-módulo",
+        "description": "Criar planos por segmento com itens obrigatórios e opcionais, descontos padrão e combinação de ASTO, ELIQ, Verdio, BDT e App Off.",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-003",
+          "Planos",
+          "MultiMódulo"
+        ]
+      }
+    },
+    {
+      "id": "n_asto_catalogo",
+      "type": "task",
+      "laneId": "lane_asto",
+      "position": {
+        "x": 620,
+        "y": 1430
+      },
+      "data": {
+        "label": "Itens comerciais ASTO",
+        "description": "Mensalidade, Portal Credenciado, Gestão de OS, Auditoria de Serviços e Integração Cliente. Bases: FIXO_MENSAL, POR_CREDENCIADO, POR_OS, POR_TRANSACAO e PERCENTUAL_SERVICO.",
+        "owner": "ASTO",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "ASTO-001",
+          "Catálogo"
+        ]
+      }
+    },
+    {
+      "id": "n_eliq_catalogo",
+      "type": "task",
+      "laneId": "lane_eliq",
+      "position": {
+        "x": 620,
+        "y": 1770
+      },
+      "data": {
+        "label": "Itens comerciais ELIQ",
+        "description": "Mensalidade, Gestão de Abastecimento, Controle de Combustível, Integração Postos/Credenciados e Relatórios. Bases: FIXO_MENSAL, POR_VEICULO, POR_ABASTECIMENTO, POR_LITRO e PERCENTUAL_VALOR_MOVIMENTADO.",
+        "owner": "ELIQ",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "ELIQ-001",
+          "Catálogo"
+        ]
+      }
+    },
+    {
+      "id": "n_verdio_catalogo",
+      "type": "task",
+      "laneId": "lane_verdio",
+      "position": {
+        "x": 620,
+        "y": 2110
+      },
+      "data": {
+        "label": "Itens comerciais Verdio",
+        "description": "Mensalidade, Rastreamento, Telemetria, Cercas Eletrônicas, Relatórios Avançados e Instalação. Bases: FIXO_MENSAL, POR_VEICULO, POR_RASTREADOR, POR_MODELO_RASTREADOR, IMPLANTACAO e ADESAO.",
+        "owner": "Verdio",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Verdio-001",
+          "Catálogo"
+        ]
+      }
+    },
+    {
+      "id": "n_bdt_catalogo",
+      "type": "task",
+      "laneId": "lane_bdt",
+      "position": {
+        "x": 620,
+        "y": 2450
+      },
+      "data": {
+        "label": "Itens comerciais BDT",
+        "description": "Mensalidade, Checklist Digital, Jornada do Motorista, App Motorista e Relatórios. Bases: FIXO_MENSAL, POR_MOTORISTA, POR_VEICULO, POR_CHECKLIST, POR_JORNADA e POR_USUARIO.",
+        "owner": "BDT",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "BDT-001",
+          "Catálogo"
+        ]
+      }
+    },
+    {
+      "id": "n_appoff_catalogo",
+      "type": "task",
+      "laneId": "lane_appoff",
+      "position": {
+        "x": 620,
+        "y": 2790
+      },
+      "data": {
+        "label": "Itens comerciais App Off",
+        "description": "Mensalidade, Usuário Ativo, Dispositivo, Formulário Offline, Vistoria Offline e Customização. Bases: FIXO_MENSAL, POR_USUARIO, POR_DISPOSITIVO, POR_APP_ATIVO, CUSTOMIZADO e IMPLANTACAO.",
+        "owner": "App Off",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "APPOFF-001",
+          "Catálogo"
+        ]
+      }
+    },
+    {
+      "id": "n_arch_registry",
+      "type": "api",
+      "laneId": "lane_core",
+      "position": {
+        "x": 900,
+        "y": 1090
+      },
+      "data": {
+        "label": "Registry de módulos e providers",
+        "description": "O Core resolve módulos por registro configurável. Interfaces principais: ModuloProvisionamentoProviderInterface e FaturamentoMetricaProviderInterface. Regras específicas permanecem dentro de cada módulo.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Arquitetura",
+          "Provider",
+          "Core"
+        ]
+      }
+    },
+    {
+      "id": "n_simulacao_inicio",
+      "type": "task",
+      "laneId": "lane_comercial",
+      "position": {
+        "x": 1180,
+        "y": 70
+      },
+      "data": {
+        "label": "Iniciar simulação comercial",
+        "description": "Criar uma nova simulação para cliente existente ou prospect.",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-004",
+          "Simulação"
+        ]
+      }
+    },
+    {
+      "id": "n_cliente_existente",
+      "type": "decision",
+      "laneId": "lane_comercial",
+      "position": {
+        "x": 1440,
+        "y": 70
+      },
+      "data": {
+        "label": "Cliente já existe?",
+        "description": "Determinar se a venda será associada a um cliente cadastrado ou a um prospect.",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-004"
+        ]
+      }
+    },
+    {
+      "id": "n_selecionar_cliente",
+      "type": "task",
+      "laneId": "lane_cliente",
+      "position": {
+        "x": 1700,
+        "y": 410
+      },
+      "data": {
+        "label": "Selecionar cliente existente",
+        "description": "Carregar cadastro, segmento, regras comerciais, preços específicos e condições vigentes.",
+        "owner": "Cliente ou Prospect",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Cliente"
+        ]
+      }
+    },
+    {
+      "id": "n_cadastrar_prospect",
+      "type": "task",
+      "laneId": "lane_cliente",
+      "position": {
+        "x": 1700,
+        "y": 530
+      },
+      "data": {
+        "label": "Cadastrar prospect",
+        "description": "Registrar dados mínimos para simulação e futura proposta, sem criar ainda o cliente operacional.",
+        "owner": "Cliente ou Prospect",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Prospect"
+        ]
+      }
+    },
+    {
+      "id": "n_compor_simulacao",
+      "type": "subprocess",
+      "laneId": "lane_comercial",
+      "position": {
+        "x": 1980,
+        "y": 70
+      },
+      "data": {
+        "label": "Compor solução e quantidades",
+        "description": "Selecionar plano, módulos, itens avulsos, quantidades estimadas, desconto por item e desconto global.",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-004"
+        ]
+      }
+    },
+    {
+      "id": "n_validar_dependencias",
+      "type": "task",
+      "laneId": "lane_core",
+      "position": {
+        "x": 2240,
+        "y": 1090
+      },
+      "data": {
+        "label": "Validar dependências comerciais",
+        "description": "Verificar itens obrigatórios, compatibilidade entre módulos e dependências técnicas configuradas.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Core",
+          "Dependências"
+        ]
+      }
+    },
+    {
+      "id": "n_depende_localizacao",
+      "type": "decision",
+      "laneId": "lane_core",
+      "position": {
+        "x": 2500,
+        "y": 1090
+      },
+      "data": {
+        "label": "Depende de localização ou KM?",
+        "description": "Produtos que dependem de localização, quilometragem ou telemetria exigem o Rastreamento Essencial. Essa dependência não é global para todo o SIGYO.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Verdio",
+          "Dependência"
+        ]
+      }
+    },
+    {
+      "id": "n_incluir_rastreamento",
+      "type": "task",
+      "laneId": "lane_verdio",
+      "position": {
+        "x": 2760,
+        "y": 2110
+      },
+      "data": {
+        "label": "Incluir Rastreamento Essencial",
+        "description": "Adicionar o item obrigatório do Verdio e recalcular a composição comercial.",
+        "owner": "Verdio",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Verdio",
+          "PlanoBase"
+        ]
+      }
+    },
+    {
+      "id": "n_resolver_preco",
+      "type": "subprocess",
+      "laneId": "lane_core",
+      "position": {
+        "x": 3020,
+        "y": 1090
+      },
+      "data": {
+        "label": "Resolver preços e totais",
+        "description": "Resolver preço por item, cliente, quantidade e data. Calcular recorrência, implantação, adesão, variável estimada, descontos e total do primeiro ciclo.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-002",
+          "CORE-004"
+        ]
+      }
+    },
+    {
+      "id": "n_salvar_simulacao",
+      "type": "document",
+      "laneId": "lane_comercial",
+      "position": {
+        "x": 3280,
+        "y": 70
+      },
+      "data": {
+        "label": "Salvar simulação",
+        "description": "Persistir a composição e os totais como rascunho comercial.",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-004",
+          "Rascunho"
+        ]
+      }
+    },
+    {
+      "id": "n_formalizar",
+      "type": "decision",
+      "laneId": "lane_comercial",
+      "position": {
+        "x": 3540,
+        "y": 70
+      },
+      "data": {
+        "label": "Formalizar proposta?",
+        "description": "Definir se a simulação continuará como rascunho ou será convertida em proposta.",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-004"
+        ]
+      }
+    },
+    {
+      "id": "n_aguardar_ajuste",
+      "type": "wait",
+      "laneId": "lane_comercial",
+      "position": {
+        "x": 3800,
+        "y": 70
+      },
+      "data": {
+        "label": "Aguardar ajustes comerciais",
+        "description": "A simulação permanece disponível para revisão de itens, quantidades, preços e descontos.",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Rascunho"
+        ]
+      }
+    },
+    {
+      "id": "n_gerar_proposta",
+      "type": "subprocess",
+      "laneId": "lane_core",
+      "position": {
+        "x": 3800,
+        "y": 1090
+      },
+      "data": {
+        "label": "Gerar proposta comercial",
+        "description": "Gerar número único, token público, validade, HTML e PDF. Congelar snapshots de itens, módulos, quantidades, bases, valores e descontos.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-005",
+          "Snapshot"
+        ]
+      }
+    },
+    {
+      "id": "n_proposta_doc",
+      "type": "document",
+      "laneId": "lane_core",
+      "position": {
+        "x": 4060,
+        "y": 1090
+      },
+      "data": {
+        "label": "Proposta versionada",
+        "description": "Status possíveis: rascunho, enviada, visualizada, aceita, recusada, expirada e cancelada. Manter eventos e versões.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-005"
+        ]
+      }
+    },
+    {
+      "id": "n_enviar_proposta",
+      "type": "api",
+      "laneId": "lane_externo",
+      "position": {
+        "x": 4320,
+        "y": 3470
+      },
+      "data": {
+        "label": "Enviar proposta",
+        "description": "Envio por e-mail ou canal configurado, preferencialmente por job assíncrono.",
+        "owner": "Serviços Externos",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-006",
+          "E-mail",
+          "Job"
+        ]
+      }
+    },
+    {
+      "id": "n_visualizar_proposta",
+      "type": "task",
+      "laneId": "lane_cliente",
+      "position": {
+        "x": 4580,
+        "y": 410
+      },
+      "data": {
+        "label": "Visualizar proposta pública",
+        "description": "Acessar por link seguro. Registrar visualização, IP, data/hora e user-agent.",
+        "owner": "Cliente ou Prospect",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-006"
+        ]
+      }
+    },
+    {
+      "id": "n_proposta_valida",
+      "type": "decision",
+      "laneId": "lane_core",
+      "position": {
+        "x": 4840,
+        "y": 1090
+      },
+      "data": {
+        "label": "Token e validade corretos?",
+        "description": "Validar token público, expiração, status e integridade da proposta.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-006",
+          "Segurança"
+        ]
+      }
+    },
+    {
+      "id": "n_proposta_indisponivel",
+      "type": "end",
+      "laneId": "lane_cliente",
+      "position": {
+        "x": 5100,
+        "y": 410
+      },
+      "data": {
+        "label": "Proposta indisponível",
+        "description": "Link inválido, expirado, cancelado ou já encerrado.",
+        "owner": "Cliente ou Prospect",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Exceção"
+        ]
+      }
+    },
+    {
+      "id": "n_aceitar_proposta",
+      "type": "decision",
+      "laneId": "lane_cliente",
+      "position": {
+        "x": 5100,
+        "y": 530
+      },
+      "data": {
+        "label": "Cliente aceita?",
+        "description": "Permitir aceite ou recusa da proposta.",
+        "owner": "Cliente ou Prospect",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-006"
+        ]
+      }
+    },
+    {
+      "id": "n_recusar_proposta",
+      "type": "end",
+      "laneId": "lane_cliente",
+      "position": {
+        "x": 5360,
+        "y": 410
+      },
+      "data": {
+        "label": "Proposta recusada",
+        "description": "Registrar justificativa, responsável, IP, data/hora e notificar o Comercial.",
+        "owner": "Cliente ou Prospect",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-006",
+          "Recusa"
+        ]
+      }
+    },
+    {
+      "id": "n_registrar_aceite",
+      "type": "event",
+      "laneId": "lane_core",
+      "position": {
+        "x": 5360,
+        "y": 1090
+      },
+      "data": {
+        "label": "Proposta aceita",
+        "description": "Registrar nome, e-mail, documento, IP, user-agent e data/hora; disparar PropostaAceitaEvent.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-006",
+          "Evento"
+        ]
+      }
+    },
+    {
+      "id": "n_template_termo",
+      "type": "subprocess",
+      "laneId": "lane_juridico",
+      "position": {
+        "x": 5620,
+        "y": 750
+      },
+      "data": {
+        "label": "Selecionar template de termo",
+        "description": "Selecionar por tipo de entidade, módulo, combinação multi-módulo, segmento e versão vigente. Suportar variáveis dinâmicas e preview.",
+        "owner": "Jurídico e Assinatura Digital",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-007"
+        ]
+      }
+    },
+    {
+      "id": "n_asto_termo",
+      "type": "document",
+      "laneId": "lane_asto",
+      "position": {
+        "x": 5880,
+        "y": 1430
+      },
+      "data": {
+        "label": "Cláusulas e termo ASTO",
+        "description": "Termo Cliente ASTO e Termo Credenciado ASTO, com variáveis de rede, OS, taxas e serviços.",
+        "owner": "ASTO",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "ASTO-004"
+        ]
+      }
+    },
+    {
+      "id": "n_eliq_termo",
+      "type": "document",
+      "laneId": "lane_eliq",
+      "position": {
+        "x": 5880,
+        "y": 1770
+      },
+      "data": {
+        "label": "Cláusulas e termo ELIQ",
+        "description": "Termo Cliente ELIQ e Termo Credenciado/Posto ELIQ, com variáveis de abastecimento, taxas e limites.",
+        "owner": "ELIQ",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "ELIQ-004"
+        ]
+      }
+    },
+    {
+      "id": "n_verdio_termo",
+      "type": "document",
+      "laneId": "lane_verdio",
+      "position": {
+        "x": 5880,
+        "y": 2110
+      },
+      "data": {
+        "label": "Cláusulas e termo Verdio",
+        "description": "Termo Cliente Verdio, incluindo rastreamento, telemetria, instalação e equipamentos.",
+        "owner": "Verdio",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Verdio-005"
+        ]
+      }
+    },
+    {
+      "id": "n_bdt_termo",
+      "type": "document",
+      "laneId": "lane_bdt",
+      "position": {
+        "x": 5880,
+        "y": 2450
+      },
+      "data": {
+        "label": "Cláusulas e termo BDT",
+        "description": "Termo Cliente BDT, incluindo checklist, jornada e aplicativo do motorista.",
+        "owner": "BDT",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "BDT-004"
+        ]
+      }
+    },
+    {
+      "id": "n_appoff_termo",
+      "type": "document",
+      "laneId": "lane_appoff",
+      "position": {
+        "x": 5880,
+        "y": 2790
+      },
+      "data": {
+        "label": "Cláusulas e termo App Off",
+        "description": "Termo Cliente App Off, incluindo usuários, dispositivos, formulários e operação offline.",
+        "owner": "App Off",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "APPOFF-004"
+        ]
+      }
+    },
+    {
+      "id": "n_compor_termo",
+      "type": "subprocess",
+      "laneId": "lane_juridico",
+      "position": {
+        "x": 6140,
+        "y": 750
+      },
+      "data": {
+        "label": "Renderizar termo multi-módulo",
+        "description": "Combinar template principal, cláusulas dos módulos contratados e dados do aceite. Gerar PDF com versão imutável.",
+        "owner": "Jurídico e Assinatura Digital",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-007",
+          "CORE-008"
+        ]
+      }
+    },
+    {
+      "id": "n_criar_envelope",
+      "type": "subprocess",
+      "laneId": "lane_core",
+      "position": {
+        "x": 6400,
+        "y": 1090
+      },
+      "data": {
+        "label": "Criar envelope de assinatura",
+        "description": "Criar signatários, salvar PDF, registrar status e garantir idempotência por proposta/documento.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-008",
+          "Idempotência"
+        ]
+      }
+    },
+    {
+      "id": "n_provedor_assinatura",
+      "type": "api",
+      "laneId": "lane_externo",
+      "position": {
+        "x": 6660,
+        "y": 3470
+      },
+      "data": {
+        "label": "Provedor de assinatura digital",
+        "description": "Receber documento e signatários; retornar ID externo, status e links de assinatura.",
+        "owner": "Serviços Externos",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Integração",
+          "Assinatura"
+        ]
+      }
+    },
+    {
+      "id": "n_cliente_assina",
+      "type": "task",
+      "laneId": "lane_cliente",
+      "position": {
+        "x": 6920,
+        "y": 410
+      },
+      "data": {
+        "label": "Assinar documento",
+        "description": "Signatário conclui, recusa ou abandona a assinatura no provedor externo.",
+        "owner": "Cliente ou Prospect",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Assinatura"
+        ]
+      }
+    },
+    {
+      "id": "n_webhook_assinatura",
+      "type": "api",
+      "laneId": "lane_externo",
+      "position": {
+        "x": 7180,
+        "y": 3470
+      },
+      "data": {
+        "label": "Enviar webhook de assinatura",
+        "description": "Evento autenticado contendo ID externo, provider_event_id, status e metadados.",
+        "owner": "Serviços Externos",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-009",
+          "Webhook"
+        ]
+      }
+    },
+    {
+      "id": "n_processar_webhook",
+      "type": "subprocess",
+      "laneId": "lane_core",
+      "position": {
+        "x": 7440,
+        "y": 1090
+      },
+      "data": {
+        "label": "Processar webhook",
+        "description": "Autenticar, guardar payload bruto, impedir duplicidade, atualizar status, baixar documento assinado e certificado.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-009",
+          "Idempotência"
+        ]
+      }
+    },
+    {
+      "id": "n_assinatura_concluida",
+      "type": "decision",
+      "laneId": "lane_core",
+      "position": {
+        "x": 7700,
+        "y": 1090
+      },
+      "data": {
+        "label": "Assinatura concluída?",
+        "description": "Separar conclusão, pendência, falha, recusa ou cancelamento.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-009"
+        ]
+      }
+    },
+    {
+      "id": "n_aguardar_assinatura",
+      "type": "wait",
+      "laneId": "lane_juridico",
+      "position": {
+        "x": 7960,
+        "y": 750
+      },
+      "data": {
+        "label": "Aguardar novo evento",
+        "description": "Documento pendente; manter acompanhamento e lembretes conforme configuração.",
+        "owner": "Jurídico e Assinatura Digital",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Assinatura",
+          "Pendente"
+        ]
+      }
+    },
+    {
+      "id": "n_erro_assinatura",
+      "type": "task",
+      "laneId": "lane_governanca",
+      "position": {
+        "x": 7960,
+        "y": 3930
+      },
+      "data": {
+        "label": "Registrar falha e reprocessar",
+        "description": "Persistir erro, permitir retry controlado e impedir duplicidade de envelope ou evento.",
+        "owner": "Governança, Segurança e Auditoria",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Erro",
+          "Retry"
+        ]
+      }
+    },
+    {
+      "id": "n_assinatura_encerrada",
+      "type": "end",
+      "laneId": "lane_cliente",
+      "position": {
+        "x": 7960,
+        "y": 530
+      },
+      "data": {
+        "label": "Assinatura recusada ou cancelada",
+        "description": "Encerrar contratação e notificar Comercial e Jurídico.",
+        "owner": "Cliente ou Prospect",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Exceção"
+        ]
+      }
+    },
+    {
+      "id": "n_termo_assinado",
+      "type": "event",
+      "laneId": "lane_core",
+      "position": {
+        "x": 8220,
+        "y": 1090
+      },
+      "data": {
+        "label": "Termo assinado",
+        "description": "Salvar documento e certificado; disparar TermoAssinadoEvent para onboarding e contratação.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-009",
+          "Evento"
+        ]
+      }
+    },
+    {
+      "id": "n_tipo_entidade",
+      "type": "decision",
+      "laneId": "lane_core",
+      "position": {
+        "x": 8480,
+        "y": 1090
+      },
+      "data": {
+        "label": "Qual entidade provisionar?",
+        "description": "Cliente, credenciado ou ambos, conforme proposta e template assinado.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-010",
+          "CORE-011"
+        ]
+      }
+    },
+    {
+      "id": "n_onboarding_cliente",
+      "type": "subprocess",
+      "laneId": "lane_core",
+      "position": {
+        "x": 8740,
+        "y": 1090
+      },
+      "data": {
+        "label": "Provisionar cliente",
+        "description": "Localizar por CNPJ; criar ou atualizar; vincular módulos; criar usuário administrador, acesso e permissões; registrar log; usar transação e idempotência.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-010"
+        ]
+      }
+    },
+    {
+      "id": "n_onboarding_credenciado",
+      "type": "subprocess",
+      "laneId": "lane_core",
+      "position": {
+        "x": 8740,
+        "y": 1210
+      },
+      "data": {
+        "label": "Provisionar credenciado",
+        "description": "Localizar por CNPJ/CPF; criar ou atualizar; registrar dados bancários; criar usuário e acesso; definir ativo ou pendente; vincular módulos; manter log.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-011"
+        ]
+      }
+    },
+    {
+      "id": "n_onboarding_ambos",
+      "type": "subprocess",
+      "laneId": "lane_core",
+      "position": {
+        "x": 8740,
+        "y": 1310
+      },
+      "data": {
+        "label": "Provisionar cliente e credenciado",
+        "description": "Executar os dois fluxos com controle transacional e idempotência por entidade.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-010",
+          "CORE-011"
+        ]
+      }
+    },
+    {
+      "id": "n_gerar_contrato",
+      "type": "subprocess",
+      "laneId": "lane_core",
+      "position": {
+        "x": 9000,
+        "y": 1090
+      },
+      "data": {
+        "label": "Gerar contrato multi-módulo",
+        "description": "Criar Contrato, ContratoModulo e ContratoItem; vincular cliente, proposta e assinatura; anexar termo assinado; usar snapshots; validar vigência; auditar.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-012"
+        ]
+      }
+    },
+    {
+      "id": "n_contrato_doc",
+      "type": "document",
+      "laneId": "lane_juridico",
+      "position": {
+        "x": 9260,
+        "y": 750
+      },
+      "data": {
+        "label": "Contrato e termo vinculados",
+        "description": "Documento contratual com módulos, itens, valores, quantidades, bases de cobrança, vigências e anexos assinados.",
+        "owner": "Jurídico e Assinatura Digital",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-012"
+        ]
+      }
+    },
+    {
+      "id": "n_assinatura_comercial",
+      "type": "subprocess",
+      "laneId": "lane_core",
+      "position": {
+        "x": 9520,
+        "y": 1090
+      },
+      "data": {
+        "label": "Criar assinatura comercial",
+        "description": "Criar ClienteAssinatura e ClienteAssinaturaItem. Cada item contém módulo, produto, base, valor, quantidade, vigência, regra de pró-rata, provider e status.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-013"
+        ]
+      }
+    },
+    {
+      "id": "n_exige_empenho",
+      "type": "decision",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 9780,
+        "y": 3130
+      },
+      "data": {
+        "label": "Contrato exige empenho?",
+        "description": "Aplicar configuração do cliente/contrato: obrigatório, opcional ou faturamento sem empenho permitido.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-014"
+        ]
+      }
+    },
+    {
+      "id": "n_tipo_empenho",
+      "type": "decision",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 10040,
+        "y": 3130
+      },
+      "data": {
+        "label": "Empenho automático ou manual?",
+        "description": "Definir criação automática ou aguardar vínculo/aprovação manual.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-014"
+        ]
+      }
+    },
+    {
+      "id": "n_criar_empenho",
+      "type": "subprocess",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 10300,
+        "y": 3130
+      },
+      "data": {
+        "label": "Criar empenho automático",
+        "description": "Criar saldo, vigência e vínculo com cliente, contrato e assinatura.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-014"
+        ]
+      }
+    },
+    {
+      "id": "n_aguardar_empenho",
+      "type": "wait",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 10300,
+        "y": 3250
+      },
+      "data": {
+        "label": "Aguardar empenho manual",
+        "description": "Financeiro vincula e valida documento, saldo e vigência antes do faturamento.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-014"
+        ]
+      }
+    },
+    {
+      "id": "n_sem_empenho",
+      "type": "task",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 10300,
+        "y": 3350
+      },
+      "data": {
+        "label": "Registrar regra sem empenho",
+        "description": "Permitir faturamento sem empenho apenas quando explicitamente configurado.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-014"
+        ]
+      }
+    },
+    {
+      "id": "n_registry_prov",
+      "type": "api",
+      "laneId": "lane_core",
+      "position": {
+        "x": 10560,
+        "y": 1090
+      },
+      "data": {
+        "label": "Resolver providers de provisionamento",
+        "description": "Usar ModuloProvisionamentoProviderInterface e executar somente os providers dos módulos contratados.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Provider",
+          "Provisionamento"
+        ]
+      }
+    },
+    {
+      "id": "n_asto_prov",
+      "type": "subprocess",
+      "laneId": "lane_asto",
+      "position": {
+        "x": 10820,
+        "y": 1430
+      },
+      "data": {
+        "label": "Provisionar ASTO",
+        "description": "Ativar módulo para cliente/credenciado; criar taxas padrão, parâmetros de OS, permissões do portal e dados de acesso. Registrar logs e permitir reprocessamento seguro.",
+        "owner": "ASTO",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "ASTO-002"
+        ]
+      }
+    },
+    {
+      "id": "n_eliq_prov",
+      "type": "subprocess",
+      "laneId": "lane_eliq",
+      "position": {
+        "x": 10820,
+        "y": 1770
+      },
+      "data": {
+        "label": "Provisionar ELIQ",
+        "description": "Ativar módulo para cliente/posto; criar taxas, regras de abastecimento, limites, configurações e permissões. Registrar logs e permitir reprocessamento seguro.",
+        "owner": "ELIQ",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "ELIQ-002"
+        ]
+      }
+    },
+    {
+      "id": "n_verdio_prov",
+      "type": "subprocess",
+      "laneId": "lane_verdio",
+      "position": {
+        "x": 10820,
+        "y": 2110
+      },
+      "data": {
+        "label": "Provisionar Verdio",
+        "description": "Ativar rastreamento e monitoramento; criar permissões, alertas, cercas, relatórios e parâmetros iniciais. Registrar logs e permitir reprocessamento seguro.",
+        "owner": "Verdio",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Verdio-002"
+        ]
+      }
+    },
+    {
+      "id": "n_bdt_prov",
+      "type": "subprocess",
+      "laneId": "lane_bdt",
+      "position": {
+        "x": 10820,
+        "y": 2450
+      },
+      "data": {
+        "label": "Provisionar BDT",
+        "description": "Ativar checklist, jornada e app; criar modelos padrão, permissões e parâmetros de ocorrências. Registrar logs e permitir reprocessamento seguro.",
+        "owner": "BDT",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "BDT-002"
+        ]
+      }
+    },
+    {
+      "id": "n_appoff_prov",
+      "type": "subprocess",
+      "laneId": "lane_appoff",
+      "position": {
+        "x": 10820,
+        "y": 2790
+      },
+      "data": {
+        "label": "Provisionar App Off",
+        "description": "Ativar sincronização; criar formulários, permissões e parâmetros de dispositivos autorizados. Registrar logs e permitir reprocessamento seguro.",
+        "owner": "App Off",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "APPOFF-002"
+        ]
+      }
+    },
+    {
+      "id": "n_todos_provisionados",
+      "type": "decision",
+      "laneId": "lane_core",
+      "position": {
+        "x": 11080,
+        "y": 1090
+      },
+      "data": {
+        "label": "Módulos provisionados?",
+        "description": "Confirmar sucesso de todos os módulos obrigatórios. Falhas parciais não devem repetir módulos já concluídos.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Provisionamento",
+          "Idempotência"
+        ]
+      }
+    },
+    {
+      "id": "n_reprocessar_modulo",
+      "type": "task",
+      "laneId": "lane_governanca",
+      "position": {
+        "x": 11340,
+        "y": 3810
+      },
+      "data": {
+        "label": "Reprocessar somente módulo com erro",
+        "description": "Executar retry parcial e seguro, preservando resultados já concluídos.",
+        "owner": "Governança, Segurança e Auditoria",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Retry",
+          "Provisionamento"
+        ]
+      }
+    },
+    {
+      "id": "n_cliente_ativo",
+      "type": "event",
+      "laneId": "lane_core",
+      "position": {
+        "x": 11340,
+        "y": 1090
+      },
+      "data": {
+        "label": "Cliente ativo e módulos liberados",
+        "description": "Cliente, contrato, assinatura, acessos e módulos ficam disponíveis para operação.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Ativação"
+        ]
+      }
+    },
+    {
+      "id": "n_operacao_cliente",
+      "type": "task",
+      "laneId": "lane_cliente",
+      "position": {
+        "x": 11600,
+        "y": 410
+      },
+      "data": {
+        "label": "Utilizar módulos contratados",
+        "description": "Usuários, veículos, motoristas, credenciados, postos e dispositivos executam os processos operacionais.",
+        "owner": "Cliente ou Prospect",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Operação"
+        ]
+      }
+    },
+    {
+      "id": "n_asto_operacao",
+      "type": "task",
+      "laneId": "lane_asto",
+      "position": {
+        "x": 11860,
+        "y": 1430
+      },
+      "data": {
+        "label": "Operação ASTO",
+        "description": "Gerar credenciados ativos, ordens de serviço, transações e valores de serviços.",
+        "owner": "ASTO",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "ASTO",
+          "Operação"
+        ]
+      }
+    },
+    {
+      "id": "n_eliq_operacao",
+      "type": "task",
+      "laneId": "lane_eliq",
+      "position": {
+        "x": 11860,
+        "y": 1770
+      },
+      "data": {
+        "label": "Operação ELIQ",
+        "description": "Gerar veículos autorizados, abastecimentos, litros e valores movimentados.",
+        "owner": "ELIQ",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "ELIQ",
+          "Operação"
+        ]
+      }
+    },
+    {
+      "id": "n_verdio_vinculo",
+      "type": "subprocess",
+      "laneId": "lane_verdio",
+      "position": {
+        "x": 11860,
+        "y": 2110
+      },
+      "data": {
+        "label": "Histórico rastreador–veículo–cliente",
+        "description": "Registrar início e fim do vínculo, cliente, veículo, rastreador e modelo. Não sobrescrever histórico. Normalizar vínculos legados e sustentar cálculo por dias ativos.",
+        "owner": "Verdio",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Verdio-003"
+        ]
+      }
+    },
+    {
+      "id": "n_bdt_operacao",
+      "type": "task",
+      "laneId": "lane_bdt",
+      "position": {
+        "x": 11860,
+        "y": 2450
+      },
+      "data": {
+        "label": "Operação BDT",
+        "description": "Gerar motoristas ativos, veículos vinculados, checklists, jornadas e usuários ativos.",
+        "owner": "BDT",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "BDT",
+          "Operação"
+        ]
+      }
+    },
+    {
+      "id": "n_appoff_operacao",
+      "type": "task",
+      "laneId": "lane_appoff",
+      "position": {
+        "x": 11860,
+        "y": 2790
+      },
+      "data": {
+        "label": "Operação App Off",
+        "description": "Gerar usuários, dispositivos, aplicativos ativos, formulários offline e sincronizações.",
+        "owner": "App Off",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "APPOFF",
+          "Operação"
+        ]
+      }
+    },
+    {
+      "id": "n_verdio_operacao",
+      "type": "task",
+      "laneId": "lane_verdio",
+      "position": {
+        "x": 12120,
+        "y": 2110
+      },
+      "data": {
+        "label": "Operação Verdio",
+        "description": "Gerar posições, eventos, telemetria, alertas, cercas e períodos ativos de veículos/rastreadores.",
+        "owner": "Verdio",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Verdio",
+          "Operação"
+        ]
+      }
+    },
+    {
+      "id": "n_inicio_fechamento",
+      "type": "start",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 12380,
+        "y": 3130
+      },
+      "data": {
+        "label": "Iniciar fechamento da competência",
+        "description": "Processo financeiro recorrente por cliente e competência.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Faturamento"
+        ]
+      }
+    },
+    {
+      "id": "n_regua_corte",
+      "type": "subprocess",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 12640,
+        "y": 3130
+      },
+      "data": {
+        "label": "Resolver régua de corte",
+        "description": "Determinar período inicial/final, fechamento, vencimento, primeiro ciclo, cancelamento e regras de pró-rata por cliente.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-015"
+        ]
+      }
+    },
+    {
+      "id": "n_selecionar_assinaturas",
+      "type": "task",
+      "laneId": "lane_core",
+      "position": {
+        "x": 12900,
+        "y": 1090
+      },
+      "data": {
+        "label": "Selecionar assinaturas e itens",
+        "description": "Buscar assinaturas ativas e itens com interseção de vigência no período.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-016"
+        ]
+      }
+    },
+    {
+      "id": "n_item_ativo",
+      "type": "decision",
+      "laneId": "lane_core",
+      "position": {
+        "x": 13160,
+        "y": 1090
+      },
+      "data": {
+        "label": "Item esteve ativo no período?",
+        "description": "Verificar status, vigência, suspensão, cancelamento e encerramento.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-016"
+        ]
+      }
+    },
+    {
+      "id": "n_nao_cobrar",
+      "type": "task",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 13420,
+        "y": 3130
+      },
+      "data": {
+        "label": "Não cobrar item",
+        "description": "Registrar item ignorado e motivo na memória do fechamento.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Faturamento",
+          "Exclusão"
+        ]
+      }
+    },
+    {
+      "id": "n_registry_metrica",
+      "type": "api",
+      "laneId": "lane_core",
+      "position": {
+        "x": 13420,
+        "y": 1090
+      },
+      "data": {
+        "label": "Solicitar métrica ao módulo",
+        "description": "Usar FaturamentoMetricaProviderInterface. Entrada: cliente, assinatura, item, período, base e pró-rata. Saída: quantidade, unidade, valores, detalhes, avisos e erros.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-017",
+          "Provider"
+        ]
+      }
+    },
+    {
+      "id": "n_asto_metrica",
+      "type": "subprocess",
+      "laneId": "lane_asto",
+      "position": {
+        "x": 13680,
+        "y": 1430
+      },
+      "data": {
+        "label": "Calcular métricas ASTO",
+        "description": "Calcular POR_CREDENCIADO, POR_OS, POR_TRANSACAO e PERCENTUAL_SERVICO; gerar memória por credenciado, OS e serviço.",
+        "owner": "ASTO",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "ASTO-003"
+        ]
+      }
+    },
+    {
+      "id": "n_eliq_metrica",
+      "type": "subprocess",
+      "laneId": "lane_eliq",
+      "position": {
+        "x": 13680,
+        "y": 1770
+      },
+      "data": {
+        "label": "Calcular métricas ELIQ",
+        "description": "Calcular POR_VEICULO, POR_ABASTECIMENTO, POR_LITRO e PERCENTUAL_VALOR_MOVIMENTADO; gerar memória por veículo, abastecimento e valor.",
+        "owner": "ELIQ",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "ELIQ-003"
+        ]
+      }
+    },
+    {
+      "id": "n_verdio_metrica",
+      "type": "subprocess",
+      "laneId": "lane_verdio",
+      "position": {
+        "x": 13680,
+        "y": 2110
+      },
+      "data": {
+        "label": "Calcular métricas Verdio",
+        "description": "Calcular POR_VEICULO, POR_RASTREADOR e POR_MODELO_RASTREADOR; apurar dias ativos; aplicar pró-rata na vinculação/desvinculação; resolver preço por cliente e modelo.",
+        "owner": "Verdio",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Verdio-004"
+        ]
+      }
+    },
+    {
+      "id": "n_bdt_metrica",
+      "type": "subprocess",
+      "laneId": "lane_bdt",
+      "position": {
+        "x": 13680,
+        "y": 2450
+      },
+      "data": {
+        "label": "Calcular métricas BDT",
+        "description": "Calcular POR_MOTORISTA, POR_VEICULO, POR_CHECKLIST, POR_JORNADA e POR_USUARIO; gerar memória detalhada.",
+        "owner": "BDT",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "BDT-003"
+        ]
+      }
+    },
+    {
+      "id": "n_appoff_metrica",
+      "type": "subprocess",
+      "laneId": "lane_appoff",
+      "position": {
+        "x": 13680,
+        "y": 2790
+      },
+      "data": {
+        "label": "Calcular métricas App Off",
+        "description": "Calcular POR_USUARIO, POR_DISPOSITIVO, POR_APP_ATIVO e CUSTOMIZADO; gerar memória por usuário, dispositivo e processo.",
+        "owner": "App Off",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "APPOFF-003"
+        ]
+      }
+    },
+    {
+      "id": "n_provider_disponivel",
+      "type": "decision",
+      "laneId": "lane_core",
+      "position": {
+        "x": 13940,
+        "y": 1090
+      },
+      "data": {
+        "label": "Provider disponível?",
+        "description": "Usar provider específico, fallback de cobrança fixa ou bloquear cobrança variável não implementada.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-017"
+        ]
+      }
+    },
+    {
+      "id": "n_fallback_fixo",
+      "type": "task",
+      "laneId": "lane_core",
+      "position": {
+        "x": 14200,
+        "y": 1090
+      },
+      "data": {
+        "label": "Aplicar fallback fixo",
+        "description": "Para base fixa, usar quantidade e valor contratados sem provider específico.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-017",
+          "Fallback"
+        ]
+      }
+    },
+    {
+      "id": "n_bloquear_metrica",
+      "type": "task",
+      "laneId": "lane_governanca",
+      "position": {
+        "x": 14200,
+        "y": 3930
+      },
+      "data": {
+        "label": "Bloquear métrica não implementada",
+        "description": "Registrar erro, impedir faturamento incorreto e encaminhar para revisão manual.",
+        "owner": "Governança, Segurança e Auditoria",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Erro",
+          "Métrica"
+        ]
+      }
+    },
+    {
+      "id": "n_consolidar_previa",
+      "type": "subprocess",
+      "laneId": "lane_core",
+      "position": {
+        "x": 14460,
+        "y": 1090
+      },
+      "data": {
+        "label": "Consolidar prévia de faturamento",
+        "description": "Criar cabeçalho, itens e detalhes; agrupar por módulo/produto/item; aplicar preço, quantidade, pró-rata, descontos e memória de cálculo.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-016"
+        ]
+      }
+    },
+    {
+      "id": "n_asto_relatorio",
+      "type": "document",
+      "laneId": "lane_asto",
+      "position": {
+        "x": 14720,
+        "y": 1430
+      },
+      "data": {
+        "label": "Relatório analítico ASTO",
+        "description": "Exibir credenciados ativos, OS, serviços percentuais e total; exportar XLS e conciliar com a fatura.",
+        "owner": "ASTO",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "ASTO-005"
+        ]
+      }
+    },
+    {
+      "id": "n_eliq_relatorio",
+      "type": "document",
+      "laneId": "lane_eliq",
+      "position": {
+        "x": 14720,
+        "y": 1770
+      },
+      "data": {
+        "label": "Relatório analítico ELIQ",
+        "description": "Exibir veículos, abastecimentos, litros e valor movimentado; exportar XLS e conciliar com a fatura.",
+        "owner": "ELIQ",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "ELIQ-005"
+        ]
+      }
+    },
+    {
+      "id": "n_verdio_relatorio",
+      "type": "document",
+      "laneId": "lane_verdio",
+      "position": {
+        "x": 14720,
+        "y": 2110
+      },
+      "data": {
+        "label": "Relatório analítico Verdio",
+        "description": "Exibir veículo, placa, rastreador, modelo, datas, dias cobrados e valores; exportar XLS e conciliar com a fatura.",
+        "owner": "Verdio",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Verdio-006"
+        ]
+      }
+    },
+    {
+      "id": "n_bdt_relatorio",
+      "type": "document",
+      "laneId": "lane_bdt",
+      "position": {
+        "x": 14720,
+        "y": 2450
+      },
+      "data": {
+        "label": "Relatório analítico BDT",
+        "description": "Exibir motoristas, veículos, checklists, jornadas e usuários; exportar XLS e conciliar com a fatura.",
+        "owner": "BDT",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "BDT-005"
+        ]
+      }
+    },
+    {
+      "id": "n_appoff_relatorio",
+      "type": "document",
+      "laneId": "lane_appoff",
+      "position": {
+        "x": 14720,
+        "y": 2790
+      },
+      "data": {
+        "label": "Relatório analítico App Off",
+        "description": "Exibir usuários, dispositivos e processos offline; exportar XLS e conciliar com a fatura.",
+        "owner": "App Off",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "APPOFF-005"
+        ]
+      }
+    },
+    {
+      "id": "n_previa_duplicada",
+      "type": "decision",
+      "laneId": "lane_core",
+      "position": {
+        "x": 14980,
+        "y": 1090
+      },
+      "data": {
+        "label": "Prévia já existe?",
+        "description": "Impedir duplicidade por cliente, competência e assinatura, ou criar nova versão controlada.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-016",
+          "Idempotência"
+        ]
+      }
+    },
+    {
+      "id": "n_previa_salva",
+      "type": "document",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 15240,
+        "y": 3130
+      },
+      "data": {
+        "label": "Salvar prévia versionada",
+        "description": "Persistir período, itens, detalhes, totais, avisos, erros e memória de cálculo.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-016"
+        ]
+      }
+    },
+    {
+      "id": "n_revisar_previa",
+      "type": "task",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 15500,
+        "y": 3130
+      },
+      "data": {
+        "label": "Revisar prévia",
+        "description": "Financeiro confere quantidades, preços, pró-rata, descontos, impostos, empenho e relatórios analíticos.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Financeiro"
+        ]
+      }
+    },
+    {
+      "id": "n_previa_aprovada",
+      "type": "decision",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 15760,
+        "y": 3130
+      },
+      "data": {
+        "label": "Prévia aprovada?",
+        "description": "Aprovar para faturamento ou devolver para correção.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-016"
+        ]
+      }
+    },
+    {
+      "id": "n_corrigir_previa",
+      "type": "task",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 16020,
+        "y": 3130
+      },
+      "data": {
+        "label": "Corrigir dados ou parâmetros",
+        "description": "Registrar justificativa, corrigir origem, preço, vigência, regra ou métrica e recalcular.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Reprocessamento"
+        ]
+      }
+    },
+    {
+      "id": "n_gerar_fatura",
+      "type": "subprocess",
+      "laneId": "lane_core",
+      "position": {
+        "x": 16020,
+        "y": 1090
+      },
+      "data": {
+        "label": "Gerar fatura oficial",
+        "description": "Usar prévia aprovada; adquirir lock; impedir duplicidade; criar cabeçalho e itens por módulo; vincular à prévia; marcar prévia como faturada.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-018"
+        ]
+      }
+    },
+    {
+      "id": "n_fatura_doc",
+      "type": "document",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 16280,
+        "y": 3130
+      },
+      "data": {
+        "label": "Fatura e memória de cálculo",
+        "description": "Documento oficial com itens, competência, vencimento, totais e detalhamento por módulo.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-018"
+        ]
+      }
+    },
+    {
+      "id": "n_fatura_tem_empenho",
+      "type": "decision",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 16540,
+        "y": 3130
+      },
+      "data": {
+        "label": "Fatura usa empenho?",
+        "description": "Determinar se deve haver débito de saldo contratual.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-019"
+        ]
+      }
+    },
+    {
+      "id": "n_saldo_suficiente",
+      "type": "decision",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 16800,
+        "y": 3130
+      },
+      "data": {
+        "label": "Saldo suficiente?",
+        "description": "Comparar valor da fatura com saldo disponível e regras do contrato.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-019"
+        ]
+      }
+    },
+    {
+      "id": "n_debitar_empenho",
+      "type": "subprocess",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 17060,
+        "y": 3130
+      },
+      "data": {
+        "label": "Debitar empenho",
+        "description": "Criar EmpenhoMovimento; registrar saldo anterior/posterior, valor, fatura, data, usuário/processo e chave de idempotência.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-019"
+        ]
+      }
+    },
+    {
+      "id": "n_permite_sem_saldo",
+      "type": "decision",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 17060,
+        "y": 3250
+      },
+      "data": {
+        "label": "Permite faturar sem saldo?",
+        "description": "Aplicar configuração contratual quando o empenho for insuficiente.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-014",
+          "CORE-019"
+        ]
+      }
+    },
+    {
+      "id": "n_bloquear_fatura",
+      "type": "end",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 17320,
+        "y": 3130
+      },
+      "data": {
+        "label": "Fatura bloqueada",
+        "description": "Notificar Financeiro e solicitar reforço ou novo empenho.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "SaldoInsuficiente"
+        ]
+      }
+    },
+    {
+      "id": "n_alerta_saldo",
+      "type": "task",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 17320,
+        "y": 3250
+      },
+      "data": {
+        "label": "Gerar alerta de saldo insuficiente",
+        "description": "Prosseguir somente quando permitido, mantendo alerta e auditoria.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Exceção"
+        ]
+      }
+    },
+    {
+      "id": "n_emitir_fatura",
+      "type": "subprocess",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 17580,
+        "y": 3130
+      },
+      "data": {
+        "label": "Emitir cobrança",
+        "description": "Definir vencimento, documento de cobrança e status inicial. Integrar com serviço fiscal/financeiro quando configurado.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Cobrança"
+        ]
+      }
+    },
+    {
+      "id": "n_integracao_cobranca",
+      "type": "api",
+      "laneId": "lane_externo",
+      "position": {
+        "x": 17840,
+        "y": 3470
+      },
+      "data": {
+        "label": "Serviço de cobrança e comunicação",
+        "description": "Enviar documento, link, boleto, PIX ou dados de pagamento conforme integração disponível; enviar e-mail e registrar retorno.",
+        "owner": "Serviços Externos",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Integração",
+          "Cobrança"
+        ]
+      }
+    },
+    {
+      "id": "n_receber_fatura",
+      "type": "document",
+      "laneId": "lane_cliente",
+      "position": {
+        "x": 18100,
+        "y": 410
+      },
+      "data": {
+        "label": "Receber fatura e memória",
+        "description": "Cliente recebe cobrança e relatório analítico correspondente.",
+        "owner": "Cliente ou Prospect",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Cliente",
+          "Fatura"
+        ]
+      }
+    },
+    {
+      "id": "n_pagar_fatura",
+      "type": "task",
+      "laneId": "lane_cliente",
+      "position": {
+        "x": 18360,
+        "y": 410
+      },
+      "data": {
+        "label": "Realizar pagamento",
+        "description": "Cliente realiza pagamento conforme meio disponibilizado.",
+        "owner": "Cliente ou Prospect",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Pagamento"
+        ]
+      }
+    },
+    {
+      "id": "n_confirmar_pagamento",
+      "type": "event",
+      "laneId": "lane_externo",
+      "position": {
+        "x": 18620,
+        "y": 3470
+      },
+      "data": {
+        "label": "Confirmar pagamento",
+        "description": "Evento externo ou conciliação identifica pagamento, atraso, cancelamento ou estorno.",
+        "owner": "Serviços Externos",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Webhook",
+          "Pagamento"
+        ]
+      }
+    },
+    {
+      "id": "n_conciliar_fatura",
+      "type": "subprocess",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 18880,
+        "y": 3130
+      },
+      "data": {
+        "label": "Conciliar fatura",
+        "description": "Atualizar status: gerada, emitida, enviada, visualizada, paga, vencida, cancelada ou estornada.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Financeiro",
+          "Conciliação"
+        ]
+      }
+    },
+    {
+      "id": "n_fatura_cancelada",
+      "type": "decision",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 19140,
+        "y": 3130
+      },
+      "data": {
+        "label": "Cancelada ou estornada?",
+        "description": "Determinar necessidade de reversão do empenho e dos efeitos financeiros.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Estorno"
+        ]
+      }
+    },
+    {
+      "id": "n_reverter_empenho",
+      "type": "subprocess",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 19400,
+        "y": 3130
+      },
+      "data": {
+        "label": "Reverter débito do empenho",
+        "description": "Criar movimento de reversão vinculado à fatura, preservando saldos anterior/posterior e trilha de auditoria.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-019",
+          "Reversão"
+        ]
+      }
+    },
+    {
+      "id": "n_competencia_encerrada",
+      "type": "event",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 19400,
+        "y": 3250
+      },
+      "data": {
+        "label": "Competência concluída",
+        "description": "Fatura conciliada e dados preservados para histórico e indicadores.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Fechamento"
+        ]
+      }
+    },
+    {
+      "id": "n_solicitar_alteracao",
+      "type": "task",
+      "laneId": "lane_comercial",
+      "position": {
+        "x": 19660,
+        "y": 70
+      },
+      "data": {
+        "label": "Solicitar alteração contratual",
+        "description": "Adicionar/remover módulo, alterar quantidade ou preço, suspender/reativar/cancelar item, renovar ou encerrar contrato.",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Lifecycle"
+        ]
+      }
+    },
+    {
+      "id": "n_registrar_vigencia",
+      "type": "subprocess",
+      "laneId": "lane_core",
+      "position": {
+        "x": 19920,
+        "y": 1090
+      },
+      "data": {
+        "label": "Registrar mudança com nova vigência",
+        "description": "Criar histórico do item e aplicar mudança somente na data definida, sem alterar períodos já faturados.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-013",
+          "Histórico"
+        ]
+      }
+    },
+    {
+      "id": "n_exige_aditivo",
+      "type": "decision",
+      "laneId": "lane_juridico",
+      "position": {
+        "x": 20180,
+        "y": 750
+      },
+      "data": {
+        "label": "Exige termo ou aditivo?",
+        "description": "Aplicar regras contratuais para determinar nova assinatura digital.",
+        "owner": "Jurídico e Assinatura Digital",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Jurídico"
+        ]
+      }
+    },
+    {
+      "id": "n_gerar_aditivo",
+      "type": "document",
+      "laneId": "lane_juridico",
+      "position": {
+        "x": 20440,
+        "y": 750
+      },
+      "data": {
+        "label": "Gerar e assinar aditivo",
+        "description": "Criar documento versionado, enviar ao provedor e aguardar conclusão antes de ativar a mudança.",
+        "owner": "Jurídico e Assinatura Digital",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Assinatura",
+          "Aditivo"
+        ]
+      }
+    },
+    {
+      "id": "n_atualizar_assinatura",
+      "type": "task",
+      "laneId": "lane_core",
+      "position": {
+        "x": 20440,
+        "y": 1210
+      },
+      "data": {
+        "label": "Atualizar assinatura comercial",
+        "description": "Aplicar alteração permitida sem novo documento, mantendo auditoria e vigência.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "CORE-013"
+        ]
+      }
+    },
+    {
+      "id": "n_provisionar_alteracao",
+      "type": "subprocess",
+      "laneId": "lane_core",
+      "position": {
+        "x": 20700,
+        "y": 1090
+      },
+      "data": {
+        "label": "Provisionar ou desprovisionar módulos",
+        "description": "Acionar providers afetados, sem repetir módulos inalterados; atualizar acessos, parâmetros e itens faturáveis.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Provider",
+          "Lifecycle"
+        ]
+      }
+    },
+    {
+      "id": "n_proximo_ciclo",
+      "type": "decision",
+      "laneId": "lane_financeiro",
+      "position": {
+        "x": 20960,
+        "y": 3130
+      },
+      "data": {
+        "label": "Contrato continua ativo?",
+        "description": "Encaminhar ao próximo ciclo de faturamento ou encerrar operação.",
+        "owner": "Financeiro",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Renovação"
+        ]
+      }
+    },
+    {
+      "id": "n_contrato_encerrado",
+      "type": "end",
+      "laneId": "lane_core",
+      "position": {
+        "x": 21220,
+        "y": 1090
+      },
+      "data": {
+        "label": "Contrato encerrado",
+        "description": "Encerrar assinatura, módulos, acessos e itens faturáveis preservando histórico e documentos.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Encerramento"
+        ]
+      }
+    },
+    {
+      "id": "n_operacao_recorrente",
+      "type": "end",
+      "laneId": "lane_core",
+      "position": {
+        "x": 21220,
+        "y": 1210
+      },
+      "data": {
+        "label": "Operação modular recorrente",
+        "description": "Cliente ativo, módulos provisionados, contrato vigente e faturamento controlado pelo SIGYO Core.",
+        "owner": "SIGYO Core",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Sucesso"
+        ]
+      }
+    },
+    {
+      "id": "n_gov_rbac",
+      "type": "note",
+      "laneId": "lane_governanca",
+      "position": {
+        "x": 900,
+        "y": 3810
+      },
+      "data": {
+        "label": "RBAC e isolamento por módulo",
+        "description": "Controlar acesso por usuário, perfil, empresa, grupo, veículo e módulo. Estruturas-base existentes: Modulo, EmpresaModulo, ProdutoModulo, UsuarioModulo, GrupoModulo, VeiculoModulo e ContratoModulo.",
+        "owner": "Governança, Segurança e Auditoria",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "RBAC",
+          "Existente"
+        ]
+      }
+    },
+    {
+      "id": "n_gov_snapshot",
+      "type": "note",
+      "laneId": "lane_governanca",
+      "position": {
+        "x": 3800,
+        "y": 3810
+      },
+      "data": {
+        "label": "Snapshots e versionamento",
+        "description": "Proposta, termo, contrato, assinatura e faturamento devem preservar valores históricos. Alterações futuras não modificam competências anteriores.",
+        "owner": "Governança, Segurança e Auditoria",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Snapshot",
+          "Auditoria"
+        ]
+      }
+    },
+    {
+      "id": "n_gov_integracoes",
+      "type": "note",
+      "laneId": "lane_governanca",
+      "position": {
+        "x": 7180,
+        "y": 3810
+      },
+      "data": {
+        "label": "Integrações seguras",
+        "description": "Token expirável, webhook autenticado, payload bruto, provider_event_id, retry controlado, logs estruturados e proteção de dados pessoais.",
+        "owner": "Governança, Segurança e Auditoria",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Segurança",
+          "LGPD"
+        ]
+      }
+    },
+    {
+      "id": "n_gov_transacao",
+      "type": "note",
+      "laneId": "lane_governanca",
+      "position": {
+        "x": 9000,
+        "y": 3810
+      },
+      "data": {
+        "label": "Transação e idempotência",
+        "description": "Onboarding, contrato, assinatura, empenho e provisionamento devem suportar rollback, chaves idempotentes e reprocessamento parcial.",
+        "owner": "Governança, Segurança e Auditoria",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Transação",
+          "Idempotência"
+        ]
+      }
+    },
+    {
+      "id": "n_gov_dados",
+      "type": "note",
+      "laneId": "lane_governanca",
+      "position": {
+        "x": 12640,
+        "y": 3810
+      },
+      "data": {
+        "label": "Modelo de dados evolutivo",
+        "description": "Estruturas propostas: ComercialItem, ComercialItemPreco, ComercialPlano, ComercialSimulacao, ComercialProposta, AssinaturaTemplate, AssinaturaDocumento, ClienteAssinatura, FaturamentoReguaCliente, FaturamentoPrevia, FaturamentoItem, EmpenhoMovimento e HistoricoVinculoRastreadorVeiculo.",
+        "owner": "Governança, Segurança e Auditoria",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Dados",
+          "Target"
+        ]
+      }
+    },
+    {
+      "id": "n_gov_auditoria",
+      "type": "note",
+      "laneId": "lane_governanca",
+      "position": {
+        "x": 17580,
+        "y": 3810
+      },
+      "data": {
+        "label": "Auditoria ponta a ponta",
+        "description": "Auditar preços, planos, propostas, visualizações, aceite, assinatura, onboarding, provisionamento, contrato, assinatura comercial, prévia, fatura, empenho, pagamento, cancelamento, reversão e reprocessamento.",
+        "owner": "Governança, Segurança e Auditoria",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Auditoria"
+        ]
+      }
+    },
+    {
+      "id": "n_gov_storage",
+      "type": "note",
+      "laneId": "lane_governanca",
+      "position": {
+        "x": 20440,
+        "y": 3810
+      },
+      "data": {
+        "label": "Documentos e retenção",
+        "description": "Centralizar PDFs e anexos com metadados, hash, controle de versão, política de retenção, permissão e referência ao registro de negócio; evitar duplicidade física de arquivos.",
+        "owner": "Governança, Segurança e Auditoria",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": [
+          "Storage",
+          "Documentos"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e001",
+      "source": "n_start",
+      "target": "n_catalogo",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e002",
+      "source": "n_catalogo",
+      "target": "n_precos",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e003",
+      "source": "n_precos",
+      "target": "n_planos",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e004",
+      "source": "n_catalogo",
+      "target": "n_asto_catalogo",
+      "type": "smoothstep",
+      "label": "ASTO",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e005",
+      "source": "n_catalogo",
+      "target": "n_eliq_catalogo",
+      "type": "smoothstep",
+      "label": "ELIQ",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e006",
+      "source": "n_catalogo",
+      "target": "n_verdio_catalogo",
+      "type": "smoothstep",
+      "label": "Verdio",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e007",
+      "source": "n_catalogo",
+      "target": "n_bdt_catalogo",
+      "type": "smoothstep",
+      "label": "BDT",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e008",
+      "source": "n_catalogo",
+      "target": "n_appoff_catalogo",
+      "type": "smoothstep",
+      "label": "App Off",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e009",
+      "source": "n_asto_catalogo",
+      "target": "n_planos",
+      "type": "smoothstep",
+      "label": "Itens disponíveis",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e010",
+      "source": "n_eliq_catalogo",
+      "target": "n_planos",
+      "type": "smoothstep",
+      "label": "Itens disponíveis",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e011",
+      "source": "n_verdio_catalogo",
+      "target": "n_planos",
+      "type": "smoothstep",
+      "label": "Itens disponíveis",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e012",
+      "source": "n_bdt_catalogo",
+      "target": "n_planos",
+      "type": "smoothstep",
+      "label": "Itens disponíveis",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e013",
+      "source": "n_appoff_catalogo",
+      "target": "n_planos",
+      "type": "smoothstep",
+      "label": "Itens disponíveis",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e014",
+      "source": "n_planos",
+      "target": "n_arch_registry",
+      "type": "smoothstep",
+      "label": "Arquitetura modular",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e015",
+      "source": "n_arch_registry",
+      "target": "n_simulacao_inicio",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e016",
+      "source": "n_simulacao_inicio",
+      "target": "n_cliente_existente",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e017",
+      "source": "n_cliente_existente",
+      "target": "n_selecionar_cliente",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Cliente cadastrado"
+    },
+    {
+      "id": "e018",
+      "source": "n_cliente_existente",
+      "target": "n_cadastrar_prospect",
+      "type": "smoothstep",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Prospect"
+    },
+    {
+      "id": "e019",
+      "source": "n_selecionar_cliente",
+      "target": "n_compor_simulacao",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e020",
+      "source": "n_cadastrar_prospect",
+      "target": "n_compor_simulacao",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e021",
+      "source": "n_compor_simulacao",
+      "target": "n_validar_dependencias",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e022",
+      "source": "n_validar_dependencias",
+      "target": "n_depende_localizacao",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e023",
+      "source": "n_depende_localizacao",
+      "target": "n_incluir_rastreamento",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Depende de localização/KM"
+    },
+    {
+      "id": "e024",
+      "source": "n_depende_localizacao",
+      "target": "n_resolver_preco",
+      "type": "smoothstep",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Sem dependência"
+    },
+    {
+      "id": "e025",
+      "source": "n_incluir_rastreamento",
+      "target": "n_resolver_preco",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e026",
+      "source": "n_resolver_preco",
+      "target": "n_salvar_simulacao",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e027",
+      "source": "n_salvar_simulacao",
+      "target": "n_formalizar",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e028",
+      "source": "n_formalizar",
+      "target": "n_aguardar_ajuste",
+      "type": "smoothstep",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Manter rascunho"
+    },
+    {
+      "id": "e029",
+      "source": "n_aguardar_ajuste",
+      "target": "n_compor_simulacao",
+      "type": "smoothstep",
+      "label": "Revisar",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e030",
+      "source": "n_formalizar",
+      "target": "n_gerar_proposta",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Converter em proposta"
+    },
+    {
+      "id": "e031",
+      "source": "n_gerar_proposta",
+      "target": "n_proposta_doc",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e032",
+      "source": "n_proposta_doc",
+      "target": "n_enviar_proposta",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e033",
+      "source": "n_enviar_proposta",
+      "target": "n_visualizar_proposta",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e034",
+      "source": "n_visualizar_proposta",
+      "target": "n_proposta_valida",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e035",
+      "source": "n_proposta_valida",
+      "target": "n_proposta_indisponivel",
+      "type": "smoothstep",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Token inválido ou expirada"
+    },
+    {
+      "id": "e036",
+      "source": "n_proposta_valida",
+      "target": "n_aceitar_proposta",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Proposta válida"
+    },
+    {
+      "id": "e037",
+      "source": "n_aceitar_proposta",
+      "target": "n_recusar_proposta",
+      "type": "smoothstep",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Recusa"
+    },
+    {
+      "id": "e038",
+      "source": "n_aceitar_proposta",
+      "target": "n_registrar_aceite",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Aceite"
+    },
+    {
+      "id": "e039",
+      "source": "n_registrar_aceite",
+      "target": "n_template_termo",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e040",
+      "source": "n_template_termo",
+      "target": "n_asto_termo",
+      "type": "smoothstep",
+      "label": "Se ASTO",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e041",
+      "source": "n_template_termo",
+      "target": "n_eliq_termo",
+      "type": "smoothstep",
+      "label": "Se ELIQ",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e042",
+      "source": "n_template_termo",
+      "target": "n_verdio_termo",
+      "type": "smoothstep",
+      "label": "Se Verdio",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e043",
+      "source": "n_template_termo",
+      "target": "n_bdt_termo",
+      "type": "smoothstep",
+      "label": "Se BDT",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e044",
+      "source": "n_template_termo",
+      "target": "n_appoff_termo",
+      "type": "smoothstep",
+      "label": "Se App Off",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e045",
+      "source": "n_asto_termo",
+      "target": "n_compor_termo",
+      "type": "smoothstep",
+      "label": "Cláusulas",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e046",
+      "source": "n_eliq_termo",
+      "target": "n_compor_termo",
+      "type": "smoothstep",
+      "label": "Cláusulas",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e047",
+      "source": "n_verdio_termo",
+      "target": "n_compor_termo",
+      "type": "smoothstep",
+      "label": "Cláusulas",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e048",
+      "source": "n_bdt_termo",
+      "target": "n_compor_termo",
+      "type": "smoothstep",
+      "label": "Cláusulas",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e049",
+      "source": "n_appoff_termo",
+      "target": "n_compor_termo",
+      "type": "smoothstep",
+      "label": "Cláusulas",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e050",
+      "source": "n_compor_termo",
+      "target": "n_criar_envelope",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e051",
+      "source": "n_criar_envelope",
+      "target": "n_provedor_assinatura",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e052",
+      "source": "n_provedor_assinatura",
+      "target": "n_cliente_assina",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e053",
+      "source": "n_cliente_assina",
+      "target": "n_webhook_assinatura",
+      "type": "smoothstep",
+      "label": "Evento do provedor",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e054",
+      "source": "n_webhook_assinatura",
+      "target": "n_processar_webhook",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e055",
+      "source": "n_processar_webhook",
+      "target": "n_assinatura_concluida",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e056",
+      "source": "n_assinatura_concluida",
+      "target": "n_aguardar_assinatura",
+      "type": "smoothstep",
+      "label": "Pendente",
+      "enabled": true,
+      "condition": "Status pendente"
+    },
+    {
+      "id": "e057",
+      "source": "n_aguardar_assinatura",
+      "target": "n_webhook_assinatura",
+      "type": "smoothstep",
+      "label": "Novo evento",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e058",
+      "source": "n_assinatura_concluida",
+      "target": "n_erro_assinatura",
+      "type": "smoothstep",
+      "label": "Erro",
+      "enabled": true,
+      "condition": "Falha processável"
+    },
+    {
+      "id": "e059",
+      "source": "n_erro_assinatura",
+      "target": "n_processar_webhook",
+      "type": "smoothstep",
+      "label": "Retry",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e060",
+      "source": "n_assinatura_concluida",
+      "target": "n_assinatura_encerrada",
+      "type": "smoothstep",
+      "label": "Recusada/Cancelada",
+      "enabled": true,
+      "condition": "Encerrada"
+    },
+    {
+      "id": "e061",
+      "source": "n_assinatura_concluida",
+      "target": "n_termo_assinado",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Concluída"
+    },
+    {
+      "id": "e062",
+      "source": "n_termo_assinado",
+      "target": "n_tipo_entidade",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e063",
+      "source": "n_tipo_entidade",
+      "target": "n_onboarding_cliente",
+      "type": "smoothstep",
+      "label": "Cliente",
+      "enabled": true,
+      "condition": "Provisionar cliente"
+    },
+    {
+      "id": "e064",
+      "source": "n_tipo_entidade",
+      "target": "n_onboarding_credenciado",
+      "type": "smoothstep",
+      "label": "Credenciado",
+      "enabled": true,
+      "condition": "Provisionar credenciado"
+    },
+    {
+      "id": "e065",
+      "source": "n_tipo_entidade",
+      "target": "n_onboarding_ambos",
+      "type": "smoothstep",
+      "label": "Ambos",
+      "enabled": true,
+      "condition": "Provisionar ambos"
+    },
+    {
+      "id": "e066",
+      "source": "n_onboarding_cliente",
+      "target": "n_gerar_contrato",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e067",
+      "source": "n_onboarding_credenciado",
+      "target": "n_gerar_contrato",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e068",
+      "source": "n_onboarding_ambos",
+      "target": "n_gerar_contrato",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e069",
+      "source": "n_gerar_contrato",
+      "target": "n_contrato_doc",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e070",
+      "source": "n_contrato_doc",
+      "target": "n_assinatura_comercial",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e071",
+      "source": "n_assinatura_comercial",
+      "target": "n_exige_empenho",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e072",
+      "source": "n_exige_empenho",
+      "target": "n_tipo_empenho",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Empenho obrigatório"
+    },
+    {
+      "id": "e073",
+      "source": "n_tipo_empenho",
+      "target": "n_criar_empenho",
+      "type": "smoothstep",
+      "label": "Automático",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e074",
+      "source": "n_tipo_empenho",
+      "target": "n_aguardar_empenho",
+      "type": "smoothstep",
+      "label": "Manual",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e075",
+      "source": "n_exige_empenho",
+      "target": "n_sem_empenho",
+      "type": "smoothstep",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Permitido sem empenho"
+    },
+    {
+      "id": "e076",
+      "source": "n_criar_empenho",
+      "target": "n_registry_prov",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e077",
+      "source": "n_aguardar_empenho",
+      "target": "n_registry_prov",
+      "type": "smoothstep",
+      "label": "Após aprovação",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e078",
+      "source": "n_sem_empenho",
+      "target": "n_registry_prov",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e079",
+      "source": "n_registry_prov",
+      "target": "n_asto_prov",
+      "type": "smoothstep",
+      "label": "Se contratado",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e080",
+      "source": "n_registry_prov",
+      "target": "n_eliq_prov",
+      "type": "smoothstep",
+      "label": "Se contratado",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e081",
+      "source": "n_registry_prov",
+      "target": "n_verdio_prov",
+      "type": "smoothstep",
+      "label": "Se contratado",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e082",
+      "source": "n_registry_prov",
+      "target": "n_bdt_prov",
+      "type": "smoothstep",
+      "label": "Se contratado",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e083",
+      "source": "n_registry_prov",
+      "target": "n_appoff_prov",
+      "type": "smoothstep",
+      "label": "Se contratado",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e084",
+      "source": "n_asto_prov",
+      "target": "n_todos_provisionados",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e085",
+      "source": "n_eliq_prov",
+      "target": "n_todos_provisionados",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e086",
+      "source": "n_verdio_prov",
+      "target": "n_todos_provisionados",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e087",
+      "source": "n_bdt_prov",
+      "target": "n_todos_provisionados",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e088",
+      "source": "n_appoff_prov",
+      "target": "n_todos_provisionados",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e089",
+      "source": "n_todos_provisionados",
+      "target": "n_reprocessar_modulo",
+      "type": "smoothstep",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Falha parcial"
+    },
+    {
+      "id": "e090",
+      "source": "n_reprocessar_modulo",
+      "target": "n_registry_prov",
+      "type": "smoothstep",
+      "label": "Retry do módulo",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e091",
+      "source": "n_todos_provisionados",
+      "target": "n_cliente_ativo",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Sucesso"
+    },
+    {
+      "id": "e092",
+      "source": "n_cliente_ativo",
+      "target": "n_operacao_cliente",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e093",
+      "source": "n_operacao_cliente",
+      "target": "n_asto_operacao",
+      "type": "smoothstep",
+      "label": "ASTO ativo",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e094",
+      "source": "n_operacao_cliente",
+      "target": "n_eliq_operacao",
+      "type": "smoothstep",
+      "label": "ELIQ ativo",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e095",
+      "source": "n_operacao_cliente",
+      "target": "n_verdio_vinculo",
+      "type": "smoothstep",
+      "label": "Verdio ativo",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e096",
+      "source": "n_operacao_cliente",
+      "target": "n_bdt_operacao",
+      "type": "smoothstep",
+      "label": "BDT ativo",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e097",
+      "source": "n_operacao_cliente",
+      "target": "n_appoff_operacao",
+      "type": "smoothstep",
+      "label": "App Off ativo",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e098",
+      "source": "n_verdio_vinculo",
+      "target": "n_verdio_operacao",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e099",
+      "source": "n_cliente_ativo",
+      "target": "n_inicio_fechamento",
+      "type": "smoothstep",
+      "label": "Ciclo recorrente",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e100",
+      "source": "n_asto_operacao",
+      "target": "n_asto_metrica",
+      "type": "smoothstep",
+      "label": "Dados de origem",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e101",
+      "source": "n_eliq_operacao",
+      "target": "n_eliq_metrica",
+      "type": "smoothstep",
+      "label": "Dados de origem",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e102",
+      "source": "n_verdio_operacao",
+      "target": "n_verdio_metrica",
+      "type": "smoothstep",
+      "label": "Dados de origem",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e103",
+      "source": "n_bdt_operacao",
+      "target": "n_bdt_metrica",
+      "type": "smoothstep",
+      "label": "Dados de origem",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e104",
+      "source": "n_appoff_operacao",
+      "target": "n_appoff_metrica",
+      "type": "smoothstep",
+      "label": "Dados de origem",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e105",
+      "source": "n_inicio_fechamento",
+      "target": "n_regua_corte",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e106",
+      "source": "n_regua_corte",
+      "target": "n_selecionar_assinaturas",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e107",
+      "source": "n_selecionar_assinaturas",
+      "target": "n_item_ativo",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e108",
+      "source": "n_item_ativo",
+      "target": "n_nao_cobrar",
+      "type": "smoothstep",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Fora de vigência/status"
+    },
+    {
+      "id": "e109",
+      "source": "n_item_ativo",
+      "target": "n_registry_metrica",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Item faturável"
+    },
+    {
+      "id": "e110",
+      "source": "n_registry_metrica",
+      "target": "n_asto_metrica",
+      "type": "smoothstep",
+      "label": "ASTO",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e111",
+      "source": "n_registry_metrica",
+      "target": "n_eliq_metrica",
+      "type": "smoothstep",
+      "label": "ELIQ",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e112",
+      "source": "n_registry_metrica",
+      "target": "n_verdio_metrica",
+      "type": "smoothstep",
+      "label": "Verdio",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e113",
+      "source": "n_registry_metrica",
+      "target": "n_bdt_metrica",
+      "type": "smoothstep",
+      "label": "BDT",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e114",
+      "source": "n_registry_metrica",
+      "target": "n_appoff_metrica",
+      "type": "smoothstep",
+      "label": "App Off",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e115",
+      "source": "n_asto_metrica",
+      "target": "n_provider_disponivel",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e116",
+      "source": "n_eliq_metrica",
+      "target": "n_provider_disponivel",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e117",
+      "source": "n_verdio_metrica",
+      "target": "n_provider_disponivel",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e118",
+      "source": "n_bdt_metrica",
+      "target": "n_provider_disponivel",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e119",
+      "source": "n_appoff_metrica",
+      "target": "n_provider_disponivel",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e120",
+      "source": "n_provider_disponivel",
+      "target": "n_consolidar_previa",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Resultado válido"
+    },
+    {
+      "id": "e121",
+      "source": "n_provider_disponivel",
+      "target": "n_fallback_fixo",
+      "type": "smoothstep",
+      "label": "Não, cobrança fixa",
+      "enabled": true,
+      "condition": "Fallback"
+    },
+    {
+      "id": "e122",
+      "source": "n_provider_disponivel",
+      "target": "n_bloquear_metrica",
+      "type": "smoothstep",
+      "label": "Não, cobrança variável",
+      "enabled": true,
+      "condition": "Bloquear"
+    },
+    {
+      "id": "e123",
+      "source": "n_fallback_fixo",
+      "target": "n_consolidar_previa",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e124",
+      "source": "n_bloquear_metrica",
+      "target": "n_corrigir_previa",
+      "type": "smoothstep",
+      "label": "Corrigir implementação/configuração",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e125",
+      "source": "n_nao_cobrar",
+      "target": "n_consolidar_previa",
+      "type": "smoothstep",
+      "label": "Registrar exclusão",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e126",
+      "source": "n_consolidar_previa",
+      "target": "n_asto_relatorio",
+      "type": "smoothstep",
+      "label": "Gerar detalhe ASTO",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e127",
+      "source": "n_consolidar_previa",
+      "target": "n_eliq_relatorio",
+      "type": "smoothstep",
+      "label": "Gerar detalhe ELIQ",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e128",
+      "source": "n_consolidar_previa",
+      "target": "n_verdio_relatorio",
+      "type": "smoothstep",
+      "label": "Gerar detalhe Verdio",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e129",
+      "source": "n_consolidar_previa",
+      "target": "n_bdt_relatorio",
+      "type": "smoothstep",
+      "label": "Gerar detalhe BDT",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e130",
+      "source": "n_consolidar_previa",
+      "target": "n_appoff_relatorio",
+      "type": "smoothstep",
+      "label": "Gerar detalhe App Off",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e131",
+      "source": "n_asto_relatorio",
+      "target": "n_previa_duplicada",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e132",
+      "source": "n_eliq_relatorio",
+      "target": "n_previa_duplicada",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e133",
+      "source": "n_verdio_relatorio",
+      "target": "n_previa_duplicada",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e134",
+      "source": "n_bdt_relatorio",
+      "target": "n_previa_duplicada",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e135",
+      "source": "n_appoff_relatorio",
+      "target": "n_previa_duplicada",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e136",
+      "source": "n_previa_duplicada",
+      "target": "n_previa_salva",
+      "type": "smoothstep",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Nova prévia"
+    },
+    {
+      "id": "e137",
+      "source": "n_previa_duplicada",
+      "target": "n_previa_salva",
+      "type": "smoothstep",
+      "label": "Sim, nova versão",
+      "enabled": true,
+      "condition": "Versionar"
+    },
+    {
+      "id": "e138",
+      "source": "n_previa_salva",
+      "target": "n_revisar_previa",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e139",
+      "source": "n_revisar_previa",
+      "target": "n_previa_aprovada",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e140",
+      "source": "n_previa_aprovada",
+      "target": "n_corrigir_previa",
+      "type": "smoothstep",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Reprovada"
+    },
+    {
+      "id": "e141",
+      "source": "n_corrigir_previa",
+      "target": "n_regua_corte",
+      "type": "smoothstep",
+      "label": "Recalcular",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e142",
+      "source": "n_previa_aprovada",
+      "target": "n_gerar_fatura",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Aprovada"
+    },
+    {
+      "id": "e143",
+      "source": "n_gerar_fatura",
+      "target": "n_fatura_doc",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e144",
+      "source": "n_fatura_doc",
+      "target": "n_fatura_tem_empenho",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e145",
+      "source": "n_fatura_tem_empenho",
+      "target": "n_emitir_fatura",
+      "type": "smoothstep",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Sem empenho"
+    },
+    {
+      "id": "e146",
+      "source": "n_fatura_tem_empenho",
+      "target": "n_saldo_suficiente",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Validar saldo"
+    },
+    {
+      "id": "e147",
+      "source": "n_saldo_suficiente",
+      "target": "n_debitar_empenho",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Saldo disponível"
+    },
+    {
+      "id": "e148",
+      "source": "n_saldo_suficiente",
+      "target": "n_permite_sem_saldo",
+      "type": "smoothstep",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Saldo insuficiente"
+    },
+    {
+      "id": "e149",
+      "source": "n_permite_sem_saldo",
+      "target": "n_bloquear_fatura",
+      "type": "smoothstep",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Bloquear"
+    },
+    {
+      "id": "e150",
+      "source": "n_permite_sem_saldo",
+      "target": "n_alerta_saldo",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Prosseguir com alerta"
+    },
+    {
+      "id": "e151",
+      "source": "n_debitar_empenho",
+      "target": "n_emitir_fatura",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e152",
+      "source": "n_alerta_saldo",
+      "target": "n_emitir_fatura",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e153",
+      "source": "n_emitir_fatura",
+      "target": "n_integracao_cobranca",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e154",
+      "source": "n_integracao_cobranca",
+      "target": "n_receber_fatura",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e155",
+      "source": "n_receber_fatura",
+      "target": "n_pagar_fatura",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e156",
+      "source": "n_pagar_fatura",
+      "target": "n_confirmar_pagamento",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e157",
+      "source": "n_confirmar_pagamento",
+      "target": "n_conciliar_fatura",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e158",
+      "source": "n_conciliar_fatura",
+      "target": "n_fatura_cancelada",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e159",
+      "source": "n_fatura_cancelada",
+      "target": "n_reverter_empenho",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Cancelar/estornar"
+    },
+    {
+      "id": "e160",
+      "source": "n_fatura_cancelada",
+      "target": "n_competencia_encerrada",
+      "type": "smoothstep",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Paga ou mantida"
+    },
+    {
+      "id": "e161",
+      "source": "n_reverter_empenho",
+      "target": "n_competencia_encerrada",
+      "type": "smoothstep",
+      "label": "Reversão concluída",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e162",
+      "source": "n_competencia_encerrada",
+      "target": "n_solicitar_alteracao",
+      "type": "smoothstep",
+      "label": "Quando houver mudança",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e163",
+      "source": "n_cliente_ativo",
+      "target": "n_solicitar_alteracao",
+      "type": "smoothstep",
+      "label": "Alteração durante operação",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e164",
+      "source": "n_solicitar_alteracao",
+      "target": "n_registrar_vigencia",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e165",
+      "source": "n_registrar_vigencia",
+      "target": "n_exige_aditivo",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e166",
+      "source": "n_exige_aditivo",
+      "target": "n_gerar_aditivo",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Nova assinatura"
+    },
+    {
+      "id": "e167",
+      "source": "n_exige_aditivo",
+      "target": "n_atualizar_assinatura",
+      "type": "smoothstep",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Regra contratual permite"
+    },
+    {
+      "id": "e168",
+      "source": "n_gerar_aditivo",
+      "target": "n_provedor_assinatura",
+      "type": "smoothstep",
+      "label": "Assinar aditivo",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e169",
+      "source": "n_termo_assinado",
+      "target": "n_provisionar_alteracao",
+      "type": "smoothstep",
+      "label": "Se evento de aditivo",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e170",
+      "source": "n_atualizar_assinatura",
+      "target": "n_provisionar_alteracao",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e171",
+      "source": "n_provisionar_alteracao",
+      "target": "n_proximo_ciclo",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e172",
+      "source": "n_proximo_ciclo",
+      "target": "n_contrato_encerrado",
+      "type": "smoothstep",
+      "label": "Não",
+      "enabled": true,
+      "condition": "Encerrado"
+    },
+    {
+      "id": "e173",
+      "source": "n_proximo_ciclo",
+      "target": "n_operacao_recorrente",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Permanece ativo"
+    },
+    {
+      "id": "e174",
+      "source": "n_operacao_recorrente",
+      "target": "n_inicio_fechamento",
+      "type": "smoothstep",
+      "label": "Próxima competência",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e175",
+      "source": "n_gov_rbac",
+      "target": "n_arch_registry",
+      "type": "smoothstep",
+      "label": "Controle de acesso",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e176",
+      "source": "n_proposta_doc",
+      "target": "n_gov_snapshot",
+      "type": "smoothstep",
+      "label": "Preservar histórico",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e177",
+      "source": "n_gov_snapshot",
+      "target": "n_gerar_contrato",
+      "type": "smoothstep",
+      "label": "Snapshots imutáveis",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e178",
+      "source": "n_webhook_assinatura",
+      "target": "n_gov_integracoes",
+      "type": "smoothstep",
+      "label": "Segurança",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e179",
+      "source": "n_gov_integracoes",
+      "target": "n_processar_webhook",
+      "type": "smoothstep",
+      "label": "Requisitos transversais",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e180",
+      "source": "n_onboarding_cliente",
+      "target": "n_gov_transacao",
+      "type": "smoothstep",
+      "label": "Transação/rollback",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e181",
+      "source": "n_gov_transacao",
+      "target": "n_registry_prov",
+      "type": "smoothstep",
+      "label": "Idempotência",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e182",
+      "source": "n_regua_corte",
+      "target": "n_gov_dados",
+      "type": "smoothstep",
+      "label": "Persistência e histórico",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e183",
+      "source": "n_gov_dados",
+      "target": "n_consolidar_previa",
+      "type": "smoothstep",
+      "label": "Estruturas alvo",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e184",
+      "source": "n_emitir_fatura",
+      "target": "n_gov_auditoria",
+      "type": "smoothstep",
+      "label": "Registrar evento",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e185",
+      "source": "n_gov_auditoria",
+      "target": "n_conciliar_fatura",
+      "type": "smoothstep",
+      "label": "Trilha completa",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e186",
+      "source": "n_gerar_aditivo",
+      "target": "n_gov_storage",
+      "type": "smoothstep",
+      "label": "Armazenar documento",
+      "enabled": true,
+      "condition": ""
+    },
+    {
+      "id": "e187",
+      "source": "n_gov_storage",
+      "target": "n_provisionar_alteracao",
+      "type": "smoothstep",
+      "label": "Referenciar anexos",
+      "enabled": true,
+      "condition": ""
+    }
+  ]
+}

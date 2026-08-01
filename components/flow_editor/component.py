@@ -11,10 +11,11 @@ ASSET_DIR = Path(__file__).resolve().parent / "frontend"
 
 @lru_cache(maxsize=1)
 def _load_assets() -> tuple[str, str, str]:
-    html = (ASSET_DIR / "index.html").read_text(encoding="utf-8")
-    css = (ASSET_DIR / "styles.css").read_text(encoding="utf-8")
-    js = (ASSET_DIR / "main.js").read_text(encoding="utf-8")
-    return html, css, js
+    return (
+        (ASSET_DIR / "index.html").read_text(encoding="utf-8"),
+        (ASSET_DIR / "styles.css").read_text(encoding="utf-8"),
+        (ASSET_DIR / "main.js").read_text(encoding="utf-8"),
+    )
 
 
 @lru_cache(maxsize=1)
@@ -26,7 +27,7 @@ def _renderer():
         )
     html, css, js = _load_assets()
     return st.components.v2.component(
-        "produto_tools_flow_editor",
+        "produto_tools_flow_editor_v3",
         html=html,
         css=css,
         js=js,
@@ -38,15 +39,36 @@ def flow_editor(
     document: dict[str, Any],
     *,
     key: str,
-    height: int = 820,
+    height: int = 900,
     theme: str = "light",
+    revision: int = 1,
+    permission: str = "viewer",
+    flow_catalog: list[dict[str, Any]] | None = None,
+    comments: list[dict[str, Any]] | None = None,
+    autosave_seconds: int = 10,
     on_save_change: Callable[[], None] | None = None,
+    on_autosave_change: Callable[[], None] | None = None,
+    on_open_flow_change: Callable[[], None] | None = None,
+    on_comment_create_change: Callable[[], None] | None = None,
 ):
-    """Monta o editor e retorna os eventos transitórios emitidos pelo frontend."""
+    """Renderiza o editor profissional e devolve eventos transitórios do frontend."""
     renderer = _renderer()
+    data = {
+        "document": document,
+        "height": height,
+        "theme": theme,
+        "revision": int(revision),
+        "permission": permission,
+        "flowCatalog": flow_catalog or [],
+        "comments": comments or [],
+        "autosaveSeconds": max(5, int(autosave_seconds)),
+    }
     return renderer(
-        data={"document": document, "height": height, "theme": theme},
+        data=data,
         key=key,
         on_save_change=on_save_change or (lambda: None),
+        on_autosave_change=on_autosave_change or (lambda: None),
+        on_open_flow_change=on_open_flow_change or (lambda: None),
+        on_comment_create_change=on_comment_create_change or (lambda: None),
         height=height,
     )
