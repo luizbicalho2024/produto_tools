@@ -1,0 +1,179 @@
+{
+  "schemaVersion": "1.0.0",
+  "flow": {
+    "id": "flow_0b618d34fed4",
+    "name": "Fluxo de exemplo",
+    "description": "",
+    "status": "draft",
+    "orientation": "LR",
+    "createdAt": "2026-08-01T17:46:27.502414+00:00",
+    "updatedAt": "2026-08-01T17:46:27.502414+00:00",
+    "createdBy": "usuario@empresa.com"
+  },
+  "settings": {
+    "snapToGrid": true,
+    "gridSize": 20,
+    "autoLayout": false,
+    "showMiniMap": true,
+    "showGrid": true
+  },
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  },
+  "lanes": [
+    {
+      "id": "lane_comercial",
+      "name": "Comercial",
+      "orientation": "horizontal",
+      "order": 1,
+      "color": "#EEF2FF",
+      "collapsed": false,
+      "enabled": true,
+      "height": 240
+    },
+    {
+      "id": "lane_operacao",
+      "name": "Operação",
+      "orientation": "horizontal",
+      "order": 2,
+      "color": "#ECFDF5",
+      "collapsed": false,
+      "enabled": true,
+      "height": 240
+    }
+  ],
+  "nodes": [
+    {
+      "id": "node_start",
+      "type": "start",
+      "laneId": "lane_comercial",
+      "position": {
+        "x": 80,
+        "y": 78
+      },
+      "data": {
+        "label": "Solicitação recebida",
+        "description": "",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": []
+      }
+    },
+    {
+      "id": "node_analyze",
+      "type": "task",
+      "laneId": "lane_comercial",
+      "position": {
+        "x": 330,
+        "y": 70
+      },
+      "data": {
+        "label": "Analisar solicitação",
+        "description": "Validar dados e escopo",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": 60,
+        "tags": [
+          "análise"
+        ]
+      }
+    },
+    {
+      "id": "node_decision",
+      "type": "decision",
+      "laneId": "lane_comercial",
+      "position": {
+        "x": 610,
+        "y": 65
+      },
+      "data": {
+        "label": "Dados completos?",
+        "description": "",
+        "owner": "Comercial",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": []
+      }
+    },
+    {
+      "id": "node_execute",
+      "type": "subprocess",
+      "laneId": "lane_operacao",
+      "position": {
+        "x": 890,
+        "y": 315
+      },
+      "data": {
+        "label": "Executar processo",
+        "description": "",
+        "owner": "Operação",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": 240,
+        "tags": []
+      }
+    },
+    {
+      "id": "node_end",
+      "type": "end",
+      "laneId": "lane_operacao",
+      "position": {
+        "x": 1180,
+        "y": 325
+      },
+      "data": {
+        "label": "Processo concluído",
+        "description": "",
+        "owner": "Operação",
+        "enabled": true,
+        "locked": false,
+        "slaMinutes": null,
+        "tags": []
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_1",
+      "source": "node_start",
+      "target": "node_analyze",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": null
+    },
+    {
+      "id": "edge_2",
+      "source": "node_analyze",
+      "target": "node_decision",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": null
+    },
+    {
+      "id": "edge_3",
+      "source": "node_decision",
+      "target": "node_execute",
+      "type": "smoothstep",
+      "label": "Sim",
+      "enabled": true,
+      "condition": "Dados completos"
+    },
+    {
+      "id": "edge_4",
+      "source": "node_execute",
+      "target": "node_end",
+      "type": "smoothstep",
+      "label": "",
+      "enabled": true,
+      "condition": null
+    }
+  ]
+}

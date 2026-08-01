@@ -1,0 +1,103 @@
+<div class="flow-editor-shell" data-role="root">
+  <header class="flow-toolbar">
+    <div class="toolbar-brand">
+      <span class="brand-mark">PT</span>
+      <div>
+        <strong data-role="flow-name">Editor de Processos</strong>
+        <small data-role="save-state">Alterações sincronizadas</small>
+      </div>
+    </div>
+    <div class="toolbar-actions">
+      <button type="button" data-action="undo" title="Desfazer (Ctrl+Z)">↶</button>
+      <button type="button" data-action="redo" title="Refazer (Ctrl+Y)">↷</button>
+      <span class="toolbar-divider"></span>
+      <button type="button" data-action="zoom-out" title="Diminuir zoom">−</button>
+      <button type="button" data-action="zoom-reset" data-role="zoom-label" title="Restaurar zoom">100%</button>
+      <button type="button" data-action="zoom-in" title="Aumentar zoom">+</button>
+      <button type="button" data-action="fit" title="Enquadrar conteúdo">Enquadrar</button>
+      <span class="toolbar-divider"></span>
+      <button type="button" data-action="layout" class="button-soft">Organizar</button>
+      <button type="button" data-action="validate" class="button-soft">Validar</button>
+      <button type="button" data-action="import">Importar JSON</button>
+      <button type="button" data-action="export">Exportar JSON</button>
+      <button type="button" data-action="save" class="button-primary">Salvar</button>
+      <input data-role="file-input" type="file" accept="application/json,.json" hidden>
+    </div>
+  </header>
+
+  <div class="flow-workspace">
+    <aside class="flow-palette">
+      <div class="panel-heading">
+        <div><strong>Elementos</strong><small>Arraste para o canvas</small></div>
+      </div>
+      <div class="palette-search-wrap">
+        <input data-role="palette-search" type="search" placeholder="Buscar elemento">
+      </div>
+      <div class="palette-section">
+        <span class="section-title">Fluxo</span>
+        <div class="palette-items" data-role="palette-items"></div>
+      </div>
+      <div class="palette-section lane-actions">
+        <span class="section-title">Organização</span>
+        <button type="button" class="palette-wide-button" data-action="add-lane">＋ Nova raia</button>
+      </div>
+      <div class="editor-hints">
+        <strong>Atalhos</strong>
+        <span>Delete: excluir</span>
+        <span>Ctrl+D: duplicar</span>
+        <span>Ctrl+Z/Y: desfazer/refazer</span>
+        <span>Espaço + arrastar: mover tela</span>
+      </div>
+    </aside>
+
+    <main class="canvas-column">
+      <div class="canvas-statusbar">
+        <span data-role="selection-label">Nenhum item selecionado</span>
+        <span data-role="connection-hint"></span>
+        <div class="canvas-options">
+          <label><input data-setting="showGrid" type="checkbox"> Grade</label>
+          <label><input data-setting="snapToGrid" type="checkbox"> Encaixar</label>
+          <label><input data-setting="showMiniMap" type="checkbox"> Minimapa</label>
+        </div>
+      </div>
+      <div class="canvas-viewport" data-role="viewport" tabindex="0">
+        <div class="canvas-world" data-role="world">
+          <div class="lane-layer" data-role="lane-layer"></div>
+          <svg class="edge-layer" data-role="edge-layer" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="arrow-enabled" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L9,3 z" fill="#64748b"></path>
+              </marker>
+              <marker id="arrow-disabled" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L9,3 z" fill="#94a3b8"></path>
+              </marker>
+            </defs>
+          </svg>
+          <div class="node-layer" data-role="node-layer"></div>
+        </div>
+        <div class="selection-box" data-role="selection-box" hidden></div>
+        <div class="minimap" data-role="minimap"></div>
+        <div class="empty-state" data-role="empty-state">
+          <strong>Comece desenhando o processo</strong>
+          <span>Arraste um elemento da esquerda ou crie uma nova raia.</span>
+        </div>
+      </div>
+    </main>
+
+    <aside class="properties-panel">
+      <div class="panel-heading">
+        <div><strong>Propriedades</strong><small data-role="properties-caption">Selecione um item</small></div>
+      </div>
+      <div class="properties-body" data-role="properties-body"></div>
+    </aside>
+  </div>
+
+  <div class="toast-container" data-role="toasts"></div>
+  <div class="modal-backdrop" data-role="modal" hidden>
+    <section class="modal-card">
+      <header><strong data-role="modal-title">Validação do fluxo</strong><button type="button" data-action="close-modal">×</button></header>
+      <div data-role="modal-body"></div>
+      <footer><button type="button" data-action="close-modal">Fechar</button></footer>
+    </section>
+  </div>
+</div>
