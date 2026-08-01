@@ -1,31 +1,79 @@
-# Produto Tools 3.1 Professional
+# Produto Tools 3.2 Professional
 
-Aplicação Streamlit para modelagem, governança e publicação de processos, com autenticação compartilhada, persistência no MongoDB Atlas e suporte a **projetos compostos por vários fluxos vinculados**.
+Aplicação Streamlit para modelagem, governança e publicação de processos, com autenticação compartilhada, persistência no MongoDB Atlas e projetos compostos por vários fluxos vinculados.
+
+## Novidades da versão 3.2
+
+- importação resiliente: decisões sem ramificações reais são convertidas em atividades, sem criar condições de negócio artificiais;
+- exclusão visível de fluxos e projetos;
+- login compacto, sem textos promocionais;
+- tema claro/escuro persistido por usuário e também na URL;
+- correção de contraste nos inputs e menus do modo escuro;
+- caminhos de páginas sem acentuação para navegação estável no Streamlit Cloud;
+- traçado global das conexões em curvas suaves, linhas retas, ortogonal simples ou corredores;
+- nova visualização de relações inspirada no grafo do Obsidian.
 
 ## Gestão de projetos
 
 Um projeto pode reunir uma visão executiva, uma visão operacional e diversos fluxos auxiliares. Cada fluxo continua independente, com seu próprio rascunho, revisão, versão, comentários e governança.
 
-Principais recursos:
+Recursos:
 
 - mapa visual das dependências entre fluxos;
 - abertura de subprocessos por duplo clique;
 - navegação de volta ao fluxo pai;
-- até oito fluxos abertos como abas internas do projeto;
+- abas internas para alternar entre fluxos;
 - busca global por cards, responsáveis, tags, raias e IDs;
-- destaque automático do resultado dentro do fluxo correto;
 - execução guiada entre fluxos;
-- análise de impacto de alterações em fluxos auxiliares;
-- detecção de vínculos quebrados, entradas ou saídas inexistentes, ciclos e fluxos órfãos;
-- release consolidada, fixando a versão e revisão de cada fluxo;
+- análise de impacto de alterações;
+- detecção de vínculos quebrados, ciclos e fluxos órfãos;
+- releases consolidadas, fixando a revisão de cada fluxo;
 - importação e exportação em pacote `project.zip`;
-- importação simultânea de vários JSONs como um novo projeto.
+- importação simultânea de vários JSONs.
+
+## Importação resiliente
+
+O schema continua exigindo duas ou mais saídas para uma decisão legítima. Na importação, caso um arquivo traga uma decisão com zero ou uma saída, o sistema:
+
+1. normaliza o documento;
+2. converte o elemento para atividade;
+3. preserva sua conexão existente;
+4. adiciona a tag `Importação corrigida`;
+5. informa o reparo ao usuário.
+
+Nenhuma saída, condição ou regra de negócio é inventada automaticamente.
+
+## Traçado das conexões
+
+O seletor **Traçado** no rodapé do canvas aplica o mesmo estilo a todo o fluxo:
+
+- curvas suaves;
+- linhas retas;
+- ortogonal simples;
+- corredores inteligentes;
+- corredores simples.
+
+## Mapa de relações
+
+A página `Mapa de Relações` apresenta um grafo de força local no navegador, inspirado no Obsidian. Ela permite:
+
+- visualizar somente os fluxos do projeto;
+- visualizar os cards de um fluxo;
+- combinar fluxos e cards;
+- arrastar nós;
+- mover e ampliar o canvas;
+- explodir a rede;
+- pausar a física;
+- pesquisar elementos;
+- destacar a vizinhança de um nó;
+- abrir o fluxo selecionado no editor.
 
 ## Estrutura de um pacote de projeto
 
 ```text
 sigyo_modular_project.zip
 ├── project.json
+├── README.txt
 └── flows/
     ├── flow_sigyo_modular_simplificado_aprovacao.json
     ├── flow_sigyo_modular_completo_aprovacao_comercial.json
@@ -36,11 +84,9 @@ sigyo_modular_project.zip
     └── flow_sigyo_aux_ciclo_vida_contratual.json
 ```
 
-O projeto inclui `examples/sigyo_modular_project.zip`, pronto para importação pela tela **Gestão de Projetos**.
+O projeto inclui `examples/sigyo_modular_project.zip`, pronto para importação.
 
 ## Vínculo entre fluxos
-
-Cards do tipo subprocesso utilizam:
 
 ```json
 {
@@ -50,45 +96,32 @@ Cards do tipo subprocesso utilizam:
 }
 ```
 
-O editor abre o fluxo vinculado, centraliza o card de entrada e mantém a pilha de navegação para retornar ao fluxo pai.
-
 ## Rascunhos isolados
 
-O rascunho local utiliza a combinação:
+O rascunho local considera:
 
 ```text
 projeto + usuário + fluxo + revisão
 ```
 
-Isso impede que alterações de abas ou fluxos diferentes sobrescrevam o rascunho atual.
-
 ## Editor visual
 
 - raias horizontais;
-- decisões com no mínimo duas saídas;
+- decisões interativas;
 - layout automático para fluxos grandes;
-- conexões ortogonais por corredores;
+- cinco estilos globais de conexão;
 - busca dentro do canvas;
-- filtros executivo, operacional, técnico, exceções e raia selecionada;
+- filtros executivo, operacional, técnico, exceções e raia;
 - Play a partir de qualquer card ou raia;
-- decisões interativas durante a reprodução;
-- modo claro e escuro;
+- modo claro e escuro persistente;
 - tela cheia, minimapa, zoom e enquadramento;
 - exportação JSON, SVG, PNG, PDF, HTML e CSV;
-- autosave local silencioso e sincronização explícita do rascunho no MongoDB.
+- autosave local silencioso e sincronização explícita no MongoDB.
 
-## Governança
+## Exclusão
 
-- rascunho;
-- em revisão;
-- aprovado;
-- publicado;
-- arquivado;
-- comentários por fluxo, raia, card ou conexão;
-- visualizador, editor, revisor e aprovador;
-- controle otimista de concorrência por revisão;
-- versões imutáveis e comparação de alterações;
-- releases imutáveis do projeto.
+- **Fluxo:** Gestão de Projetos → Fluxos → Excluir fluxo permanentemente. O sistema pode remover referências de subprocessos antes da exclusão.
+- **Projeto:** Gestão de Projetos → Configurações e exclusão → Excluir projeto. É possível preservar os fluxos como avulsos ou excluí-los também.
 
 ## Coleções MongoDB
 
@@ -109,36 +142,31 @@ simulador_db
 └── produto_tools_flowchart_presence
 ```
 
-## Estrutura do projeto
+## Estrutura
 
 ```text
 produto_tools/
 ├── login_app.py
 ├── database.py
 ├── requirements.txt
-├── atualizar_produto_tools_v3_1_main.ps1
+├── atualizar_produto_tools_v3_2_main.ps1
 ├── components/
 │   └── flow_editor/
 ├── core/
 ├── docs/
 ├── examples/
-│   ├── sigyo_modular_project.zip
-│   └── sigyo_modular_project/
 ├── pages/
-│   ├── 1_Gestão_de_Acesso.py
+│   ├── 1_Gestao_de_Acesso.py
 │   ├── 2_Central_de_Processos.py
-│   ├── 3_Gestão_de_Projetos.py
+│   ├── 3_Gestao_de_Projetos.py
+│   ├── 4_Mapa_de_Relacoes.py
 │   └── 5_Editor_de_Fluxos.py
 ├── schemas/
 ├── services/
-│   ├── flowchart_repository.py
-│   └── project_repository.py
 └── tests/
 ```
 
 ## Streamlit Cloud
-
-Use:
 
 ```text
 Branch: main
@@ -163,7 +191,7 @@ pip install -r requirements.txt
 streamlit run login_app.py
 ```
 
-Para testes:
+Testes:
 
 ```bash
 pip install -r requirements-dev.txt
@@ -173,16 +201,14 @@ node --check components/flow_editor/frontend/main.js
 
 ## Publicação no GitHub
 
-No Windows PowerShell 5.1:
-
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-Unblock-File .\atualizar_produto_tools_v3_1_main.ps1
-.\atualizar_produto_tools_v3_1_main.ps1
+Unblock-File .\atualizar_produto_tools_v3_2_main.ps1
+.\atualizar_produto_tools_v3_2_main.ps1
 ```
 
-Para ignorar testes locais e deixar a validação para o GitHub Actions:
+Sem testes locais:
 
 ```powershell
-.\atualizar_produto_tools_v3_1_main.ps1 -SkipTests
+.\atualizar_produto_tools_v3_2_main.ps1 -SkipTests
 ```

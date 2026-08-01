@@ -61,7 +61,7 @@ from services.project_repository import (
 from services.report_export import html_report, nodes_csv, pdf_report, raci_csv
 from services.template_library import built_in_templates, clone_template
 
-st.set_page_config(page_title="Editor de Processos e Projetos", page_icon="◈", layout="wide")
+st.set_page_config(page_title="Editor de Processos e Projetos", page_icon="🧭", layout="wide")
 apply_global_styles(full_width=True)
 user = require_login()
 render_account_sidebar()
@@ -174,8 +174,10 @@ with st.sidebar:
         st.session_state.pop("selected_flowchart_id", None)
         st.session_state["flow_navigation_stack"] = []
         st.rerun()
-    if selected_project_id and st.button("▦ Abrir mapa do projeto", use_container_width=True):
-        st.switch_page("pages/3_Gestão_de_Projetos.py")
+    if selected_project_id and st.button("Abrir projeto", use_container_width=True):
+        st.switch_page("pages/3_Gestao_de_Projetos.py")
+    if selected_project_id and st.button("Mapa de relações", use_container_width=True):
+        st.switch_page("pages/4_Mapa_de_Relacoes.py")
 
     st.markdown("### Processos")
     if flow_stack and st.button("← Voltar ao fluxo anterior", use_container_width=True):
@@ -495,7 +497,7 @@ with manage_tabs[2]:
     if project:
         st.info("Este fluxo herda participantes e visibilidade do projeto. Altere o compartilhamento na Gestão de Projetos.")
         if st.button("Abrir participantes do projeto", use_container_width=True):
-            st.switch_page("pages/3_Gestão_de_Projetos.py")
+            st.switch_page("pages/3_Gestao_de_Projetos.py")
     elif permission == "owner":
         visibility = st.radio("Visibilidade", ["private", "organization"], index=1 if record.get("visibility") == "organization" else 0, format_func=lambda value: "Toda a organização pode visualizar" if value == "organization" else "Somente convidados", horizontal=True)
         collaborator_rows = {str(item.get("username")): str(item.get("level") or "viewer") for item in record.get("collaborators", [])}

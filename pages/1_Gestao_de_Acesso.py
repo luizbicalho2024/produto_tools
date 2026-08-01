@@ -10,7 +10,7 @@ from core.auth import render_account_sidebar, require_admin
 from core.configuration import ROLE_LABELS, VALID_USER_ROLES
 from core.styles import apply_global_styles, page_header
 
-st.set_page_config(page_title="Gestão de Acesso", page_icon="♙", layout="wide")
+st.set_page_config(page_title="Gestão de Acesso", page_icon="👥", layout="wide")
 apply_global_styles()
 current_user = require_admin()
 render_account_sidebar()

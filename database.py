@@ -255,14 +255,59 @@ def get_user_profile(username: str) -> dict[str, Any] | None:
     user = get_user(username)
     if not user or user.get("active") is False:
         return None
+    preferences = user.get("produto_tools_preferences") if isinstance(user.get("produto_tools_preferences"), dict) else {}
+    ui_theme = str(preferences.get("ui_theme") or "light").lower()
+    if ui_theme not in {"light", "dark"}:
+        ui_theme = "light"
     return {
         "username": str(user.get("username") or "").strip().lower(),
         "name": str(user.get("name") or user.get("username") or "Usuário"),
         "email": str(user.get("email") or ""),
         "role": str(user.get("role") or "user"),
         "active": user.get("active") is not False,
+        "ui_theme": ui_theme,
     }
 
+
+
+def set_user_ui_theme(username: str, theme: str) -> bool:
+    users_collection = get_users_collection()
+    normalized = str(username or "").strip().lower()
+    normalized_theme = str(theme or "").strip().lower()
+    if users_collection is None or not normalized or normalized_theme not in {"light", "dark"}:
+        return False
+    try:
+        result = users_collection.update_one(
+            {"username": normalized},
+            {
+                "$set": {
+                    "produto_tools_preferences.ui_theme": normalized_theme,
+                    "updated_at": utc_now(),
+                }
+            },
+        )
+        return result.matched_count > 0
+    except PyMongoError:
+        log.exception("Falha ao salvar preferência de tema do usuário.")
+        return False
+
+
+def get_user_ui_theme(username: str) -> str | None:
+    users_collection = get_users_collection()
+    normalized = str(username or "").strip().lower()
+    if users_collection is None or not normalized:
+        return None
+    try:
+        record = users_collection.find_one(
+            {"username": normalized},
+            {"produto_tools_preferences.ui_theme": 1},
+        )
+    except PyMongoError:
+        log.exception("Falha ao consultar preferência de tema do usuário.")
+        return None
+    preferences = (record or {}).get("produto_tools_preferences")
+    theme = str((preferences or {}).get("ui_theme") or "").lower() if isinstance(preferences, dict) else ""
+    return theme if theme in {"light", "dark"} else None
 
 def get_user_role(username: str) -> str | None:
     profile = get_user_profile(username)

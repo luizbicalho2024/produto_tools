@@ -7,7 +7,7 @@
     "status": "draft",
     "orientation": "LR",
     "createdAt": "2026-08-01T21:18:00.000Z",
-    "updatedAt": "2026-08-01T21:18:00.000Z",
+    "updatedAt": "2026-08-01T22:58:07.166714+00:00",
     "createdBy": "luiz.bicalho@rovemabank.com.br",
     "tags": [
       "SIGYO",
@@ -108,8 +108,8 @@
       "type": "start",
       "laneId": "sl_core2",
       "position": {
-        "x": 100,
-        "y": 620
+        "x": 100.0,
+        "y": 620.0
       },
       "data": {
         "label": "Proposta aceita",
@@ -142,8 +142,8 @@
       "type": "subprocess",
       "laneId": "sl_juridico",
       "position": {
-        "x": 380,
-        "y": 360
+        "x": 380.0,
+        "y": 360.0
       },
       "data": {
         "label": "Selecionar template e cláusulas",
@@ -176,8 +176,8 @@
       "type": "document",
       "laneId": "sl_juridico",
       "position": {
-        "x": 660,
-        "y": 360
+        "x": 660.0,
+        "y": 360.0
       },
       "data": {
         "label": "Renderizar documento imutável",
@@ -211,8 +211,8 @@
       "type": "subprocess",
       "laneId": "sl_core2",
       "position": {
-        "x": 940,
-        "y": 620
+        "x": 940.0,
+        "y": 620.0
       },
       "data": {
         "label": "Criar envelope e signatários",
@@ -245,8 +245,8 @@
       "type": "api",
       "laneId": "sl_ext",
       "position": {
-        "x": 1220,
-        "y": 1000
+        "x": 1220.0,
+        "y": 1000.0
       },
       "data": {
         "label": "Enviar ao provedor",
@@ -279,8 +279,8 @@
       "type": "task",
       "laneId": "sl_dest",
       "position": {
-        "x": 1500,
-        "y": 80
+        "x": 1500.0,
+        "y": 80.0
       },
       "data": {
         "label": "Assinar documento",
@@ -313,8 +313,8 @@
       "type": "api",
       "laneId": "sl_ext",
       "position": {
-        "x": 1780,
-        "y": 1000
+        "x": 1780.0,
+        "y": 1000.0
       },
       "data": {
         "label": "Receber webhook",
@@ -347,8 +347,8 @@
       "type": "subprocess",
       "laneId": "sl_core2",
       "position": {
-        "x": 2060,
-        "y": 620
+        "x": 2060.0,
+        "y": 620.0
       },
       "data": {
         "label": "Processar evento",
@@ -381,8 +381,8 @@
       "type": "decision",
       "laneId": "sl_core2",
       "position": {
-        "x": 2340,
-        "y": 620
+        "x": 2340.0,
+        "y": 620.0
       },
       "data": {
         "label": "Qual o status?",
@@ -415,8 +415,8 @@
       "type": "wait",
       "laneId": "sl_juridico",
       "position": {
-        "x": 2620,
-        "y": 360
+        "x": 2620.0,
+        "y": 360.0
       },
       "data": {
         "label": "Aguardar assinatura",
@@ -449,8 +449,8 @@
       "type": "task",
       "laneId": "sl_gov",
       "position": {
-        "x": 2620,
-        "y": 1540
+        "x": 2620.0,
+        "y": 1540.0
       },
       "data": {
         "label": "Registrar erro e reprocessar",
@@ -483,8 +483,8 @@
       "type": "end",
       "laneId": "sl_dest",
       "position": {
-        "x": 2620,
-        "y": 80
+        "x": 2620.0,
+        "y": 80.0
       },
       "data": {
         "label": "Assinatura encerrada",
@@ -517,8 +517,8 @@
       "type": "event",
       "laneId": "sl_core2",
       "position": {
-        "x": 2620,
-        "y": 620
+        "x": 2620.0,
+        "y": 620.0
       },
       "data": {
         "label": "Documento assinado",
@@ -551,8 +551,8 @@
       "type": "decision",
       "laneId": "sl_core2",
       "position": {
-        "x": 2900,
-        "y": 620
+        "x": 2900.0,
+        "y": 620.0
       },
       "data": {
         "label": "Inicial ou aditivo?",
@@ -585,8 +585,8 @@
       "type": "end",
       "laneId": "sl_juridico",
       "position": {
-        "x": 3180,
-        "y": 360
+        "x": 3180.0,
+        "y": 360.0
       },
       "data": {
         "label": "Aditivo encaminhado ao ciclo de vida",
@@ -617,11 +617,11 @@
     },
     {
       "id": "s_entity",
-      "type": "decision",
+      "type": "task",
       "laneId": "sl_core2",
       "position": {
-        "x": 3180,
-        "y": 620
+        "x": 3180.0,
+        "y": 620.0
       },
       "data": {
         "label": "Qual entidade provisionar?",
@@ -631,7 +631,8 @@
         "locked": false,
         "slaMinutes": null,
         "tags": [
-          "Onboarding"
+          "Onboarding",
+          "Importação corrigida"
         ],
         "preferredEdgeId": null,
         "level": "operational",
@@ -646,7 +647,8 @@
           "accountable": "",
           "consulted": [],
           "informed": []
-        }
+        },
+        "importRepair": "decision_without_branches_converted_to_task"
       }
     },
     {
@@ -654,8 +656,8 @@
       "type": "subprocess",
       "laneId": "sl_core2",
       "position": {
-        "x": 3460,
-        "y": 620
+        "x": 3460.0,
+        "y": 620.0
       },
       "data": {
         "label": "Executar onboarding idempotente",
@@ -688,8 +690,8 @@
       "type": "decision",
       "laneId": "sl_core2",
       "position": {
-        "x": 3740,
-        "y": 620
+        "x": 3740.0,
+        "y": 620.0
       },
       "data": {
         "label": "Onboarding concluído?",
@@ -722,8 +724,8 @@
       "type": "task",
       "laneId": "sl_gov",
       "position": {
-        "x": 4020,
-        "y": 1540
+        "x": 4020.0,
+        "y": 1540.0
       },
       "data": {
         "label": "Reprocessar etapa pendente",
@@ -756,8 +758,8 @@
       "type": "subprocess",
       "laneId": "sl_core2",
       "position": {
-        "x": 4020,
-        "y": 620
+        "x": 4020.0,
+        "y": 620.0
       },
       "data": {
         "label": "Gerar contrato e assinatura comercial",
@@ -787,11 +789,11 @@
     },
     {
       "id": "s_commit",
-      "type": "decision",
+      "type": "task",
       "laneId": "sl_fin",
       "position": {
-        "x": 4300,
-        "y": 1240
+        "x": 4300.0,
+        "y": 1240.0
       },
       "data": {
         "label": "Exige empenho?",
@@ -801,7 +803,8 @@
         "locked": false,
         "slaMinutes": null,
         "tags": [
-          "Empenho"
+          "Empenho",
+          "Importação corrigida"
         ],
         "preferredEdgeId": null,
         "level": "operational",
@@ -816,7 +819,8 @@
           "accountable": "",
           "consulted": [],
           "informed": []
-        }
+        },
+        "importRepair": "decision_without_branches_converted_to_task"
       }
     },
     {
@@ -824,8 +828,8 @@
       "type": "subprocess",
       "laneId": "sl_fin",
       "position": {
-        "x": 4580,
-        "y": 1240
+        "x": 4580.0,
+        "y": 1240.0
       },
       "data": {
         "label": "Preparar condição financeira",
@@ -858,8 +862,8 @@
       "type": "end",
       "laneId": "sl_core2",
       "position": {
-        "x": 4860,
-        "y": 620
+        "x": 4860.0,
+        "y": 620.0
       },
       "data": {
         "label": "Contratação pronta para provisionamento modular",

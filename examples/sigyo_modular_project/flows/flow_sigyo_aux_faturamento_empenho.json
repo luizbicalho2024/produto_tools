@@ -7,7 +7,7 @@
     "status": "draft",
     "orientation": "LR",
     "createdAt": "2026-08-01T21:18:00.000Z",
-    "updatedAt": "2026-08-01T21:18:00.000Z",
+    "updatedAt": "2026-08-01T22:58:07.168800+00:00",
     "createdBy": "luiz.bicalho@rovemabank.com.br",
     "tags": [
       "SIGYO",
@@ -141,8 +141,8 @@
       "type": "start",
       "laneId": "bl_fin",
       "position": {
-        "x": 100,
-        "y": 80
+        "x": 100.0,
+        "y": 80.0
       },
       "data": {
         "label": "Data de corte atingida",
@@ -175,8 +175,8 @@
       "type": "subprocess",
       "laneId": "bl_fin",
       "position": {
-        "x": 380,
-        "y": 80
+        "x": 380.0,
+        "y": 80.0
       },
       "data": {
         "label": "Resolver régua de corte",
@@ -209,8 +209,8 @@
       "type": "task",
       "laneId": "bl_core",
       "position": {
-        "x": 660,
-        "y": 420
+        "x": 660.0,
+        "y": 420.0
       },
       "data": {
         "label": "Selecionar assinaturas e itens",
@@ -243,8 +243,8 @@
       "type": "decision",
       "laneId": "bl_core",
       "position": {
-        "x": 940,
-        "y": 420
+        "x": 940.0,
+        "y": 420.0
       },
       "data": {
         "label": "Item faturável no período?",
@@ -277,8 +277,8 @@
       "type": "task",
       "laneId": "bl_fin",
       "position": {
-        "x": 1220,
-        "y": 80
+        "x": 1220.0,
+        "y": 80.0
       },
       "data": {
         "label": "Registrar item não cobrado",
@@ -311,8 +311,8 @@
       "type": "decision",
       "laneId": "bl_core",
       "position": {
-        "x": 1220,
-        "y": 420
+        "x": 1220.0,
+        "y": 420.0
       },
       "data": {
         "label": "Provider disponível?",
@@ -345,8 +345,8 @@
       "type": "task",
       "laneId": "bl_core",
       "position": {
-        "x": 1500,
-        "y": 420
+        "x": 1500.0,
+        "y": 420.0
       },
       "data": {
         "label": "Aplicar cobrança fixa contratada",
@@ -379,8 +379,8 @@
       "type": "task",
       "laneId": "bl_gov",
       "position": {
-        "x": 1500,
-        "y": 2220
+        "x": 1500.0,
+        "y": 2220.0
       },
       "data": {
         "label": "Bloquear métrica variável",
@@ -413,8 +413,8 @@
       "type": "api",
       "laneId": "bl_core",
       "position": {
-        "x": 1500,
-        "y": 530
+        "x": 1500.0,
+        "y": 530.0
       },
       "data": {
         "label": "Despachar cálculo ao módulo",
@@ -447,8 +447,8 @@
       "type": "subprocess",
       "laneId": "bl_asto",
       "position": {
-        "x": 1780,
-        "y": 820
+        "x": 1780.0,
+        "y": 820.0
       },
       "data": {
         "label": "Métricas ASTO",
@@ -481,8 +481,8 @@
       "type": "subprocess",
       "laneId": "bl_eliq",
       "position": {
-        "x": 1780,
-        "y": 1040
+        "x": 1780.0,
+        "y": 1040.0
       },
       "data": {
         "label": "Métricas ELIQ",
@@ -515,8 +515,8 @@
       "type": "subprocess",
       "laneId": "bl_verdio",
       "position": {
-        "x": 1780,
-        "y": 1260
+        "x": 1780.0,
+        "y": 1260.0
       },
       "data": {
         "label": "Métricas Verdio",
@@ -549,8 +549,8 @@
       "type": "subprocess",
       "laneId": "bl_bdt",
       "position": {
-        "x": 1780,
-        "y": 1480
+        "x": 1780.0,
+        "y": 1480.0
       },
       "data": {
         "label": "Métricas BDT",
@@ -583,8 +583,8 @@
       "type": "subprocess",
       "laneId": "bl_appoff",
       "position": {
-        "x": 1780,
-        "y": 1700
+        "x": 1780.0,
+        "y": 1700.0
       },
       "data": {
         "label": "Métricas App Off",
@@ -617,8 +617,8 @@
       "type": "subprocess",
       "laneId": "bl_core",
       "position": {
-        "x": 2060,
-        "y": 420
+        "x": 2060.0,
+        "y": 420.0
       },
       "data": {
         "label": "Consolidar prévia e memória",
@@ -648,11 +648,11 @@
     },
     {
       "id": "b_duplicate",
-      "type": "decision",
+      "type": "task",
       "laneId": "bl_core",
       "position": {
-        "x": 2340,
-        "y": 420
+        "x": 2340.0,
+        "y": 420.0
       },
       "data": {
         "label": "Prévia já existe?",
@@ -662,7 +662,8 @@
         "locked": false,
         "slaMinutes": null,
         "tags": [
-          "Idempotência"
+          "Idempotência",
+          "Importação corrigida"
         ],
         "preferredEdgeId": null,
         "level": "operational",
@@ -677,7 +678,8 @@
           "accountable": "",
           "consulted": [],
           "informed": []
-        }
+        },
+        "importRepair": "decision_without_branches_converted_to_task"
       }
     },
     {
@@ -685,8 +687,8 @@
       "type": "task",
       "laneId": "bl_fin",
       "position": {
-        "x": 2620,
-        "y": 80
+        "x": 2620.0,
+        "y": 80.0
       },
       "data": {
         "label": "Revisar prévia",
@@ -719,8 +721,8 @@
       "type": "decision",
       "laneId": "bl_fin",
       "position": {
-        "x": 2900,
-        "y": 80
+        "x": 2900.0,
+        "y": 80.0
       },
       "data": {
         "label": "Prévia aprovada?",
@@ -753,8 +755,8 @@
       "type": "task",
       "laneId": "bl_fin",
       "position": {
-        "x": 3180,
-        "y": 180
+        "x": 3180.0,
+        "y": 180.0
       },
       "data": {
         "label": "Corrigir e recalcular",
@@ -787,8 +789,8 @@
       "type": "subprocess",
       "laneId": "bl_core",
       "position": {
-        "x": 3180,
-        "y": 420
+        "x": 3180.0,
+        "y": 420.0
       },
       "data": {
         "label": "Gerar fatura oficial",
@@ -821,8 +823,8 @@
       "type": "decision",
       "laneId": "bl_fin",
       "position": {
-        "x": 3460,
-        "y": 80
+        "x": 3460.0,
+        "y": 80.0
       },
       "data": {
         "label": "Usa empenho e há saldo?",
@@ -855,8 +857,8 @@
       "type": "wait",
       "laneId": "bl_fin",
       "position": {
-        "x": 3740,
-        "y": 180
+        "x": 3740.0,
+        "y": 180.0
       },
       "data": {
         "label": "Aguardar reforço de empenho",
@@ -889,8 +891,8 @@
       "type": "subprocess",
       "laneId": "bl_fin",
       "position": {
-        "x": 3740,
-        "y": 80
+        "x": 3740.0,
+        "y": 80.0
       },
       "data": {
         "label": "Debitar empenho ou registrar exceção",
@@ -923,8 +925,8 @@
       "type": "api",
       "laneId": "bl_client",
       "position": {
-        "x": 4020,
-        "y": 1920
+        "x": 4020.0,
+        "y": 1920.0
       },
       "data": {
         "label": "Emitir e enviar cobrança",
@@ -957,8 +959,8 @@
       "type": "decision",
       "laneId": "bl_fin",
       "position": {
-        "x": 4300,
-        "y": 80
+        "x": 4300.0,
+        "y": 80.0
       },
       "data": {
         "label": "Qual o status financeiro?",
@@ -991,8 +993,8 @@
       "type": "subprocess",
       "laneId": "bl_fin",
       "position": {
-        "x": 4580,
-        "y": 180
+        "x": 4580.0,
+        "y": 180.0
       },
       "data": {
         "label": "Executar régua de cobrança",
@@ -1025,8 +1027,8 @@
       "type": "subprocess",
       "laneId": "bl_fin",
       "position": {
-        "x": 4580,
-        "y": 280
+        "x": 4580.0,
+        "y": 280.0
       },
       "data": {
         "label": "Reverter empenho",
@@ -1059,8 +1061,8 @@
       "type": "end",
       "laneId": "bl_fin",
       "position": {
-        "x": 4860,
-        "y": 80
+        "x": 4860.0,
+        "y": 80.0
       },
       "data": {
         "label": "Competência concluída",

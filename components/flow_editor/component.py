@@ -27,7 +27,7 @@ def _renderer():
         )
     html, css, js = _load_assets()
     return st.components.v2.component(
-        "produto_tools_flow_editor_v310",
+        "produto_tools_flow_editor_v320",
         html=html,
         css=css,
         js=js,

@@ -10,25 +10,68 @@ THEME_LABELS = {
 }
 
 
+def _valid_theme(value: object) -> str | None:
+    theme = str(value or "").strip().lower()
+    return theme if theme in THEME_LABELS else None
+
+
 def get_ui_theme() -> str:
-    theme = str(st.session_state.get("ui_theme") or "light").lower()
-    if theme not in THEME_LABELS:
-        theme = "light"
+    session_theme = _valid_theme(st.session_state.get("ui_theme"))
+    if session_theme:
+        return session_theme
+
+    query_theme: str | None = None
+    try:
+        query_theme = _valid_theme(st.query_params.get("theme"))
+    except Exception:
+        query_theme = None
+
+    profile = st.session_state.get("user_info")
+    profile_theme = _valid_theme(profile.get("ui_theme")) if isinstance(profile, dict) else None
+    theme = query_theme or profile_theme or "light"
     st.session_state["ui_theme"] = theme
+    st.session_state["ui_theme_source"] = "query" if query_theme else ("profile" if profile_theme else "default")
     return theme
 
 
-def render_theme_selector(*, key: str = "global_ui_theme") -> str:
-    current = get_ui_theme()
-    selected = st.selectbox(
-        "Aparência",
-        options=list(THEME_LABELS),
-        index=list(THEME_LABELS).index(current),
-        format_func=lambda value: "☀️ Claro" if value == "light" else "🌙 Escuro",
-        key=key,
-        help="Altera a aparência das páginas e define o tema inicial do editor.",
-    )
+def remember_ui_theme(theme: str) -> str:
+    selected = _valid_theme(theme) or "light"
     st.session_state["ui_theme"] = selected
+    st.session_state["ui_theme_source"] = "user"
+    try:
+        st.query_params["theme"] = selected
+    except Exception:
+        pass
+
+    username = str(st.session_state.get("username") or "").strip().lower()
+    if username:
+        try:
+            import database as db
+
+            db.set_user_ui_theme(username, selected)
+        except Exception:
+            pass
+        profile = st.session_state.get("user_info")
+        if isinstance(profile, dict):
+            profile["ui_theme"] = selected
+    return selected
+
+
+def render_theme_selector(*, key: str = "global_ui_theme", compact: bool = False) -> str:
+    current = get_ui_theme()
+    if key not in st.session_state:
+        st.session_state[key] = current
+    selected = st.selectbox(
+        "Tema",
+        options=list(THEME_LABELS),
+        format_func=lambda value: "Claro" if value == "light" else "Escuro",
+        key=key,
+        label_visibility="collapsed" if compact else "visible",
+        help="A preferência é lembrada para este usuário.",
+    )
+    if selected != current:
+        remember_ui_theme(selected)
+        st.rerun()
     return selected
 
 
@@ -39,19 +82,22 @@ def apply_global_styles(*, full_width: bool = False) -> None:
             "bg": "#00141f",
             "panel": "#001e2b",
             "panel_soft": "#082631",
+            "panel_hover": "#0c3440",
             "text": "#f5fbf7",
             "muted": "#9bc3b3",
-            "line": "#173c36",
-            "input": "#08212c",
+            "line": "#1f4b44",
+            "input": "#082631",
             "hero_a": "#001e2b",
             "hero_b": "#082631",
-            "shadow": "rgba(0,0,0,.34)",
+            "shadow": "rgba(0,0,0,.36)",
+            "menu": "#082631",
         }
     else:
         palette = {
             "bg": "#f4f8fb",
             "panel": "#ffffff",
             "panel_soft": "#f7fafc",
+            "panel_hover": "#edf6f2",
             "text": "#102a43",
             "muted": "#486581",
             "line": "#d9e2ec",
@@ -59,6 +105,7 @@ def apply_global_styles(*, full_width: bool = False) -> None:
             "hero_a": "#ffffff",
             "hero_b": "#eefbf5",
             "shadow": "rgba(16,42,67,.08)",
+            "menu": "#ffffff",
         }
 
     max_width = "100%" if full_width else "1680px"
@@ -73,13 +120,19 @@ def apply_global_styles(*, full_width: bool = False) -> None:
           --pt-bg: {palette['bg']};
           --pt-panel: {palette['panel']};
           --pt-panel-soft: {palette['panel_soft']};
+          --pt-panel-hover: {palette['panel_hover']};
           --pt-text: {palette['text']};
           --pt-muted: {palette['muted']};
           --pt-line: {palette['line']};
           --pt-input: {palette['input']};
+          --pt-menu: {palette['menu']};
           --pt-shadow: {palette['shadow']};
+          color-scheme: {theme};
         }}
-        .stApp {{background: var(--pt-bg); color: var(--pt-text);}}
+        html, body, [data-testid="stAppViewContainer"], .stApp {{
+          background: var(--pt-bg) !important;
+          color: var(--pt-text) !important;
+        }}
         .block-container {{
           padding-top: .9rem;
           padding-right: {horizontal_padding};
@@ -87,60 +140,96 @@ def apply_global_styles(*, full_width: bool = False) -> None:
           padding-left: {horizontal_padding};
           max-width: {max_width};
         }}
-        [data-testid="stSidebar"] {{
-          background: var(--pt-panel);
+        [data-testid="stSidebar"], [data-testid="stSidebarContent"] {{
+          background: var(--pt-panel) !important;
           border-right: 1px solid var(--pt-line);
         }}
         [data-testid="stSidebar"] * {{color: var(--pt-text);}}
-        [data-testid="stHeader"] {{background: color-mix(in srgb, var(--pt-bg) 88%, transparent);}}
+        [data-testid="stHeader"] {{background: color-mix(in srgb, var(--pt-bg) 88%, transparent) !important;}}
         div[data-testid="stToolbar"] {{right: .6rem;}}
-        [data-testid="stMetric"],
-        [data-testid="stForm"],
-        [data-testid="stVerticalBlockBorderWrapper"],
-        div[data-testid="stExpander"] {{
-          background: color-mix(in srgb, var(--pt-panel) 96%, transparent);
+
+        h1, h2, h3, h4, h5, h6, p, label,
+        [data-testid="stMarkdownContainer"], [data-testid="stWidgetLabel"],
+        [data-testid="stText"], [data-testid="stCaptionContainer"] {{color: var(--pt-text) !important;}}
+        [data-testid="stMetricLabel"], [data-testid="stMetricDelta"],
+        .stCaption, small {{color: var(--pt-muted) !important;}}
+
+        [data-testid="stMetric"], [data-testid="stForm"],
+        [data-testid="stVerticalBlockBorderWrapper"], div[data-testid="stExpander"],
+        [data-testid="stDialog"] > div, [data-testid="stPopoverBody"] {{
+          background: color-mix(in srgb, var(--pt-panel) 97%, transparent) !important;
           border-color: var(--pt-line) !important;
-          color: var(--pt-text);
+          color: var(--pt-text) !important;
           border-radius: 18px !important;
           box-shadow: 0 14px 36px var(--pt-shadow);
         }}
         [data-testid="stMetric"] {{
           border: 1px solid var(--pt-line);
-          border-radius: 18px;
           padding: .85rem .95rem;
           box-shadow: 0 10px 30px var(--pt-shadow);
         }}
-        [data-testid="stMetricLabel"],
-        [data-testid="stMetricDelta"],
-        .stCaption, small {{color: var(--pt-muted) !important;}}
-        h1, h2, h3, h4, h5, h6, p, label, [data-testid="stMarkdownContainer"] {{color: var(--pt-text);}}
-        div[data-baseweb="input"] > div,
-        div[data-baseweb="select"] > div,
-        div[data-baseweb="textarea"] > div {{
-          background: var(--pt-input);
-          border-color: var(--pt-line);
-          color: var(--pt-text);
+
+        /* Inputs BaseWeb: texto, senha, número, data, select e multiselect. */
+        div[data-baseweb="base-input"], div[data-baseweb="base-input"] > div,
+        div[data-baseweb="input"], div[data-baseweb="input"] > div,
+        div[data-baseweb="select"], div[data-baseweb="select"] > div,
+        div[data-baseweb="textarea"], div[data-baseweb="textarea"] > div,
+        div[data-baseweb="phone-input"], div[data-baseweb="tag"] {{
+          background: var(--pt-input) !important;
+          border-color: var(--pt-line) !important;
+          color: var(--pt-text) !important;
         }}
-        input, textarea {{color: var(--pt-text) !important;}}
+        input, textarea, select, button[role="combobox"],
+        div[data-baseweb="select"] span, div[data-baseweb="input"] input,
+        div[data-baseweb="textarea"] textarea {{
+          background-color: transparent !important;
+          color: var(--pt-text) !important;
+          caret-color: var(--pt-text) !important;
+          -webkit-text-fill-color: var(--pt-text) !important;
+        }}
+        input:-webkit-autofill, input:-webkit-autofill:hover,
+        input:-webkit-autofill:focus {{
+          -webkit-box-shadow: 0 0 0 1000px var(--pt-input) inset !important;
+          -webkit-text-fill-color: var(--pt-text) !important;
+          caret-color: var(--pt-text) !important;
+        }}
         input::placeholder, textarea::placeholder {{color: var(--pt-muted) !important; opacity: .9;}}
-        div[data-baseweb="select"] span,
-        div[data-baseweb="input"] input,
-        div[data-baseweb="textarea"] textarea {{color: var(--pt-text) !important;}}
-        div[data-baseweb="popover"],
-        div[data-baseweb="popover"] > div,
-        ul[role="listbox"],
-        div[role="listbox"],
-        li[role="option"],
-        div[role="option"] {{
-          background: var(--pt-panel) !important;
+        div[data-baseweb="select"] svg, div[data-baseweb="input"] svg {{fill: var(--pt-muted) !important; color: var(--pt-muted) !important;}}
+
+        /* Menus, calendários e popovers são portais fora do container principal. */
+        div[data-baseweb="popover"], div[data-baseweb="popover"] > div,
+        div[data-baseweb="menu"], ul[role="listbox"], div[role="listbox"],
+        li[role="option"], div[role="option"],
+        div[data-baseweb="calendar"], div[data-baseweb="datepicker"],
+        [role="dialog"] {{
+          background: var(--pt-menu) !important;
           color: var(--pt-text) !important;
           border-color: var(--pt-line) !important;
         }}
+        li[role="option"] *, div[role="option"] *, [role="dialog"] * {{color: var(--pt-text) !important;}}
         li[role="option"]:hover, div[role="option"]:hover,
         li[role="option"][aria-selected="true"], div[role="option"][aria-selected="true"] {{
-          background: var(--pt-panel-soft) !important;
+          background: var(--pt-panel-hover) !important;
           color: var(--pt-text) !important;
         }}
+
+        /* Radio, checkbox, toggle e slider. */
+        [data-testid="stCheckbox"], [data-testid="stRadio"], [data-testid="stToggle"],
+        [data-testid="stSlider"] {{color: var(--pt-text) !important;}}
+        [data-testid="stCheckbox"] label, [data-testid="stRadio"] label,
+        [data-testid="stToggle"] label {{color: var(--pt-text) !important;}}
+        [data-baseweb="checkbox"] > div, [data-baseweb="radio"] > div {{border-color: var(--pt-line) !important;}}
+
+        /* Uploads e áreas que o Streamlit costuma deixar brancas no modo escuro. */
+        [data-testid="stFileUploader"], [data-testid="stFileUploaderDropzone"],
+        [data-testid="stFileUploaderDropzone"] > div,
+        [data-testid="stFileUploaderDropzoneInstructions"] {{
+          background: var(--pt-panel-soft) !important;
+          color: var(--pt-text) !important;
+          border-color: var(--pt-line) !important;
+        }}
+        [data-testid="stFileUploader"] button {{background: var(--pt-panel) !important; color: var(--pt-text) !important;}}
+
         [data-baseweb="tab-list"] {{background: transparent !important; gap: .35rem;}}
         [data-baseweb="tab"] {{
           color: var(--pt-muted) !important;
@@ -159,34 +248,41 @@ def apply_global_styles(*, full_width: bool = False) -> None:
           background: color-mix(in srgb, var(--pt-panel) 94%, transparent) !important;
           border-color: var(--pt-line) !important;
         }}
+        [data-testid="stAlert"] * {{color: var(--pt-text) !important;}}
         [data-testid="stDataFrame"], [data-testid="stTable"] {{
           color: var(--pt-text) !important;
           background: var(--pt-panel) !important;
           border-radius: 16px;
           overflow: hidden;
         }}
-        .stButton > button, .stDownloadButton > button {{
-          border-radius: 999px;
+
+        .stButton > button, .stDownloadButton > button,
+        [data-testid="stPageLink"] a {{
+          border-radius: 999px !important;
           min-height: 2.65rem;
           font-weight: 700;
-          border: 1px solid var(--pt-line);
+          border: 1px solid var(--pt-line) !important;
           box-shadow: 0 8px 22px var(--pt-shadow);
         }}
-        .stButton > button:not([kind="primary"]), .stDownloadButton > button {{
+        .stButton > button:not([kind="primary"]), .stDownloadButton > button,
+        [data-testid="stPageLink"] a {{
           color: var(--pt-text) !important;
           background: var(--pt-panel) !important;
           border-color: var(--pt-line) !important;
         }}
-        .stButton > button:not([kind="primary"]):hover, .stDownloadButton > button:hover {{
+        .stButton > button:not([kind="primary"]):hover, .stDownloadButton > button:hover,
+        [data-testid="stPageLink"] a:hover {{
           color: var(--pt-primary-dark) !important;
-          background: var(--pt-panel-soft) !important;
+          background: var(--pt-panel-hover) !important;
           border-color: var(--pt-primary) !important;
         }}
         .stButton > button[kind="primary"], .stForm button[kind="primary"] {{
-          background: linear-gradient(135deg, var(--pt-primary) 0%, var(--pt-primary-dark) 100%);
-          color: white;
-          border-color: color-mix(in srgb, var(--pt-primary) 60%, var(--pt-line));
+          background: linear-gradient(135deg, var(--pt-primary) 0%, var(--pt-primary-dark) 100%) !important;
+          color: #ffffff !important;
+          border-color: var(--pt-primary) !important;
         }}
+        button:disabled {{opacity: .5 !important;}}
+
         .pt-hero {{
           border: 1px solid var(--pt-line);
           border-radius: 24px;
@@ -198,8 +294,8 @@ def apply_global_styles(*, full_width: bool = False) -> None:
         .pt-hero h1 {{font-size: 1.55rem; margin: 0 0 .28rem 0; color: var(--pt-text);}}
         .pt-hero p {{margin: 0; color: var(--pt-muted);}}
         .pt-login-card {{
-          max-width: 620px;
-          margin: 4vh auto 1.4rem;
+          max-width: 520px;
+          margin: 8vh auto 1.1rem;
           padding: 1.25rem;
           border-radius: 28px;
           border: 1px solid var(--pt-line);
@@ -208,13 +304,12 @@ def apply_global_styles(*, full_width: bool = False) -> None:
           text-align: center;
         }}
         .pt-login-mark {{
-          width: 74px; height: 74px; border-radius: 24px; margin: 0 auto 16px;
-          display:grid; place-items:center; color:white; font-size:28px; font-weight:800;
+          width: 70px; height: 70px; border-radius: 22px; margin: 0 auto 14px;
+          display:grid; place-items:center; color:white; font-size:27px; font-weight:800;
           background: linear-gradient(135deg, var(--pt-primary) 0%, var(--pt-primary-dark) 100%);
           box-shadow: 0 16px 34px color-mix(in srgb, var(--pt-primary) 26%, transparent);
         }}
-        .pt-login-card h1 {{margin:0; font-size:2rem; color:var(--pt-text);}}
-        .pt-login-card p {{margin:.45rem 0 0; color:var(--pt-muted);}}
+        .pt-login-card h1 {{margin:0; font-size:1.9rem; color:var(--pt-text);}}
         .pt-soft-card {{
           border: 1px solid var(--pt-line);
           border-radius: 20px;

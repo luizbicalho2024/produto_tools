@@ -23,7 +23,7 @@ from core.configuration import (
     PROJECT_STATUSES,
     PROJECTS_COLLECTION,
 )
-from schemas.flowchart_schema import normalize_document
+from schemas.flowchart_schema import normalize_document, repair_import_document, validate_document
 from services.flow_analytics import analyze_document
 from services.flowchart_repository import (
     can_edit,
@@ -587,6 +587,43 @@ def project_impact(project_id: str, username: str, changed_flow_id: str, *, is_a
     ]
 
 
+def remove_project_flow_references(
+    project_id: str,
+    target_flow_id: str,
+    actor: str,
+    *,
+    is_admin: bool = False,
+) -> int:
+    """Remove referências de subprocessos para um fluxo que será excluído."""
+    changed = 0
+    for record in list_project_flows(project_id, actor, is_admin=is_admin, include_documents=True):
+        if record["id"] == str(target_flow_id):
+            continue
+        document = deepcopy(record.get("document") or {})
+        touched = False
+        for node in document.get("nodes", []):
+            data = node.get("data") or {}
+            if str(data.get("linkedFlowId") or "") != str(target_flow_id):
+                continue
+            data["linkedFlowId"] = None
+            data["linkedFlowEntryNodeId"] = None
+            data["linkedFlowExitNodeId"] = None
+            touched = True
+        if not touched:
+            continue
+        save_flowchart(
+            document,
+            record["owner_username"],
+            record.get("owner_email", ""),
+            expected_revision=record["revision"],
+            actor_username=actor,
+            is_admin=is_admin,
+            save_reason="remove_deleted_flow_reference",
+        )
+        changed += 1
+    return changed
+
+
 def create_project_release(project_id: str, actor: str, *, name: str = "", notes: str = "", is_admin: bool = False) -> dict[str, Any]:
     project = get_project(project_id, actor, is_admin=is_admin)
     if not project or not can_manage_project(project.get("permission")):
@@ -760,7 +797,15 @@ def import_project_bundle(
         tags=list(project_data.get("tags") or []),
     )
     manifest_flows = {str(item.get("flowId") or ""): item for item in manifest.get("flows", [])}
-    normalized_docs = [normalize_document(document, owner_username) for document in raw_documents]
+    normalized_docs: list[dict[str, Any]] = []
+    import_warnings: list[str] = []
+    for raw_document in raw_documents:
+        repaired, warnings = repair_import_document(raw_document, owner_username)
+        errors = validate_document(repaired, strict=False)
+        if errors:
+            raise ProjectImportError("Documento inválido: " + " | ".join(errors[:20]))
+        normalized_docs.append(repaired)
+        import_warnings.extend(warnings)
     id_map: dict[str, str] = {}
     for document in normalized_docs:
         old_id = str(document["flow"]["id"])
@@ -791,6 +836,7 @@ def import_project_bundle(
         "project": get_project(project_id, owner_username, is_admin=is_admin),
         "flow_ids": list(id_map.values()),
         "id_map": id_map,
+        "warnings": import_warnings,
     }
 
 
@@ -801,7 +847,15 @@ def import_documents_as_project(
     owner_username: str,
     owner_email: str = "",
 ) -> dict[str, Any]:
-    docs = [normalize_document(document, owner_username) for document in documents]
+    docs: list[dict[str, Any]] = []
+    import_warnings: list[str] = []
+    for raw_document in documents:
+        repaired, warnings = repair_import_document(raw_document, owner_username)
+        errors = validate_document(repaired, strict=False)
+        if errors:
+            raise ProjectImportError("Documento inválido: " + " | ".join(errors[:20]))
+        docs.append(repaired)
+        import_warnings.extend(warnings)
     if not docs:
         raise ValueError("Nenhum fluxo foi informado para importação.")
     project = create_project(project_name, project_description, owner_username, owner_email)
@@ -827,7 +881,9 @@ def import_documents_as_project(
         })
         save_flowchart(document, owner_username, owner_email, actor_username=owner_username, save_reason="project_multi_import")
     update_project(project_id, owner_username, default_flow_id=docs[0]["flow"]["id"])
-    return get_project(project_id, owner_username) or project
+    result = get_project(project_id, owner_username) or project
+    result["import_warnings"] = import_warnings
+    return result
 
 
 def delete_project(project_id: str, actor: str, *, delete_flows: bool = False, is_admin: bool = False) -> bool:

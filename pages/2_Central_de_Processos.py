@@ -12,7 +12,7 @@ from services.flow_analytics import analyze_document
 from services.flowchart_repository import get_flowchart, list_comments, list_flowcharts
 from services.project_repository import list_projects
 
-st.set_page_config(page_title="Central de Processos", page_icon="◫", layout="wide")
+st.set_page_config(page_title="Central de Processos", page_icon="🗂️", layout="wide")
 apply_global_styles()
 user = require_login()
 render_account_sidebar()
@@ -33,6 +33,14 @@ page_header(
     "Central de Processos",
     "Portfólio, qualidade, governança e pendências dos fluxos acessíveis ao seu usuário.",
 )
+nav_projects, nav_graph, nav_editor, nav_space = st.columns([1.2, 1.2, 1.2, 3.4])
+if nav_projects.button("Projetos", use_container_width=True):
+    st.switch_page("pages/3_Gestao_de_Projetos.py")
+if nav_graph.button("Mapa de relações", use_container_width=True):
+    st.switch_page("pages/4_Mapa_de_Relacoes.py")
+if nav_editor.button("Novo/abrir editor", type="primary", use_container_width=True):
+    st.switch_page("pages/5_Editor_de_Fluxos.py")
+
 projects = list_projects(username, include_all=is_admin, is_admin=is_admin)
 project_by_id = {item["id"]: item for item in projects}
 flows = list_flowcharts(username, include_all=is_admin)

@@ -106,7 +106,7 @@ function normalizeDocument(input) {
     showMiniMap: true,
     showGrid: true,
     layoutPreset: "readable",
-    edgeRouting: "corridor",
+    edgeRouting: "smooth",
     autosaveSeconds: 10,
     interactivePlayback: true,
     ...(doc.settings || {}),
@@ -119,7 +119,9 @@ function normalizeDocument(input) {
   };
   doc.settings.layoutPreset = presetAliases[doc.settings.layoutPreset] || doc.settings.layoutPreset;
   if (!["compact", "readable", "preserve"].includes(doc.settings.layoutPreset)) doc.settings.layoutPreset = "readable";
-  if (!["corridor", "corridor-v2", "orthogonal", "straight"].includes(doc.settings.edgeRouting)) doc.settings.edgeRouting = "corridor-v2";
+  const routingAliases = { step: "orthogonal", smoothstep: "smooth", bezier: "smooth", curve: "smooth" };
+  doc.settings.edgeRouting = routingAliases[String(doc.settings.edgeRouting || "").toLowerCase()] || String(doc.settings.edgeRouting || "smooth").toLowerCase();
+  if (!["corridor", "corridor-v2", "orthogonal", "smooth", "straight"].includes(doc.settings.edgeRouting)) doc.settings.edgeRouting = "smooth";
   doc.settings.autosaveSeconds = clamp(Number(doc.settings.autosaveSeconds) || 10, 5, 300);
   if (!["LR", "RL"].includes(doc.flow.orientation)) doc.flow.orientation = "LR";
   doc.viewport = { x: 0, y: 0, zoom: 1, ...(doc.viewport || {}) };
@@ -189,6 +191,30 @@ function normalizeDocument(input) {
   });
 
   return doc;
+}
+
+function repairImportedDecisions(doc) {
+  const warnings = [];
+  const activeNodes = new Set(doc.nodes.filter((node) => node.data?.enabled !== false).map((node) => node.id));
+  const outgoing = new Map();
+  doc.edges.forEach((edge) => {
+    if (edge.enabled === false || !activeNodes.has(edge.target)) return;
+    if (!outgoing.has(edge.source)) outgoing.set(edge.source, []);
+    outgoing.get(edge.source).push(edge);
+  });
+  doc.nodes.forEach((node) => {
+    if (node.type !== "decision" || node.data?.enabled === false) return;
+    const branches = outgoing.get(node.id) || [];
+    if (branches.length >= 2) return;
+    node.type = "task";
+    node.data ||= {};
+    node.data.importRepair = "decision_without_branches_converted_to_task";
+    node.data.tags = Array.isArray(node.data.tags) ? node.data.tags : [];
+    if (!node.data.tags.includes("Importação corrigida")) node.data.tags.push("Importação corrigida");
+    branches.forEach((edge) => { edge.sourceHandle = "output"; });
+    warnings.push(`${node.id} (${node.data.label || "sem nome"}) foi convertido de decisão para atividade porque possuía ${branches.length} saída(s).`);
+  });
+  return warnings;
 }
 
 export default function flowEditor(component) {
@@ -1237,7 +1263,8 @@ export default function flowEditor(component) {
   }
 
   function edgeRoute(source, target, type = "smoothstep", edge = null) {
-    if (type === "straight" || !edge) {
+    const mode = String(state.doc.settings.edgeRouting || type || "smooth").toLowerCase();
+    if (!edge || mode === "straight") {
       return {
         d: `M ${source.x} ${source.y} L ${target.x} ${target.y}`,
         labelX: (source.x + target.x) / 2,
@@ -1251,14 +1278,55 @@ export default function flowEditor(component) {
       return { d: `M ${source.x} ${source.y} L ${target.x} ${target.y}`, labelX: (source.x + target.x) / 2, labelY: (source.y + target.y) / 2 - 8 };
     }
 
-    const geometry = laneGeometry();
-    const sourceLane = geometry.map.get(sourceNode.laneId);
-    const targetLane = geometry.map.get(targetNode.laneId);
+    const deltaX = target.x - source.x;
+    const deltaY = target.y - source.y;
+    const forward = deltaX >= 50;
+
+    if (mode === "smooth") {
+      if (forward) {
+        const tension = clamp(Math.abs(deltaX) * .46, 70, 320);
+        return {
+          d: `M ${source.x} ${source.y} C ${source.x + tension} ${source.y}, ${target.x - tension} ${target.y}, ${target.x} ${target.y}`,
+          labelX: (source.x + target.x) / 2,
+          labelY: (source.y + target.y) / 2 - 12,
+        };
+      }
+      const loop = 110 + (Math.abs(deltaY) % 90);
+      const outerX = Math.max(source.x, target.x) + loop;
+      return {
+        d: `M ${source.x} ${source.y} C ${outerX} ${source.y}, ${outerX} ${target.y}, ${target.x} ${target.y}`,
+        labelX: outerX - 12,
+        labelY: (source.y + target.y) / 2 - 10,
+      };
+    }
+
     const outgoing = orderedOutgoingEdges(edge.source);
     const incoming = orderedIncomingEdges(edge.target);
     const outgoingIndex = Math.max(0, outgoing.findIndex((item) => item.id === edge.id));
     const incomingIndex = Math.max(0, incoming.findIndex((item) => item.id === edge.id));
     const globalIndex = Math.max(0, state.doc.edges.findIndex((item) => item.id === edge.id));
+
+    if (mode === "orthogonal") {
+      const trackOffset = (outgoingIndex - incomingIndex) * 10;
+      if (forward) {
+        const middleX = source.x + deltaX / 2 + trackOffset;
+        return {
+          d: `M ${source.x} ${source.y} L ${middleX} ${source.y} L ${middleX} ${target.y} L ${target.x} ${target.y}`,
+          labelX: middleX,
+          labelY: (source.y + target.y) / 2 - 8,
+        };
+      }
+      const outerX = Math.max(source.x, target.x) + 80 + (globalIndex % 6) * 18;
+      return {
+        d: `M ${source.x} ${source.y} L ${outerX} ${source.y} L ${outerX} ${target.y} L ${target.x} ${target.y}`,
+        labelX: outerX + 8,
+        labelY: (source.y + target.y) / 2,
+      };
+    }
+
+    const geometry = laneGeometry();
+    const sourceLane = geometry.map.get(sourceNode.laneId);
+    const targetLane = geometry.map.get(targetNode.laneId);
     const outgoingTrack = (outgoingIndex + globalIndex) % 4;
     const incomingTrack = (incomingIndex + globalIndex * 2) % 4;
     const sourceRouteY = sourceLane
@@ -1267,64 +1335,43 @@ export default function flowEditor(component) {
     const targetRouteY = targetLane
       ? targetLane.top + LANE_EDGE_CHANNEL_TOP + incomingTrack * LANE_EDGE_TRACK_GAP
       : target.y - 26 - incomingTrack * 9;
-
-    const forward = target.x >= source.x + 80;
     const sourceExitX = source.x + 22 + outgoingTrack * 6;
     const targetEntryX = target.x - 22 - incomingTrack * 6;
 
     if (forward && sourceExitX < targetEntryX - 18) {
-      const preferredCorridorX = sourceExitX + (targetEntryX - sourceExitX) * .68;
-      const corridorX = findVerticalCorridor(
-        preferredCorridorX,
-        sourceRouteY,
-        targetRouteY,
-        sourceExitX + 18,
-        targetEntryX - 18,
-        new Set([edge.source, edge.target]),
-      );
+      const preferredCorridorX = mode === "corridor"
+        ? sourceExitX + (targetEntryX - sourceExitX) * .5
+        : sourceExitX + (targetEntryX - sourceExitX) * .68;
+      const corridorX = mode === "corridor"
+        ? preferredCorridorX
+        : findVerticalCorridor(
+            preferredCorridorX, sourceRouteY, targetRouteY, sourceExitX + 18,
+            targetEntryX - 18, new Set([edge.source, edge.target]),
+          );
       const d = [
-        `M ${source.x} ${source.y}`,
-        `L ${sourceExitX} ${source.y}`,
-        `L ${sourceExitX} ${sourceRouteY}`,
-        `L ${corridorX} ${sourceRouteY}`,
-        `L ${corridorX} ${targetRouteY}`,
-        `L ${targetEntryX} ${targetRouteY}`,
-        `L ${targetEntryX} ${target.y}`,
-        `L ${target.x} ${target.y}`,
+        `M ${source.x} ${source.y}`, `L ${sourceExitX} ${source.y}`,
+        `L ${sourceExitX} ${sourceRouteY}`, `L ${corridorX} ${sourceRouteY}`,
+        `L ${corridorX} ${targetRouteY}`, `L ${targetEntryX} ${targetRouteY}`,
+        `L ${targetEntryX} ${target.y}`, `L ${target.x} ${target.y}`,
       ].join(" ");
-      return {
-        d,
-        labelX: (sourceExitX + corridorX) / 2,
-        labelY: sourceRouteY - 9,
-      };
+      return { d, labelX: (sourceExitX + corridorX) / 2, labelY: sourceRouteY - 9 };
     }
 
-    // Retornos e ligações muito próximas usam um corredor externo para não cruzar cards.
     const outerTrack = globalIndex % 8;
     const outerPreferredX = Math.max(source.x, target.x) + 96 + outerTrack * 24;
-    const outerX = findVerticalCorridor(
-      outerPreferredX,
-      sourceRouteY,
-      targetRouteY,
-      Math.max(source.x, target.x) + 72,
-      Math.max(source.x, target.x) + 360,
-      new Set([edge.source, edge.target]),
-    );
+    const outerX = mode === "corridor"
+      ? outerPreferredX
+      : findVerticalCorridor(
+          outerPreferredX, sourceRouteY, targetRouteY, Math.max(source.x, target.x) + 72,
+          Math.max(source.x, target.x) + 360, new Set([edge.source, edge.target]),
+        );
     const d = [
-      `M ${source.x} ${source.y}`,
-      `L ${sourceExitX} ${source.y}`,
-      `L ${sourceExitX} ${sourceRouteY}`,
-      `L ${outerX} ${sourceRouteY}`,
-      `L ${outerX} ${targetRouteY}`,
-      `L ${targetEntryX} ${targetRouteY}`,
-      `L ${targetEntryX} ${target.y}`,
-      `L ${target.x} ${target.y}`,
+      `M ${source.x} ${source.y}`, `L ${sourceExitX} ${source.y}`,
+      `L ${sourceExitX} ${sourceRouteY}`, `L ${outerX} ${sourceRouteY}`,
+      `L ${outerX} ${targetRouteY}`, `L ${targetEntryX} ${targetRouteY}`,
+      `L ${targetEntryX} ${target.y}`, `L ${target.x} ${target.y}`,
     ].join(" ");
-    return {
-      d,
-      labelX: outerX + 8,
-      labelY: (sourceRouteY + targetRouteY) / 2,
-    };
+    return { d, labelX: outerX + 8, labelY: (sourceRouteY + targetRouteY) / 2 };
   }
 
   function edgePath(source, target, type = "smoothstep", edge = null) {
@@ -1512,8 +1559,10 @@ export default function flowEditor(component) {
     }
     const viewControl = $('[data-role="view-mode"]');
     const edgeControl = $('[data-role="edge-visibility"]');
+    const routingControl = $('[data-role="edge-routing-global"]');
     if (viewControl && viewControl.value !== state.viewMode) viewControl.value = state.viewMode;
     if (edgeControl && edgeControl.value !== state.edgeVisibility) edgeControl.value = state.edgeVisibility;
+    if (routingControl && routingControl.value !== state.doc.settings.edgeRouting) routingControl.value = state.doc.settings.edgeRouting;
     root.dataset.viewMode = state.viewMode;
     root.dataset.edgeVisibility = state.edgeVisibility;
     applyPanelState();
@@ -1622,8 +1671,11 @@ export default function flowEditor(component) {
     bindCommit(orientation, (input) => { state.doc.flow.orientation = input.value; });
     const layoutPreset = selectInput("layout-preset", state.doc.settings.layoutPreset || "readable", [["compact", "Compacto"], ["readable", "Legível"], ["preserve", "Preservar posições"]]);
     bindCommit(layoutPreset, (input) => { state.doc.settings.layoutPreset = input.value; });
-    const edgeRouting = selectInput("edge-routing", state.doc.settings.edgeRouting || "corridor-v2", [["corridor-v2", "Corredores inteligentes"], ["corridor", "Corredores simples"], ["orthogonal", "Ortogonal"], ["straight", "Linha reta"]]);
-    bindCommit(edgeRouting, (input) => { state.doc.settings.edgeRouting = input.value; state.doc.edges.forEach((edge) => { edge.type = input.value === "straight" ? "straight" : "step"; }); });
+    const edgeRouting = selectInput("edge-routing", state.doc.settings.edgeRouting || "smooth", [["smooth", "Curvas suaves"], ["straight", "Linhas retas"], ["orthogonal", "Ortogonal simples"], ["corridor-v2", "Corredores inteligentes"], ["corridor", "Corredores simples"]]);
+    bindCommit(edgeRouting, (input) => {
+      state.doc.settings.edgeRouting = input.value;
+      state.doc.edges.forEach((edge) => { edge.type = input.value === "straight" ? "straight" : (input.value === "smooth" ? "smoothstep" : "step"); });
+    });
     propertiesBody.append(
       fieldGroup("Nome", name),
       fieldGroup("Descrição", description),
@@ -2528,6 +2580,7 @@ export default function flowEditor(component) {
         const parsed = JSON.parse(String(reader.result));
         const normalized = normalizeDocument(parsed);
         if (!normalized.flow || !Array.isArray(normalized.nodes) || !Array.isArray(normalized.edges)) throw new Error("Estrutura incompatível");
+        const importWarnings = repairImportedDecisions(normalized);
         // A importação substitui o conteúdo do fluxo aberto sem trocar sua identidade no banco.
         normalized.flow.id = state.doc.flow.id;
         normalized.flow.createdAt = state.doc.flow.createdAt;
@@ -2559,6 +2612,9 @@ export default function flowEditor(component) {
           toast(`Fluxo grande importado e organizado em ${layoutSummary.columns} colunas, respeitando todas as raias.`, "success");
         } else {
           toast("Fluxo importado e ajustado às raias. Clique em Salvar para persistir.", "success");
+        }
+        if (importWarnings.length) {
+          toast(`${importWarnings.length} decisão(ões) sem ramificações foram convertidas em atividades para permitir a importação.`, "warning");
         }
       } catch (error) {
         toast(`Não foi possível importar: ${error.message}`, "error");
@@ -3193,6 +3249,16 @@ export default function flowEditor(component) {
       localStorage.setItem("produto_tools_edge_visibility", state.edgeVisibility);
       renderEdges();
       renderHeaderAndStatus();
+    });
+    $('[data-role="edge-routing-global"]')?.addEventListener("change", (event) => {
+      const routing = String(event.target.value || "smooth");
+      mutate(() => {
+        state.doc.settings.edgeRouting = routing;
+        state.doc.edges.forEach((edge) => {
+          edge.type = routing === "straight" ? "straight" : (routing === "smooth" ? "smoothstep" : "step");
+        });
+      });
+      toast(`Roteamento aplicado a todas as ${state.doc.edges.length} conexões.`, "success");
     });
     $('[data-role="interactive-play"]')?.addEventListener("change", (event) => { state.doc.settings.interactivePlayback = event.target.checked; markDirty(); });
     fileInput.addEventListener("change", () => importJson(fileInput.files?.[0]));

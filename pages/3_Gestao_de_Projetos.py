@@ -36,15 +36,16 @@ from services.project_repository import (
     list_projects,
     project_impact,
     project_links,
+    remove_project_flow_references,
     search_project,
     set_project_members,
     shortest_project_path,
     update_project,
 )
-from services.flowchart_repository import list_flowcharts, save_flowchart
+from services.flowchart_repository import delete_flowchart, get_flowchart, list_flowcharts, save_flowchart
 from schemas.flowchart_schema import new_flowchart_document
 
-st.set_page_config(page_title="Gestão de Projetos", page_icon="▦", layout="wide")
+st.set_page_config(page_title="Gestão de Projetos", page_icon="📁", layout="wide")
 apply_global_styles(full_width=True)
 user = require_login()
 render_account_sidebar()
@@ -118,6 +119,13 @@ if "project_flash" in st.session_state:
     message, kind = st.session_state.pop("project_flash")
     getattr(st, kind)(message)
 
+import_warnings = st.session_state.pop("project_import_warnings", [])
+if import_warnings:
+    st.warning(f"A importação aplicou {len(import_warnings)} correção(ões) estrutural(is) segura(s).")
+    with st.expander("Ver correções da importação"):
+        for warning in import_warnings:
+            st.write(f"- {warning}")
+
 page_header(
     "Projetos e fluxos vinculados",
     "Agrupe visões executivas, fluxos operacionais e subprocessos em um workspace único, com busca, impacto, execução guiada e releases consolidadas.",
@@ -165,10 +173,14 @@ with st.sidebar:
         try:
             imported = import_project_bundle(sample_path.read_bytes(), username, user_email, preserve_ids=False, is_admin=is_admin)
             st.session_state["selected_project_id"] = imported["project"]["id"]
+            st.session_state["project_import_warnings"] = imported.get("warnings") or []
             flash("Projeto SIGYO importado com seus fluxos vinculados.")
             st.rerun()
         except Exception as exc:
             st.error(str(exc))
+
+    if st.button("Abrir mapa de relações", use_container_width=True):
+        st.switch_page("pages/4_Mapa_de_Relacoes.py")
 
 if not projects:
     st.info("Crie um projeto ou importe o pacote SIGYO para começar.")
@@ -214,7 +226,7 @@ st.caption(
 
 main_tabs = st.tabs([
     "Mapa do projeto", "Fluxos", "Busca global", "Execução entre fluxos",
-    "Impacto e qualidade", "Releases", "Importar e exportar", "Configurações",
+    "Impacto e qualidade", "Releases", "Importar e exportar", "Configurações e exclusão",
 ])
 
 with main_tabs[0]:
@@ -229,6 +241,8 @@ with main_tabs[0]:
         )
         if action_col.button("Abrir no editor", type="primary", use_container_width=True):
             open_flow(selected_project_id, selected_map_flow)
+        if st.button("Explorar no mapa de relações", use_container_width=False):
+            st.switch_page("pages/4_Mapa_de_Relacoes.py")
     else:
         st.info("O projeto ainda não possui fluxos.")
 
@@ -282,13 +296,54 @@ with main_tabs[1]:
         a1, a2 = st.columns(2)
         if a1.button("Abrir fluxo", type="primary", use_container_width=True):
             open_flow(selected_project_id, flow_select)
-        if a2.button("Remover do projeto", disabled=not editable, use_container_width=True):
+        if a2.button("Desvincular do projeto", disabled=not editable, use_container_width=True):
             try:
                 detach_flow_from_project(selected_project_id, flow_select, username, is_admin=is_admin)
-                flash("Fluxo removido do projeto.", "info")
+                flash("Fluxo removido do projeto e mantido como fluxo avulso.", "info")
                 st.rerun()
             except Exception as exc:
                 st.error(str(exc))
+
+        selected_flow_record = get_flowchart(flow_select, actor_username=username, is_admin=is_admin)
+        flow_can_delete = bool(selected_flow_record and (selected_flow_record.get("permission") == "owner" or is_admin))
+        with st.expander("Excluir fluxo permanentemente", expanded=False):
+            impacts = project_impact(selected_project_id, username, flow_select, is_admin=is_admin)
+            if impacts:
+                st.warning(f"Este fluxo é usado por {len(impacts)} card(s) de outros fluxos.")
+                st.dataframe(pd.DataFrame([{
+                    "Fluxo pai": item.get("source_flow_name"),
+                    "Card": item.get("source_node_label"),
+                } for item in impacts]), use_container_width=True, hide_index=True)
+            clean_references = st.checkbox(
+                "Remover automaticamente os vínculos que apontam para este fluxo",
+                value=True,
+                key=f"clean_refs_{flow_select}",
+            )
+            flow_confirmation = st.text_input(
+                "Digite o nome exato do fluxo para confirmar",
+                key=f"delete_flow_confirmation_{flow_select}",
+            )
+            delete_disabled = not flow_can_delete or flow_confirmation != current["name"]
+            if st.button(
+                "Excluir fluxo e seu histórico",
+                disabled=delete_disabled,
+                key=f"delete_flow_permanent_{flow_select}",
+                type="primary",
+            ):
+                try:
+                    if clean_references:
+                        remove_project_flow_references(selected_project_id, flow_select, username, is_admin=is_admin)
+                    if project.get("default_flow_id") == flow_select:
+                        remaining_id = next((item["id"] for item in flows if item["id"] != flow_select), "")
+                        update_project(selected_project_id, username, default_flow_id=remaining_id, is_admin=is_admin)
+                    if not delete_flowchart(flow_select, username, is_admin=is_admin):
+                        raise ProjectPermissionError("Somente o proprietário do fluxo pode excluí-lo permanentemente.")
+                    flash("Fluxo excluído permanentemente.", "info")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
+            if not flow_can_delete:
+                st.caption("Somente o proprietário do fluxo ou um administrador pode realizar a exclusão permanente.")
     else:
         st.info("Nenhum fluxo vinculado.")
 
@@ -417,6 +472,7 @@ with main_tabs[6]:
         try:
             imported = import_project_bundle(package.getvalue(), username, user_email, preserve_ids=preserve_ids, is_admin=is_admin)
             st.session_state["selected_project_id"] = imported["project"]["id"]
+            st.session_state["project_import_warnings"] = imported.get("warnings") or []
             flash(f"Projeto importado com {len(imported['flow_ids'])} fluxos.")
             st.rerun()
         except (ProjectImportError, ValueError, RuntimeError) as exc:
@@ -430,6 +486,7 @@ with main_tabs[6]:
             documents = [json.loads(item.getvalue().decode("utf-8-sig")) for item in json_files]
             created = import_documents_as_project(documents, import_name, import_description, username, user_email)
             st.session_state["selected_project_id"] = created["id"]
+            st.session_state["project_import_warnings"] = created.get("import_warnings") or []
             flash(f"Projeto criado com {len(documents)} fluxos.")
             st.rerun()
         except Exception as exc:
@@ -482,8 +539,10 @@ with main_tabs[7]:
     with st.expander("Excluir projeto", expanded=False):
         st.warning("Você pode apenas desagrupar os fluxos ou excluir também todos os fluxos do projeto.")
         delete_flows = st.checkbox("Excluir também todos os fluxos")
-        confirmation = st.text_input("Digite o código do projeto para confirmar")
-        if st.button("Excluir projeto permanentemente", disabled=permission != "owner" or confirmation != project.get("code")):
+        project_delete_token = str(project.get("code") or project.get("name") or "").strip()
+        confirmation = st.text_input(f'Digite exatamente "{project_delete_token}" para confirmar')
+        can_delete_project = permission == "owner" or is_admin
+        if st.button("Excluir projeto permanentemente", disabled=not can_delete_project or confirmation.strip() != project_delete_token):
             try:
                 delete_project(selected_project_id, username, delete_flows=delete_flows, is_admin=is_admin)
                 st.session_state.pop("selected_project_id", None)

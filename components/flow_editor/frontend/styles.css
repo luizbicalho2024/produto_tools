@@ -861,3 +861,53 @@ button { color: inherit; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+
+/* Produto Tools 3.2 - controles nativos e contraste integral no modo escuro */
+.flow-editor-shell,
+.flow-editor-shell input,
+.flow-editor-shell textarea,
+.flow-editor-shell select,
+.flow-editor-shell option,
+.flow-editor-shell optgroup,
+.flow-editor-shell button {
+  color-scheme: inherit;
+}
+
+.flow-editor-shell[data-theme="dark"] input,
+.flow-editor-shell[data-theme="dark"] textarea,
+.flow-editor-shell[data-theme="dark"] select,
+.flow-editor-shell[data-theme="dark"] option,
+.flow-editor-shell[data-theme="dark"] optgroup {
+  color: #f5fbf7 !important;
+  background-color: #08212c !important;
+  border-color: #21514a !important;
+  -webkit-text-fill-color: #f5fbf7 !important;
+}
+
+.flow-editor-shell[data-theme="dark"] input:-webkit-autofill,
+.flow-editor-shell[data-theme="dark"] input:-webkit-autofill:hover,
+.flow-editor-shell[data-theme="dark"] input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #08212c inset !important;
+  -webkit-text-fill-color: #f5fbf7 !important;
+}
+
+.flow-editor-shell[data-theme="dark"] .canvas-options,
+.flow-editor-shell[data-theme="dark"] .statusbar,
+.flow-editor-shell[data-theme="dark"] .properties-panel,
+.flow-editor-shell[data-theme="dark"] .palette-panel,
+.flow-editor-shell[data-theme="dark"] .toolbar,
+.flow-editor-shell[data-theme="dark"] .modal-card,
+.flow-editor-shell[data-theme="dark"] .branch-card,
+.flow-editor-shell[data-theme="dark"] .playback-bar {
+  color: var(--fe-ink);
+}
+
+.flow-editor-shell[data-theme="dark"] button:disabled,
+.flow-editor-shell[data-theme="dark"] input:disabled,
+.flow-editor-shell[data-theme="dark"] textarea:disabled,
+.flow-editor-shell[data-theme="dark"] select:disabled {
+  color: color-mix(in srgb, var(--fe-muted) 82%, transparent) !important;
+  background: color-mix(in srgb, var(--fe-input) 76%, #000) !important;
+  opacity: .78;
+}

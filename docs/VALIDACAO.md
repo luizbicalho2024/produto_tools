@@ -1,4 +1,4 @@
-# Validação — Produto Tools 3.1
+# Validação — Produto Tools 3.2
 
 ## Comandos
 
@@ -13,26 +13,27 @@ node --check components/flow_editor/frontend/main.js
 - criação e atualização de fluxos;
 - concorrência por revisão;
 - rascunhos, comentários e governança;
-- criação de projetos;
-- associação de fluxos ao projeto;
+- criação e exclusão de projetos;
+- associação, desvinculação e exclusão de fluxos;
+- reparo seguro de decisões importadas com zero ou uma saída;
+- importação dos sete fluxos SIGYO;
 - detecção de vínculos válidos e quebrados;
-- busca global;
-- rota entre fluxos;
-- análise consolidada;
-- criação de release;
-- exportação e reimportação do pacote do projeto;
-- remapeamento de IDs em conflitos;
-- fluxo SIGYO com visão executiva, visão completa e cinco auxiliares.
+- busca global e rota entre fluxos;
+- criação de release e reimportação do pacote;
+- persistência do tema por usuário;
+- existência das páginas ASCII usadas pelo `st.switch_page`;
+- seletor global de traçado;
+- página de mapa de relações com física local.
 
 ## Verificação manual recomendada
 
 1. importar `examples/sigyo_modular_project.zip`;
-2. abrir o mapa do projeto;
-3. abrir um subprocesso por duplo clique;
-4. voltar ao fluxo pai;
-5. alternar entre abas;
-6. pesquisar `empenho`;
-7. iniciar execução guiada;
-8. criar uma release;
-9. baixar e reimportar o pacote;
-10. confirmar que os vínculos continuam válidos.
+2. importar o JSON original de Assinatura e Onboarding e conferir os dois avisos de reparo;
+3. alternar entre tema claro e escuro, sair e entrar novamente;
+4. testar inputs, selects, menus e modais nos dois temas;
+5. abrir Gestão de Projetos e excluir um fluxo de teste;
+6. excluir um projeto de teste preservando seus fluxos;
+7. abrir o mapa de relações e usar busca, explosão, zoom e arraste;
+8. trocar o traçado do editor entre suave, reto, ortogonal e corredores;
+9. validar os vínculos e criar uma release;
+10. baixar e reimportar o pacote.

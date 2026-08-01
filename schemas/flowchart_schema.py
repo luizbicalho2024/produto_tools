@@ -138,7 +138,7 @@ def new_flowchart_document(name: str = "Novo processo", owner_email: str = "") -
             "showMiniMap": True,
             "showGrid": True,
             "layoutPreset": "readable",
-            "edgeRouting": "corridor-v2",
+            "edgeRouting": "smooth",
             "autosaveSeconds": 10,
             "interactivePlayback": True,
         },
@@ -203,7 +203,7 @@ def normalize_document(document: dict[str, Any], owner_email: str = "") -> dict[
     defaults = {
         "snapToGrid": True, "gridSize": 20, "autoLayout": False,
         "showMiniMap": True, "showGrid": True, "layoutPreset": "readable",
-        "edgeRouting": "corridor-v2", "autosaveSeconds": 10,
+        "edgeRouting": "smooth", "autosaveSeconds": 10,
         "interactivePlayback": True,
     }
     for key, value in defaults.items():
@@ -217,8 +217,18 @@ def normalize_document(document: dict[str, Any], owner_email: str = "") -> dict[
     settings["layoutPreset"] = preset_aliases.get(str(settings.get("layoutPreset") or ""), str(settings.get("layoutPreset") or "readable"))
     if settings["layoutPreset"] not in {"compact", "readable", "preserve"}:
         settings["layoutPreset"] = "readable"
-    if str(settings.get("edgeRouting") or "") not in {"corridor", "corridor-v2", "orthogonal", "straight"}:
-        settings["edgeRouting"] = "corridor-v2"
+    routing_aliases = {
+        "step": "orthogonal",
+        "smoothstep": "smooth",
+        "bezier": "smooth",
+        "curve": "smooth",
+    }
+    settings["edgeRouting"] = routing_aliases.get(
+        str(settings.get("edgeRouting") or "").lower(),
+        str(settings.get("edgeRouting") or "smooth").lower(),
+    )
+    if settings["edgeRouting"] not in {"corridor", "corridor-v2", "orthogonal", "smooth", "straight"}:
+        settings["edgeRouting"] = "smooth"
     settings["autosaveSeconds"] = max(5, min(300, int(settings.get("autosaveSeconds") or 10)))
     doc.setdefault("viewport", {"x": 0, "y": 0, "zoom": 1})
     doc.setdefault("lanes", [])
@@ -273,6 +283,59 @@ def normalize_document(document: dict[str, Any], owner_email: str = "") -> dict[
         for index, edge in enumerate(edges):
             edge["sourceHandle"] = edge.get("sourceHandle") or (f"branch-{index}" if decision else "output")
     return doc
+
+
+def repair_import_document(
+    document: dict[str, Any],
+    owner_email: str = "",
+) -> tuple[dict[str, Any], list[str]]:
+    """Normaliza um arquivo importado e corrige inconsistências estruturais seguras.
+
+    Uma decisão com zero ou uma saída não representa uma ramificação real. Em vez de
+    bloquear toda a importação, o elemento é convertido em tarefa e a conexão única
+    passa a usar a saída padrão. Nenhuma condição de negócio é inventada.
+    """
+    doc = normalize_document(document, owner_email)
+    warnings: list[str] = []
+    active_node_ids = {
+        str(node.get("id") or "")
+        for node in doc.get("nodes", [])
+        if (node.get("data") or {}).get("enabled", True)
+    }
+    outgoing: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for edge in doc.get("edges", []):
+        if not edge.get("enabled", True):
+            continue
+        if str(edge.get("target") or "") not in active_node_ids:
+            continue
+        outgoing[str(edge.get("source") or "")].append(edge)
+
+    for node in doc.get("nodes", []):
+        if node.get("type") != "decision" or not (node.get("data") or {}).get("enabled", True):
+            continue
+        node_id = str(node.get("id") or "")
+        node_out = outgoing.get(node_id, [])
+        if len(node_out) >= 2:
+            continue
+        label = str((node.get("data") or {}).get("label") or node_id)
+        node["type"] = "task"
+        data = node.setdefault("data", {})
+        data["importRepair"] = "decision_without_branches_converted_to_task"
+        tags = [str(item).strip() for item in data.get("tags", []) if str(item).strip()]
+        if "Importação corrigida" not in tags:
+            tags.append("Importação corrigida")
+        data["tags"] = tags[:30]
+        for edge in node_out:
+            edge["sourceHandle"] = "output"
+        if len(node_out) == 1:
+            warnings.append(
+                f"O elemento {node_id} ({label}) foi convertido de decisão para tarefa porque possuía somente uma saída."
+            )
+        else:
+            warnings.append(
+                f"O elemento {node_id} ({label}) foi convertido de decisão para tarefa porque não possuía saídas ativas."
+            )
+    return doc, warnings
 
 
 def _reachable(start_ids: list[str], edges: list[dict[str, Any]]) -> set[str]:

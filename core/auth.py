@@ -9,7 +9,7 @@ import streamlit as st
 import streamlit_authenticator as stauth
 
 import database as db
-from core.styles import render_theme_selector
+from core.styles import remember_ui_theme, render_theme_selector
 
 LOGIN_FIELDS = {
     "Form name": "Acesso à plataforma",
@@ -20,6 +20,23 @@ LOGIN_FIELDS = {
 
 _AUTHENTICATOR_KEY = "_produto_tools_authenticator"
 _AUTHENTICATOR_SIGNATURE_KEY = "_produto_tools_authenticator_signature"
+
+
+def _apply_profile_theme(profile: dict | None) -> None:
+    if not isinstance(profile, dict):
+        return
+    theme = str(profile.get("ui_theme") or "").lower()
+    if theme not in {"light", "dark"}:
+        return
+    source = str(st.session_state.get("ui_theme_source") or "")
+    current = str(st.session_state.get("ui_theme") or "").lower()
+    if current not in {"light", "dark"} or source in {"", "default", "profile"}:
+        st.session_state["ui_theme"] = theme
+        st.session_state["ui_theme_source"] = "profile"
+        try:
+            st.query_params["theme"] = theme
+        except Exception:
+            pass
 
 
 def _credentials_signature(
@@ -110,6 +127,7 @@ def restore_authentication() -> None:
             st.session_state["username"] = username
             st.session_state["role"] = profile["role"]
             st.session_state["user_info"] = profile
+            _apply_profile_theme(profile)
 
 
 def current_user() -> dict | None:
@@ -142,6 +160,7 @@ def require_login() -> dict:
     st.session_state["username"] = username
     st.session_state["role"] = profile["role"]
     st.session_state["user_info"] = profile
+    _apply_profile_theme(profile)
     return profile
 
 
@@ -190,12 +209,9 @@ def render_account_sidebar() -> None:
         return
     with st.sidebar:
         st.divider()
-        st.caption("Sessão compartilhada")
         st.write(f"**{user.get('name', 'Usuário')}**")
         st.caption(f"@{user.get('username', '')}")
-        if user.get("email"):
-            st.caption(user["email"])
         st.divider()
-        render_theme_selector(key="shared_ui_theme")
-        if st.button("Sair da plataforma", use_container_width=True, key="global_logout"):
+        render_theme_selector(key="shared_ui_theme", compact=True)
+        if st.button("Sair", use_container_width=True, key="global_logout"):
             perform_logout()

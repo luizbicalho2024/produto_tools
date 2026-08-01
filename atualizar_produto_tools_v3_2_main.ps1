@@ -4,7 +4,7 @@
 param(
     [string]$RepositoryUrl = "https://github.com/luizbicalho2024/produto_tools.git",
     [string]$Branch = "main",
-    [string]$CommitMessage = "Adiciona gestao de projetos e fluxos vinculados no Produto Tools 3.1",
+    [string]$CommitMessage = "Corrige importacao, tema, navegacao e mapa de relacoes no Produto Tools 3.2",
     [switch]$SkipTests
 )
 
@@ -72,7 +72,7 @@ $Destination = Join-Path $Parent ("produto_tools_publicacao_" + $Timestamp)
 $OriginalLocation = Get-Location
 
 try {
-    Write-Step "Produto Tools 3.1.0 - Publicacao segura"
+    Write-Step "Produto Tools 3.2.0 - Publicacao segura"
     Write-Host ("Origem: " + $Source)
     Write-Host ("Clone:  " + $Destination)
 
@@ -80,9 +80,13 @@ try {
         "login_app.py",
         "requirements.txt",
         "database.py",
+        "pages\1_Gestao_de_Acesso.py",
         "pages\2_Central_de_Processos.py",
+        "pages\3_Gestao_de_Projetos.py",
+        "pages\4_Mapa_de_Relacoes.py",
         "pages\5_Editor_de_Fluxos.py",
         "components\flow_editor\frontend\main.js",
+        "components\flow_editor\frontend\styles.css",
         "services\flowchart_repository.py",
         "services\project_repository.py",
         "schemas\flowchart_schema.py",
@@ -94,11 +98,6 @@ try {
         if (-not (Test-Path -LiteralPath $FullPath -PathType Leaf)) {
             throw ("Arquivo obrigatorio nao encontrado: " + $RelativePath)
         }
-    }
-
-    $ProjectPage = Get-ChildItem -LiteralPath (Join-Path $Source "pages") -Filter "3_*Projetos.py" -File -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($null -eq $ProjectPage) {
-        throw "Pagina de gestao de projetos nao encontrada em pages."
     }
 
     if (Test-Path -LiteralPath (Join-Path $Source "produto_tools")) {
@@ -133,6 +132,11 @@ try {
                 -Launcher $PythonLauncher `
                 -Arguments @("-c", "import zipfile; z=zipfile.ZipFile('examples/sigyo_modular_project.zip'); z.testzip() is None or (_ for _ in ()).throw(RuntimeError('ZIP invalido'))") `
                 -FailureMessage "Falha na validacao do pacote de exemplo SIGYO."
+
+            Invoke-PythonCommand `
+                -Launcher $PythonLauncher `
+                -Arguments @("-c", "from pathlib import Path; required=['pages/1_Gestao_de_Acesso.py','pages/2_Central_de_Processos.py','pages/3_Gestao_de_Projetos.py','pages/4_Mapa_de_Relacoes.py','pages/5_Editor_de_Fluxos.py']; missing=[p for p in required if not Path(p).is_file()]; missing and (_ for _ in ()).throw(RuntimeError('Paginas ausentes: '+', '.join(missing)))") `
+                -FailureMessage "Falha na validacao das paginas do Streamlit."
 
             $NodeCommand = Get-Command node -ErrorAction SilentlyContinue
             if ($null -ne $NodeCommand) {
@@ -291,7 +295,7 @@ try {
     Assert-NativeSuccess "Falha ao enviar as alteracoes para o GitHub."
 
     Write-Host ""
-    Write-Host "Produto Tools 3.1.0 publicado com sucesso." -ForegroundColor Green
+    Write-Host "Produto Tools 3.2.0 publicado com sucesso." -ForegroundColor Green
     Write-Host ("Repositorio: " + $RepositoryUrl)
     Write-Host ("Branch:      " + $Branch)
     Write-Host ("Clone local: " + $Destination)

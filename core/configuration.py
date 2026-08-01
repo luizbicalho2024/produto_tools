@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 
 APP_NAME = os.getenv("PRODUTO_TOOLS_APP_NAME", "Produto Tools")
-APP_VERSION = "3.1.0"
+APP_VERSION = "3.2.0"
 
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "simulador_db")
 USERS_COLLECTION = "users"

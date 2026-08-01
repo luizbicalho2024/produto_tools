@@ -1,12 +1,13 @@
-# Arquitetura — Produto Tools 3.1
+# Arquitetura — Produto Tools 3.2
 
 ## Camadas
 
 ```text
 Streamlit
-├── login e autenticação compartilhada
+├── login compacto e autenticação compartilhada
 ├── Central de Processos
 ├── Gestão de Projetos
+├── Mapa de Relações
 └── Editor Custom Component V2
 
 Serviços
@@ -17,6 +18,7 @@ Serviços
 └── report_export.py
 
 MongoDB
+├── usuários e preferência de tema
 ├── projetos e participantes
 ├── releases consolidadas
 ├── fluxos e versões
@@ -27,39 +29,28 @@ MongoDB
 
 ## Projeto
 
-O projeto é a camada agregadora. Os fluxos permanecem documentos independentes e armazenam os campos:
-
-```json
-{
-  "projectId": "project_sigyo_modular",
-  "projectRole": "subprocess",
-  "projectGroup": "Financeiro",
-  "projectOrder": 6
-}
-```
-
-A coleção `produto_tools_projects` armazena metadados, proprietário, participantes, visibilidade, fluxo inicial e release atual.
+O projeto é a camada agregadora. Os fluxos permanecem documentos independentes e armazenam os campos `projectId`, `projectRole`, `projectGroup` e `projectOrder`.
 
 ## Vínculos
 
-As dependências são derivadas dos cards com `linkedFlowId`. O sistema não duplica a lista de vínculos no projeto; o mapa é recalculado a partir dos documentos atuais, evitando inconsistência entre duas fontes.
+As dependências são derivadas dos cards com `linkedFlowId`. O sistema calcula o mapa a partir dos documentos atuais, sem duplicar a relação em outra fonte.
+
+## Importação resiliente
+
+O schema exige ao menos duas saídas para uma decisão. Antes da validação de um arquivo importado, `repair_import_document` normaliza inconsistências seguras. Uma decisão com zero ou uma saída é convertida em atividade, preservando a conexão e registrando o reparo em `data.importRepair`. O sistema nunca cria uma condição de negócio que não exista no arquivo.
+
+## Tema
+
+A preferência `ui_theme` é mantida na coleção de usuários e refletida no parâmetro `theme` da URL. O frontend do editor recebe o tema selecionado e possui tokens próprios para inputs, menus, canvas e modais.
+
+## Traçado
+
+O documento guarda um único `settings.edgeRouting`, aplicado na renderização de todas as conexões. Os modos disponíveis são `smooth`, `straight`, `orthogonal`, `corridor-v2` e `corridor`.
+
+## Mapa de relações
+
+A página gera um payload enxuto no servidor e executa a simulação de força inteiramente no navegador, em `canvas`, sem gravar as posições nos fluxos.
 
 ## Releases
 
-Uma release registra, para cada fluxo:
-
-- ID;
-- versão;
-- revisão;
-- hash SHA-256;
-- papel, grupo e ordem no projeto.
-
-O pacote de uma release utiliza as versões imutáveis da coleção `produto_tools_flowchart_versions`.
-
-## Rascunhos
-
-No navegador, a chave inclui projeto, usuário, fluxo e revisão. No MongoDB, os rascunhos continuam indexados por fluxo e usuário e registram também `project_id`.
-
-## Importação
-
-O importador lê `project.json`, carrega `flows/*.json`, resolve conflitos de IDs e remapeia automaticamente `linkedFlowId` quando novos IDs são gerados.
+Uma release registra ID, versão, revisão, hash SHA-256, papel, grupo e ordem de cada fluxo. A exportação utiliza versões imutáveis.
