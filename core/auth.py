@@ -9,6 +9,7 @@ import streamlit as st
 import streamlit_authenticator as stauth
 
 import database as db
+from core.styles import render_theme_selector
 
 LOGIN_FIELDS = {
     "Form name": "Acesso à plataforma",
@@ -194,5 +195,7 @@ def render_account_sidebar() -> None:
         st.caption(f"@{user.get('username', '')}")
         if user.get("email"):
             st.caption(user["email"])
+        st.divider()
+        render_theme_selector(key="shared_ui_theme")
         if st.button("Sair da plataforma", use_container_width=True, key="global_logout"):
             perform_logout()

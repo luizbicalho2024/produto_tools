@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 
 APP_NAME = os.getenv("PRODUTO_TOOLS_APP_NAME", "Produto Tools")
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.2.0"
 
 # O Produto Tools utiliza o mesmo banco e a mesma coleção de usuários do
 # Simulador-Telemetria. Os nomes podem ser sobrescritos nos Secrets.

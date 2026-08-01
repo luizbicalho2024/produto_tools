@@ -53,3 +53,14 @@ O Produto Tools compartilha usuários e logs, mas usa coleções próprias para 
 ## Segurança operacional
 
 As credenciais devem existir somente nos Secrets do Streamlit Cloud. Nunca envie `.streamlit/secrets.toml` ao GitHub. Caso uma URI com senha seja exposta, troque a senha do usuário do MongoDB Atlas e atualize os dois aplicativos.
+
+## Experiência visual 2.2
+
+O editor mantém o estado do canvas no componente frontend e adiciona estados visuais transitórios que não alteram o JSON persistido:
+
+- `focusPath`: conjunto ordenado de nós e conexões destacados para leitura de um caminho específico;
+- `playback`: sequência, etapa atual, itens visitados, pausa e velocidade da reprodução;
+- `paletteCollapsed` e `inspectorCollapsed`: preferências locais salvas no navegador;
+- `uiTheme`: tema claro ou escuro do editor, inicializado pela preferência da sessão Streamlit.
+
+O caminho destacado é calculado por busca em largura sobre os elementos e conexões ativos. Quando uma etapa é selecionada, o editor procura um caminho de um início até a etapa e da etapa até um fim. Quando uma conexão é selecionada, ela é obrigatoriamente incluída no caminho.

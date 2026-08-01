@@ -1,6 +1,17 @@
-# Produto Tools 2.1 — MongoDB compartilhado
+# Produto Tools 2.2 — Editor visual ampliado e MongoDB compartilhado
 
 Aplicação Streamlit com editor visual de processos, autenticação compartilhada com o **Simulador-Telemetria** e persistência dos fluxos no MongoDB Atlas.
+
+## Recursos visuais do editor 2.2
+
+- Inspetor de propriedades horizontal na parte superior.
+- Canvas ocupando toda a largura restante da página.
+- Paleta de elementos recolhível para liberar espaço.
+- Tela cheia nativa para usar o monitor inteiro.
+- Modo claro e escuro.
+- Nós arredondados com faixa de cor corrigida.
+- Destaque de um caminho específico em fluxos grandes: selecione uma etapa ou conexão e clique em **Destacar caminho**.
+- Reprodução do caminho com **Play**, pausa, parada, velocidade e centralização automática em cada etapa.
 
 ## O que mudou nesta versão
 

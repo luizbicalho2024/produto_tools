@@ -119,6 +119,22 @@ export default function flowEditor(component) {
     spaceDown: false,
     dirty: false,
     destroyed: false,
+    paletteCollapsed: localStorage.getItem("produto_tools_palette_collapsed") === "true",
+    inspectorCollapsed: localStorage.getItem("produto_tools_inspector_collapsed") === "true",
+    uiTheme: String(data?.theme || localStorage.getItem("produto_tools_editor_theme") || "light") === "dark" ? "dark" : "light",
+    focusPath: null,
+    playback: {
+      running: false,
+      paused: false,
+      timer: null,
+      nodeSequence: [],
+      edgeSequence: [],
+      index: -1,
+      currentNodeId: null,
+      currentEdgeId: null,
+      visitedNodeIds: new Set(),
+      visitedEdgeIds: new Set(),
+    },
   };
 
   const viewport = $('[data-role="viewport"]');
@@ -131,6 +147,9 @@ export default function flowEditor(component) {
   const minimap = $('[data-role="minimap"]');
 
   root.style.height = `${Number(data?.height) || 820}px`;
+  root.dataset.theme = state.uiTheme;
+  root.classList.toggle("palette-collapsed", state.paletteCollapsed);
+  root.classList.toggle("inspector-collapsed", state.inspectorCollapsed);
 
   function laneGeometry() {
     const sorted = [...state.doc.lanes].sort((a, b) => Number(a.order) - Number(b.order));
@@ -195,7 +214,20 @@ export default function flowEditor(component) {
 
   function mutate(callback, message = null) {
     checkpoint();
+    clearPlaybackTimer();
+    state.playback.running = false;
+    state.playback.paused = false;
+    resetPlaybackVisuals();
     callback();
+    if (state.focusPath) {
+      const validNodes = new Set(state.doc.nodes.map((node) => node.id));
+      const validEdges = new Set(state.doc.edges.map((edge) => edge.id));
+      state.focusPath.nodeSequence = state.focusPath.nodeSequence.filter((id) => validNodes.has(id));
+      state.focusPath.edgeSequence = state.focusPath.edgeSequence.filter((id) => validEdges.has(id));
+      state.focusPath.nodeIds = new Set(state.focusPath.nodeSequence);
+      state.focusPath.edgeIds = new Set(state.focusPath.edgeSequence);
+      if (!state.focusPath.nodeSequence.length) state.focusPath = null;
+    }
     markDirty();
     renderAll();
     if (message) toast(message, "success");
@@ -206,6 +238,10 @@ export default function flowEditor(component) {
     state.future.push(clone(state.doc));
     state.doc = state.history.pop();
     state.selected = null;
+    state.focusPath = null;
+    clearPlaybackTimer();
+    state.playback.running = false;
+    resetPlaybackVisuals();
     markDirty();
     renderAll();
   }
@@ -215,6 +251,10 @@ export default function flowEditor(component) {
     state.history.push(clone(state.doc));
     state.doc = state.future.pop();
     state.selected = null;
+    state.focusPath = null;
+    clearPlaybackTimer();
+    state.playback.running = false;
+    resetPlaybackVisuals();
     markDirty();
     renderAll();
   }
@@ -272,6 +312,10 @@ export default function flowEditor(component) {
       laneEl.style.background = lane.color || "#EEF2FF";
       laneEl.classList.toggle("selected", state.selected?.kind === "lane" && state.selected.id === lane.id);
       laneEl.classList.toggle("disabled", lane.enabled === false);
+      if (state.focusPath) {
+        const laneHasFocus = state.doc.nodes.some((node) => node.laneId === lane.id && focusContainsNode(node.id));
+        laneEl.classList.toggle("focus-dimmed", !laneHasFocus);
+      }
 
       const header = el("header", "lane-header");
       const color = el("span", "lane-color");
@@ -297,6 +341,107 @@ export default function flowEditor(component) {
     return parts.join(" • ") || NODE_TYPES[node.type].description;
   }
 
+  function nodeDimensions(node) {
+    if (node.type === "start" || node.type === "end") return { width: 160, height: NODE_HEIGHT };
+    if (node.type === "decision") return { width: 174, height: NODE_HEIGHT };
+    if (node.type === "event" || node.type === "wait") return { width: 170, height: NODE_HEIGHT };
+    return { width: NODE_WIDTH, height: NODE_HEIGHT };
+  }
+
+  function enabledGraph() {
+    const nodes = state.doc.nodes.filter((node) => node.data.enabled !== false);
+    const nodeIds = new Set(nodes.map((node) => node.id));
+    const edges = state.doc.edges.filter((edge) => edge.enabled !== false && nodeIds.has(edge.source) && nodeIds.has(edge.target));
+    return { nodes, nodeIds, edges };
+  }
+
+  function shortestPath(startIds, targetIds, edges) {
+    const targets = targetIds instanceof Set ? targetIds : new Set(targetIds || []);
+    const outgoing = new Map();
+    edges.forEach((edge) => {
+      if (!outgoing.has(edge.source)) outgoing.set(edge.source, []);
+      outgoing.get(edge.source).push(edge);
+    });
+    const queue = [];
+    const visited = new Set();
+    (startIds || []).forEach((id) => {
+      if (!id || visited.has(id)) return;
+      visited.add(id);
+      queue.push({ nodeId: id, nodeSequence: [id], edgeSequence: [] });
+    });
+    while (queue.length) {
+      const current = queue.shift();
+      if (targets.has(current.nodeId)) return current;
+      for (const edge of outgoing.get(current.nodeId) || []) {
+        if (visited.has(edge.target)) continue;
+        visited.add(edge.target);
+        queue.push({
+          nodeId: edge.target,
+          nodeSequence: [...current.nodeSequence, edge.target],
+          edgeSequence: [...current.edgeSequence, edge.id],
+        });
+      }
+    }
+    return null;
+  }
+
+  function combinePaths(...paths) {
+    const nodeSequence = [];
+    const edgeSequence = [];
+    paths.filter(Boolean).forEach((path) => {
+      (path.nodeSequence || []).forEach((id) => {
+        if (!nodeSequence.length || nodeSequence[nodeSequence.length - 1] !== id) nodeSequence.push(id);
+      });
+      (path.edgeSequence || []).forEach((id) => edgeSequence.push(id));
+    });
+    return {
+      nodeSequence,
+      edgeSequence,
+      nodeIds: new Set(nodeSequence),
+      edgeIds: new Set(edgeSequence),
+    };
+  }
+
+  function buildReadablePath() {
+    const graph = enabledGraph();
+    if (!graph.nodes.length) return null;
+    const startIds = graph.nodes.filter((node) => node.type === "start").map((node) => node.id);
+    const endIds = new Set(graph.nodes.filter((node) => node.type === "end").map((node) => node.id));
+    const effectiveStarts = startIds.length ? startIds : [graph.nodes[0].id];
+    const effectiveEnds = endIds.size ? endIds : new Set([graph.nodes[graph.nodes.length - 1].id]);
+
+    if (state.selected?.kind === "edge") {
+      const selectedEdge = getEdge(state.selected.id);
+      if (selectedEdge && selectedEdge.enabled !== false) {
+        const prefix = shortestPath(effectiveStarts, new Set([selectedEdge.source]), graph.edges) || { nodeSequence: [selectedEdge.source], edgeSequence: [] };
+        const middle = { nodeSequence: [selectedEdge.source, selectedEdge.target], edgeSequence: [selectedEdge.id] };
+        const suffix = shortestPath([selectedEdge.target], effectiveEnds, graph.edges) || { nodeSequence: [selectedEdge.target], edgeSequence: [] };
+        return combinePaths(prefix, middle, suffix);
+      }
+    }
+
+    let anchorId = null;
+    if (state.selected?.kind === "node" && graph.nodeIds.has(state.selected.id)) anchorId = state.selected.id;
+    if (!anchorId && state.selected?.kind === "lane") {
+      anchorId = graph.nodes.find((node) => node.laneId === state.selected.id)?.id || null;
+    }
+    if (!anchorId) anchorId = effectiveStarts[0];
+
+    const prefix = effectiveStarts.includes(anchorId)
+      ? { nodeSequence: [anchorId], edgeSequence: [] }
+      : shortestPath(effectiveStarts, new Set([anchorId]), graph.edges) || { nodeSequence: [anchorId], edgeSequence: [] };
+    const suffix = shortestPath([anchorId], effectiveEnds, graph.edges) || { nodeSequence: [anchorId], edgeSequence: [] };
+    return combinePaths(prefix, suffix);
+  }
+
+  function focusContainsNode(nodeId) {
+    return Boolean(state.focusPath?.nodeIds?.has(nodeId));
+  }
+
+  function focusContainsEdge(edgeId) {
+    return Boolean(state.focusPath?.edgeIds?.has(edgeId));
+  }
+
   function renderNodes() {
     nodeLayer.innerHTML = "";
     state.doc.nodes.forEach((node) => {
@@ -305,16 +450,19 @@ export default function flowEditor(component) {
       nodeEl.dataset.id = node.id;
       nodeEl.style.left = `${node.position.x}px`;
       nodeEl.style.top = `${node.position.y}px`;
+      nodeEl.style.setProperty("--node-color", meta.color);
+      nodeEl.style.setProperty("--node-soft", meta.soft);
       nodeEl.classList.toggle("selected", state.selected?.kind === "node" && state.selected.id === node.id);
       nodeEl.classList.toggle("disabled", node.data.enabled === false);
       nodeEl.classList.toggle("locked", node.data.locked === true);
+      nodeEl.classList.toggle("focus-member", Boolean(state.focusPath) && focusContainsNode(node.id));
+      nodeEl.classList.toggle("focus-dimmed", Boolean(state.focusPath) && !focusContainsNode(node.id));
+      nodeEl.classList.toggle("play-visited", state.playback.visitedNodeIds.has(node.id));
+      nodeEl.classList.toggle("play-current", state.playback.currentNodeId === node.id);
 
       const accent = el("div", "node-accent");
-      accent.style.background = meta.color;
       const content = el("div", "node-content");
       const icon = el("div", "node-icon", meta.icon);
-      icon.style.color = meta.color;
-      icon.style.background = meta.soft;
       const text = el("div", "node-text");
       text.append(el("strong", "", node.data.label), el("small", "", nodeSubtitle(node)));
       if (node.data.tags.length) {
@@ -352,10 +500,10 @@ export default function flowEditor(component) {
   }
 
   function nodeCenter(node, side) {
-    const width = (node.type === "start" || node.type === "end") ? 156 : (node.type === "decision" ? 166 : NODE_WIDTH);
+    const dimensions = nodeDimensions(node);
     return {
-      x: node.position.x + (side === "source" ? width : 0),
-      y: node.position.y + NODE_HEIGHT / 2,
+      x: node.position.x + (side === "source" ? dimensions.width : 0),
+      y: node.position.y + dimensions.height / 2,
     };
   }
 
@@ -384,8 +532,16 @@ export default function flowEditor(component) {
       const source = nodeCenter(sourceNode, "source");
       const target = nodeCenter(targetNode, "target");
       const path = edgePath(source, target, edge.type);
-      const group = svgNode("g", { class: `edge-group${edge.enabled === false ? " disabled" : ""}${state.selected?.kind === "edge" && state.selected.id === edge.id ? " selected" : ""}` });
+      const edgeClasses = ["edge-group"];
+      if (edge.enabled === false) edgeClasses.push("disabled");
+      if (state.selected?.kind === "edge" && state.selected.id === edge.id) edgeClasses.push("selected");
+      if (state.focusPath) edgeClasses.push(focusContainsEdge(edge.id) ? "focus-member" : "focus-dimmed");
+      if (state.playback.visitedEdgeIds.has(edge.id)) edgeClasses.push("play-visited");
+      if (state.playback.currentEdgeId === edge.id) edgeClasses.push("play-current");
+      const group = svgNode("g", { class: edgeClasses.join(" ") });
       group.dataset.id = edge.id;
+      const sourceMeta = NODE_TYPES[sourceNode.type] || NODE_TYPES.task;
+      group.style.setProperty("--edge-color", sourceMeta.color);
       const hit = svgNode("path", { d: path, class: "edge-hit" });
       const visible = svgNode("path", { d: path, class: "edge-path" });
       group.append(hit, visible);
@@ -438,6 +594,8 @@ export default function flowEditor(component) {
       const item = el("div", "minimap-node");
       item.style.left = `${node.position.x * scaleX}px`;
       item.style.top = `${node.position.y * scaleY}px`;
+      item.style.background = (NODE_TYPES[node.type] || NODE_TYPES.task).color;
+      if (state.focusPath) item.classList.add(focusContainsNode(node.id) ? "focus-member" : "focus-dimmed");
       minimap.appendChild(item);
     });
     const rect = viewport.getBoundingClientRect();
@@ -450,6 +608,54 @@ export default function flowEditor(component) {
     minimap.appendChild(view);
   }
 
+  function applyPanelState() {
+    root.classList.toggle("palette-collapsed", state.paletteCollapsed);
+    root.classList.toggle("inspector-collapsed", state.inspectorCollapsed);
+    const paletteToggle = $('[data-role="palette-toggle"]');
+    if (paletteToggle) {
+      paletteToggle.textContent = state.paletteCollapsed ? "›" : "‹";
+      paletteToggle.title = state.paletteCollapsed ? "Maximizar elementos" : "Minimizar elementos";
+    }
+    const inspectorToggle = $('[data-role="inspector-toggle"]');
+    if (inspectorToggle) {
+      inspectorToggle.textContent = state.inspectorCollapsed ? "⌄" : "⌃";
+      inspectorToggle.title = state.inspectorCollapsed ? "Expandir propriedades" : "Recolher propriedades";
+    }
+  }
+
+  function applyTheme(theme, persist = true) {
+    state.uiTheme = theme === "dark" ? "dark" : "light";
+    root.dataset.theme = state.uiTheme;
+    const button = $('[data-role="theme-button"]');
+    if (button) {
+      button.textContent = state.uiTheme === "dark" ? "☀ Claro" : "☾ Escuro";
+      button.title = state.uiTheme === "dark" ? "Usar modo claro" : "Usar modo escuro";
+    }
+    if (persist) localStorage.setItem("produto_tools_editor_theme", state.uiTheme);
+  }
+
+  function updatePlaybackUi() {
+    const playButton = $('[data-role="play-button"]');
+    const stopButton = $('[data-role="stop-button"]');
+    const overlay = $('[data-role="playback-overlay"]');
+    if (playButton) {
+      playButton.classList.toggle("is-paused", state.playback.running && !state.playback.paused);
+      if (!state.playback.running) playButton.textContent = "▶ Play";
+      else if (state.playback.paused) playButton.textContent = "▶ Continuar";
+      else playButton.textContent = "Ⅱ Pausar";
+    }
+    if (stopButton) stopButton.disabled = !state.playback.running && !state.playback.visitedNodeIds.size;
+    if (overlay) {
+      overlay.hidden = !state.playback.running;
+      const progress = $('[data-role="playback-progress"]');
+      const title = $('[data-role="playback-title"]');
+      if (title) title.textContent = state.playback.paused ? "Reprodução pausada" : "Reproduzindo fluxo";
+      if (progress) progress.textContent = state.playback.running
+        ? `Etapa ${Math.max(1, state.playback.index + 1)} de ${state.playback.nodeSequence.length}`
+        : "";
+    }
+  }
+
   function renderHeaderAndStatus() {
     $('[data-role="flow-name"]').textContent = state.doc.flow.name || "Editor de Processos";
     let selectedText = "Nenhum item selecionado";
@@ -459,6 +665,16 @@ export default function flowEditor(component) {
     $('[data-role="selection-label"]').textContent = selectedText;
     $('[data-role="connection-hint"]').textContent = state.connecting ? "Selecione a entrada do elemento de destino" : "";
     $('[data-role="empty-state"]').style.display = state.doc.nodes.length || state.doc.lanes.length ? "none" : "grid";
+    const focusStatus = $('[data-role="focus-status"]');
+    if (focusStatus) focusStatus.textContent = state.focusPath ? `${state.focusPath.nodeSequence.length} etapas destacadas` : "";
+    const focusButton = $('[data-role="focus-button"]');
+    if (focusButton) {
+      focusButton.classList.toggle("is-active", Boolean(state.focusPath));
+      focusButton.textContent = state.focusPath ? "× Limpar destaque" : "◎ Destacar caminho";
+    }
+    applyPanelState();
+    applyTheme(state.uiTheme, false);
+    updatePlaybackUi();
   }
 
   function fieldGroup(label, control) {
@@ -869,10 +1085,11 @@ export default function flowEditor(component) {
     const geometry = laneGeometry();
     let minX = 25, minY = 20, maxX = 900, maxY = Math.max(500, geometry.totalHeight);
     state.doc.nodes.forEach((node) => {
+      const dimensions = nodeDimensions(node);
       minX = Math.min(minX, node.position.x - 60);
       minY = Math.min(minY, node.position.y - 60);
-      maxX = Math.max(maxX, node.position.x + NODE_WIDTH + 100);
-      maxY = Math.max(maxY, node.position.y + NODE_HEIGHT + 80);
+      maxX = Math.max(maxX, node.position.x + dimensions.width + 100);
+      maxY = Math.max(maxY, node.position.y + dimensions.height + 80);
     });
     const width = maxX - minX;
     const height = maxY - minY;
@@ -882,6 +1099,46 @@ export default function flowEditor(component) {
     state.doc.viewport.y = (rect.height - height * zoom) / 2 - minY * zoom;
     renderViewport();
     renderMinimap();
+  }
+
+  function fitNodeIds(nodeIds) {
+    const ids = nodeIds instanceof Set ? nodeIds : new Set(nodeIds || []);
+    const nodes = state.doc.nodes.filter((node) => ids.has(node.id));
+    if (!nodes.length) return fitView();
+    const rect = viewport.getBoundingClientRect();
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    nodes.forEach((node) => {
+      const dimensions = nodeDimensions(node);
+      minX = Math.min(minX, node.position.x - 70);
+      minY = Math.min(minY, node.position.y - 70);
+      maxX = Math.max(maxX, node.position.x + dimensions.width + 70);
+      maxY = Math.max(maxY, node.position.y + dimensions.height + 70);
+    });
+    const width = Math.max(240, maxX - minX);
+    const height = Math.max(160, maxY - minY);
+    const zoom = clamp(Math.min((rect.width - 90) / width, (rect.height - 90) / height), .38, 1.35);
+    state.doc.viewport.zoom = zoom;
+    state.doc.viewport.x = (rect.width - width * zoom) / 2 - minX * zoom;
+    state.doc.viewport.y = (rect.height - height * zoom) / 2 - minY * zoom;
+    world.classList.add("is-animating");
+    renderViewport();
+    renderMinimap();
+    setTimeout(() => world.classList.remove("is-animating"), 350);
+  }
+
+  function centerOnNode(nodeId) {
+    const node = getNode(nodeId);
+    if (!node) return;
+    const dimensions = nodeDimensions(node);
+    const rect = viewport.getBoundingClientRect();
+    const zoom = clamp(Math.max(Number(state.doc.viewport.zoom) || 1, .9), .9, 1.2);
+    state.doc.viewport.zoom = zoom;
+    state.doc.viewport.x = rect.width / 2 - (node.position.x + dimensions.width / 2) * zoom;
+    state.doc.viewport.y = rect.height / 2 - (node.position.y + dimensions.height / 2) * zoom;
+    world.classList.add("is-animating");
+    renderViewport();
+    renderMinimap();
+    setTimeout(() => world.classList.remove("is-animating"), 350);
   }
 
   function autoLayout() {
@@ -1024,6 +1281,10 @@ export default function flowEditor(component) {
         checkpoint();
         state.doc = normalized;
         state.selected = null;
+        state.focusPath = null;
+        clearPlaybackTimer();
+        state.playback.running = false;
+        resetPlaybackVisuals();
         state.future = [];
         markDirty();
         renderAll();
@@ -1046,6 +1307,170 @@ export default function flowEditor(component) {
     setTriggerValue("save", clone(state.doc));
   }
 
+  function togglePalettePanel() {
+    state.paletteCollapsed = !state.paletteCollapsed;
+    localStorage.setItem("produto_tools_palette_collapsed", String(state.paletteCollapsed));
+    applyPanelState();
+    setTimeout(() => { renderMinimap(); }, 220);
+  }
+
+  function toggleInspectorPanel() {
+    state.inspectorCollapsed = !state.inspectorCollapsed;
+    localStorage.setItem("produto_tools_inspector_collapsed", String(state.inspectorCollapsed));
+    applyPanelState();
+    setTimeout(() => { renderMinimap(); }, 220);
+  }
+
+  function toggleTheme() {
+    applyTheme(state.uiTheme === "dark" ? "light" : "dark", true);
+    renderAll();
+  }
+
+  async function toggleFullscreen() {
+    try {
+      if (root.classList.contains("pseudo-fullscreen")) {
+        root.classList.remove("pseudo-fullscreen");
+      } else if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else if (root.requestFullscreen) {
+        await root.requestFullscreen({ navigationUI: "hide" });
+      } else {
+        root.classList.add("pseudo-fullscreen");
+      }
+    } catch (error) {
+      root.classList.add("pseudo-fullscreen");
+      toast("O navegador bloqueou a tela cheia nativa; foi usado o modo expandido.", "warning");
+    }
+    updateFullscreenButton();
+    setTimeout(() => { renderMinimap(); fitView(); }, 120);
+  }
+
+  function updateFullscreenButton() {
+    const button = $('[data-role="fullscreen-button"]');
+    if (!button) return;
+    const active = Boolean(document.fullscreenElement) || root.classList.contains("pseudo-fullscreen");
+    button.textContent = active ? "⛶ Sair" : "⛶ Expandir";
+    button.title = active ? "Sair da tela cheia" : "Usar o monitor inteiro";
+    button.classList.toggle("is-active", active);
+  }
+
+  function toggleFocusPath() {
+    if (state.focusPath) {
+      state.focusPath = null;
+      stopPlayback(false);
+      renderAll();
+      toast("Destaque removido", "info");
+      return;
+    }
+    const path = buildReadablePath();
+    if (!path || !path.nodeSequence.length) {
+      toast("Selecione uma etapa ou conexão válida para destacar o caminho.", "warning");
+      return;
+    }
+    state.focusPath = path;
+    renderAll();
+    setTimeout(() => fitNodeIds(path.nodeIds), 40);
+    toast(`Caminho destacado com ${path.nodeSequence.length} etapas.`, "success");
+  }
+
+  function playbackDelay() {
+    return Math.max(250, Number($('[data-role="play-speed"]')?.value) || 850);
+  }
+
+  function clearPlaybackTimer() {
+    if (state.playback.timer) clearTimeout(state.playback.timer);
+    state.playback.timer = null;
+  }
+
+  function resetPlaybackVisuals() {
+    state.playback.index = -1;
+    state.playback.currentNodeId = null;
+    state.playback.currentEdgeId = null;
+    state.playback.visitedNodeIds = new Set();
+    state.playback.visitedEdgeIds = new Set();
+  }
+
+  function stopPlayback(showMessage = true) {
+    clearPlaybackTimer();
+    state.playback.running = false;
+    state.playback.paused = false;
+    state.playback.nodeSequence = [];
+    state.playback.edgeSequence = [];
+    resetPlaybackVisuals();
+    renderAll();
+    if (showMessage) toast("Reprodução encerrada", "info");
+  }
+
+  function completePlayback() {
+    clearPlaybackTimer();
+    state.playback.running = false;
+    state.playback.paused = false;
+    state.playback.currentNodeId = null;
+    state.playback.currentEdgeId = null;
+    renderAll();
+    toast("Reprodução concluída até o fim do fluxo.", "success");
+  }
+
+  function advancePlayback() {
+    if (!state.playback.running || state.playback.paused) return;
+    state.playback.index += 1;
+    if (state.playback.index >= state.playback.nodeSequence.length) {
+      completePlayback();
+      return;
+    }
+
+    const index = state.playback.index;
+    const nodeId = state.playback.nodeSequence[index];
+    const edgeId = index > 0 ? state.playback.edgeSequence[index - 1] : null;
+    state.playback.currentNodeId = nodeId;
+    state.playback.currentEdgeId = edgeId;
+    state.playback.visitedNodeIds.add(nodeId);
+    if (edgeId) state.playback.visitedEdgeIds.add(edgeId);
+    renderNodes();
+    renderEdges();
+    renderHeaderAndStatus();
+    renderMinimap();
+    centerOnNode(nodeId);
+
+    state.playback.timer = setTimeout(() => {
+      state.playback.currentEdgeId = null;
+      advancePlayback();
+    }, playbackDelay());
+  }
+
+  function startPlayback() {
+    const path = state.focusPath || buildReadablePath();
+    if (!path || !path.nodeSequence.length) {
+      toast("Não foi encontrado um caminho ativo para reproduzir.", "warning");
+      return;
+    }
+    clearPlaybackTimer();
+    state.focusPath = path;
+    state.playback.running = true;
+    state.playback.paused = false;
+    state.playback.nodeSequence = [...path.nodeSequence];
+    state.playback.edgeSequence = [...path.edgeSequence];
+    resetPlaybackVisuals();
+    renderAll();
+    advancePlayback();
+  }
+
+  function togglePlayback() {
+    if (!state.playback.running) {
+      startPlayback();
+      return;
+    }
+    if (state.playback.paused) {
+      state.playback.paused = false;
+      renderHeaderAndStatus();
+      state.playback.timer = setTimeout(advancePlayback, Math.min(350, playbackDelay()));
+    } else {
+      state.playback.paused = true;
+      clearPlaybackTimer();
+      renderHeaderAndStatus();
+    }
+  }
+
   function toolbarAction(action) {
     const rect = viewport.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
@@ -1056,8 +1481,15 @@ export default function flowEditor(component) {
     else if (action === "zoom-out") zoomAt(centerX, centerY, 1 / 1.15);
     else if (action === "zoom-reset") { state.doc.viewport = { x: 0, y: 0, zoom: 1 }; renderViewport(); renderMinimap(); }
     else if (action === "fit") fitView();
+    else if (action === "fullscreen") toggleFullscreen();
+    else if (action === "focus-path") toggleFocusPath();
+    else if (action === "play") togglePlayback();
+    else if (action === "stop") stopPlayback(true);
     else if (action === "layout") autoLayout();
     else if (action === "validate") showValidation();
+    else if (action === "theme") toggleTheme();
+    else if (action === "toggle-palette") togglePalettePanel();
+    else if (action === "toggle-inspector") toggleInspectorPanel();
     else if (action === "import") fileInput.click();
     else if (action === "export") exportJson();
     else if (action === "save") save();
@@ -1072,11 +1504,16 @@ export default function flowEditor(component) {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") { event.preventDefault(); duplicateSelected(); }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); save(); }
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "f") { event.preventDefault(); toggleFullscreen(); }
+    if (event.key.toLowerCase() === "p") { event.preventDefault(); togglePlayback(); }
+    if (event.key.toLowerCase() === "f" && !event.ctrlKey && !event.metaKey) { event.preventDefault(); toggleFocusPath(); }
     if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); deleteSelected(); }
     if (event.key === "Escape") {
       state.connecting = null;
       state.selected = null;
       $('[data-role="modal"]').hidden = true;
+      if (root.classList.contains("pseudo-fullscreen")) root.classList.remove("pseudo-fullscreen");
+      updateFullscreenButton();
       renderAll();
     }
   }
@@ -1116,6 +1553,7 @@ export default function flowEditor(component) {
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("resize", renderMinimap);
+    document.addEventListener("fullscreenchange", updateFullscreenButton);
   }
 
   palette();
@@ -1130,5 +1568,7 @@ export default function flowEditor(component) {
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
     window.removeEventListener("resize", renderMinimap);
+    document.removeEventListener("fullscreenchange", updateFullscreenButton);
+    clearPlaybackTimer();
   };
 }

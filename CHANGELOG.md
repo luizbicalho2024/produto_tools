@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.2.0 — 2026-08-01
+
+- Propriedades transferidas da lateral direita para um inspetor horizontal superior.
+- Canvas ampliado para utilizar toda a largura disponível da página.
+- Paleta de elementos e inspetor de propriedades recolhíveis.
+- Botão de tela cheia ao lado de Enquadrar.
+- Tema claro e escuro para as páginas e para o editor.
+- Correção do destaque colorido em nós arredondados e não retangulares.
+- Destaque de caminho a partir do elemento ou conexão selecionada.
+- Reprodução animada do caminho até o fim, com pausa, parada e velocidade.
+- Acompanhamento automático da etapa atual durante a reprodução.
+
 ## 2.1.0 — 2026-08-01
 
 - Migração completa do SQLite para MongoDB Atlas.

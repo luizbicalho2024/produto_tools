@@ -39,12 +39,13 @@ def flow_editor(
     *,
     key: str,
     height: int = 820,
+    theme: str = "light",
     on_save_change: Callable[[], None] | None = None,
 ):
     """Monta o editor e retorna os eventos transitórios emitidos pelo frontend."""
     renderer = _renderer()
     return renderer(
-        data={"document": document, "height": height},
+        data={"document": document, "height": height, "theme": theme},
         key=key,
         on_save_change=on_save_change or (lambda: None),
         height=height,

@@ -8,7 +8,7 @@ import streamlit as st
 
 from components.flow_editor import flow_editor
 from core.auth import render_account_sidebar, require_login
-from core.styles import apply_global_styles, page_header
+from core.styles import apply_global_styles, get_ui_theme, page_header
 from schemas.flowchart_schema import demo_flowchart_document, new_flowchart_document, validate_document
 from services.flowchart_repository import (
     delete_flowchart,
@@ -22,7 +22,7 @@ from services.flowchart_repository import (
 )
 
 st.set_page_config(page_title="Editor de Processos", page_icon="🧩", layout="wide")
-apply_global_styles()
+apply_global_styles(full_width=True)
 user = require_login()
 render_account_sidebar()
 
@@ -184,7 +184,8 @@ component_key = f"flow_editor_{selected_id}"
 result = flow_editor(
     record["document"],
     key=component_key,
-    height=840,
+    height=920,
+    theme=get_ui_theme(),
     on_save_change=lambda: None,
 )
 

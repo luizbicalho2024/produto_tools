@@ -15,3 +15,13 @@ Antes da geração do pacote foram executadas as seguintes verificações:
 - conferência do contrato de usuários usado pelo Simulador-Telemetria.
 
 A conexão real com o MongoDB Atlas deve ser validada no ambiente de destino, pois depende dos Secrets do Streamlit Cloud e das regras de Network Access do cluster.
+
+## Validações visuais 2.2
+
+- Faixa colorida respeitando nós em formato de pílula, arredondados e assimétricos.
+- Propriedades exibidas no inspetor horizontal superior.
+- Paleta e inspetor recolhíveis sem perda do estado do fluxo.
+- Tema claro e escuro no editor.
+- Destaque de caminho com redução de opacidade dos itens externos.
+- Reprodução com play, pausa, parada, velocidade e centralização da etapa atual.
+- Tela cheia com API nativa do navegador e modo expandido de contingência.
