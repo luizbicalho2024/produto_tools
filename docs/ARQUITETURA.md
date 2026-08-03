@@ -1,4 +1,4 @@
-# Arquitetura — Produto Tools 3.2.2
+# Arquitetura — Produto Tools 3.2.3
 
 ## Camadas
 
@@ -54,3 +54,15 @@ A página gera um payload enxuto no servidor e executa a simulação de força i
 ## Releases
 
 Uma release registra ID, versão, revisão, hash SHA-256, papel, grupo e ordem de cada fluxo. A exportação utiliza versões imutáveis.
+
+## Raias e seleção múltipla
+
+O frontend calcula a ocupação horizontal dos cards de cada raia, distribui conflitos em linhas internas e ajusta a altura da raia. A seleção múltipla é mantida em `selectedNodeIds` e o arraste usa um snapshot das posições originais para mover o grupo de maneira consistente.
+
+## Proteção de navegação
+
+O autosave periódico permanece local e silencioso. Quando existe diferença ainda não sincronizada com o MongoDB, o frontend intercepta a navegação disponível no documento host e apresenta as opções de permanecer, sair mantendo o rascunho local ou emitir a sincronização explícita antes de continuar. O `beforeunload` do navegador atua como proteção adicional.
+
+## Semântica das decisões
+
+As conexões cuja origem é uma decisão são classificadas a partir do rótulo, condição e destino. Saídas positivas são verdes, negativas são vermelhas e saídas sem semântica reconhecível permanecem cinza. A regra é compartilhada conceitualmente pelo editor e pelo mapa de relações.

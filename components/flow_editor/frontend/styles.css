@@ -912,7 +912,7 @@ button { color: inherit; }
   opacity: .78;
 }
 
-/* Produto Tools 3.2.2 - legibilidade de conexoes, downloads e validacao amigavel */
+/* Produto Tools 3.2.3 - legibilidade de conexoes, downloads e validacao amigavel */
 .toolbar-dropdown {
   position: relative;
   flex: 0 0 auto;
@@ -1106,4 +1106,70 @@ button { color: inherit; }
   .node-flow-indicator { top: -12px; }
   .validation-item { grid-template-columns: 26px minmax(0, 1fr); }
   .validation-locate { grid-column: 2; justify-self: start; }
+}
+
+
+/* Produto Tools 3.2.3 - raias dinâmicas, seleção múltipla e conexões semânticas */
+.flow-node.multi-selected {
+  outline: 3px solid color-mix(in srgb, var(--fe-primary) 44%, transparent);
+  box-shadow: 0 0 0 7px color-mix(in srgb, var(--fe-primary) 10%, transparent), 0 12px 28px var(--fe-shadow);
+}
+.multi-selection-summary {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--fe-line);
+  border-radius: 12px;
+  color: var(--fe-ink);
+  background: var(--fe-panel-soft);
+}
+.multi-selection-summary small { color: var(--fe-muted); line-height: 1.45; }
+.multi-selection-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 10px; }
+.multi-selection-actions button {
+  min-height: 38px;
+  border: 1px solid var(--fe-line);
+  border-radius: 9px;
+  color: var(--fe-ink);
+  background: var(--fe-input);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 800;
+}
+.multi-selection-actions button:hover { border-color: var(--fe-primary); color: var(--fe-primary-dark); background: var(--fe-primary-soft); }
+
+.node-port.decision-output.semantic-positive { border-color: #16a34a; background: color-mix(in srgb, #16a34a 18%, var(--fe-input)); }
+.node-port.decision-output.semantic-negative { border-color: #dc2626; background: color-mix(in srgb, #dc2626 18%, var(--fe-input)); }
+.edge-group.edge-positive .edge-path { stroke: #16a34a; }
+.edge-group.edge-negative .edge-path { stroke: #dc2626; }
+.edge-group.edge-positive .edge-source-terminal { fill: #16a34a; }
+.edge-group.edge-negative .edge-source-terminal { fill: #dc2626; }
+.edge-group.edge-positive .edge-label-bg { stroke: color-mix(in srgb, #16a34a 70%, var(--fe-line)); fill: color-mix(in srgb, #16a34a 9%, var(--fe-input)); }
+.edge-group.edge-negative .edge-label-bg { stroke: color-mix(in srgb, #dc2626 70%, var(--fe-line)); fill: color-mix(in srgb, #dc2626 9%, var(--fe-input)); }
+.edge-group.edge-positive .edge-label { fill: #15803d; font-weight: 850; }
+.edge-group.edge-negative .edge-label { fill: #b91c1c; font-weight: 850; }
+.edge-group.edge-positive.selected .edge-path,
+.edge-group.edge-positive.focus-member .edge-path,
+.edge-group.edge-positive.play-current .edge-path { stroke: #22c55e; }
+.edge-group.edge-negative.selected .edge-path,
+.edge-group.edge-negative.focus-member .edge-path,
+.edge-group.edge-negative.play-current .edge-path { stroke: #ef4444; }
+.flow-editor-shell[data-theme="dark"] .edge-group.edge-positive .edge-label { fill: #86efac; }
+.flow-editor-shell[data-theme="dark"] .edge-group.edge-negative .edge-label { fill: #fca5a5; }
+
+.canvas-viewport.is-panning { cursor: grabbing !important; }
+.canvas-viewport { cursor: grab; }
+.selection-box { border-width: 2px; border-style: dashed; box-shadow: 0 0 0 1px color-mix(in srgb, var(--fe-primary) 18%, transparent) inset; }
+
+.navigation-warning { z-index: 120; }
+.navigation-warning-card { width: min(540px, calc(100% - 32px)); }
+.navigation-warning-body { display: grid; gap: 7px; padding: 18px; color: var(--fe-ink); }
+.navigation-warning-body p { margin: 0; line-height: 1.5; }
+.navigation-warning-body small { color: var(--fe-muted); line-height: 1.45; }
+.navigation-warning-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.navigation-warning-actions button { min-height: 38px; border: 1px solid var(--fe-line); border-radius: 999px; padding: 0 14px; color: var(--fe-ink); background: var(--fe-input); font-weight: 800; cursor: pointer; }
+.navigation-warning-actions .button-primary { color: #fff; background: linear-gradient(135deg, var(--fe-primary), var(--fe-primary-dark)); border-color: var(--fe-primary); }
+
+@media (max-width: 720px) {
+  .multi-selection-actions { grid-template-columns: 1fr; }
+  .navigation-warning-actions { display: grid; grid-template-columns: 1fr; }
 }

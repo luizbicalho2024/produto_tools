@@ -1,18 +1,19 @@
-# Produto Tools 3.2.2 Professional
+# Produto Tools 3.2.3 Professional
 
 Aplicação Streamlit para modelagem, governança e publicação de processos, com autenticação compartilhada, persistência no MongoDB Atlas e projetos compostos por vários fluxos vinculados.
 
 
-## Novidades da versão 3.2.2
+## Novidades da versão 3.2.3
 
-- cada card exibe quantas linhas recebe e envia, com atalhos para destacar suas conexões;
-- as setas terminam antes do card, permanecendo visíveis mesmo quando a linha passa atrás de outro elemento;
-- origem de cada conexão marcada por terminal circular;
-- exportações JSON, SVG e PNG agrupadas no menu **Baixar**;
-- relatórios PDF, HTML e CSV agrupados em **Baixar relatórios**;
-- validação com explicação simples, impacto e instrução de correção;
-- mapa de relações com tela cheia, filtros por tipo e fluxo, destaque e isolamento;
-- páginas de qualidade mostram os cards afetados, o tipo do problema e como corrigir.
+- raias automáticas aumentam, diminuem e reorganizam verticalmente os cards para evitar sobreposição;
+- seleção múltipla por Ctrl/Shift + clique, Shift + arrastar no fundo e Ctrl+A;
+- movimento, alinhamento, distribuição, duplicação e exclusão de cards em grupo;
+- confirmação de navegação quando há rascunho local ainda não sincronizado com o MongoDB;
+- saídas positivas de decisões em verde, negativas em vermelho e não classificadas em cinza;
+- cores semânticas também no SVG, PNG e Mapa de Relações;
+- pan do fluxo com espaço, botão central ou botão direito do mouse;
+- correção reforçada dos controles do sidebar no tema escuro;
+- mapa de relações com setas explícitas de direção.
 
 ## Correção 3.2.1 — Compatibilidade do login
 

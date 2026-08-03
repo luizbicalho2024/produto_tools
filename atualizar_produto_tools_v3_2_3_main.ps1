@@ -4,7 +4,7 @@
 param(
     [string]$RepositoryUrl = "https://github.com/luizbicalho2024/produto_tools.git",
     [string]$Branch = "main",
-    [string]$CommitMessage = "Melhora conexoes, mapa de relacoes e qualidade acionavel no Produto Tools 3.2.2",
+    [string]$CommitMessage = "Adiciona raias dinamicas, selecao multipla e decisoes semanticas no Produto Tools 3.2.3",
     [switch]$SkipTests
 )
 
@@ -72,7 +72,7 @@ $Destination = Join-Path $Parent ("produto_tools_publicacao_" + $Timestamp)
 $OriginalLocation = Get-Location
 
 try {
-    Write-Step "Produto Tools 3.2.2 - Publicacao segura"
+    Write-Step "Produto Tools 3.2.3 - Publicacao segura"
     Write-Host ("Origem: " + $Source)
     Write-Host ("Clone:  " + $Destination)
 
@@ -91,6 +91,7 @@ try {
         "services\project_repository.py",
         "services\flow_analytics.py",
         "tests\test_release_322.py",
+        "tests\test_release_323.py",
         "schemas\flowchart_schema.py",
         "examples\sigyo_modular_project.zip"
     )
@@ -147,8 +148,8 @@ try {
 
             Invoke-PythonCommand `
                 -Launcher $PythonLauncher `
-                -Arguments @("-c", "from pathlib import Path; required={'components/flow_editor/frontend/index.html':['download-menu'],'components/flow_editor/frontend/main.js':['node-flow-indicator incoming','Problemas identificados'],'pages/4_Mapa_de_Relacoes.py':['requestFullscreen','typeFilter','flowFilter']}; missing=[f'{path}: {token}' for path,tokens in required.items() for token in tokens if token not in Path(path).read_text(encoding='utf-8')]; missing and (_ for _ in ()).throw(RuntimeError('Recursos 3.2.2 ausentes: '+', '.join(missing)))") `
-                -FailureMessage "Falha na validacao dos recursos da versao 3.2.2."
+                -Arguments @("-c", "from pathlib import Path; required={'components/flow_editor/frontend/index.html':['autoFitLanes','navigation-warning','nav-save'],'components/flow_editor/frontend/main.js':['fitLanesToContent','selectedNodeIds','decisionEdgeSemantic','event.button === 2','hostDocument'],'components/flow_editor/frontend/styles.css':['edge-positive','edge-negative','multi-selected'],'core/styles.py':['stSidebarUserContent','aria-haspopup'],'pages/4_Mapa_de_Relacoes.py':['decision_edge_semantic','drawArrow','requestFullscreen']}; missing=[f'{path}: {token}' for path,tokens in required.items() for token in tokens if token not in Path(path).read_text(encoding='utf-8')]; missing and (_ for _ in ()).throw(RuntimeError('Recursos 3.2.3 ausentes: '+', '.join(missing)))") `
+                -FailureMessage "Falha na validacao dos recursos da versao 3.2.3."
 
             $NodeCommand = Get-Command node -ErrorAction SilentlyContinue
             if ($null -ne $NodeCommand) {
@@ -307,7 +308,7 @@ try {
     Assert-NativeSuccess "Falha ao enviar as alteracoes para o GitHub."
 
     Write-Host ""
-    Write-Host "Produto Tools 3.2.2 publicado com sucesso." -ForegroundColor Green
+    Write-Host "Produto Tools 3.2.3 publicado com sucesso." -ForegroundColor Green
     Write-Host ("Repositorio: " + $RepositoryUrl)
     Write-Host ("Branch:      " + $Branch)
     Write-Host ("Clone local: " + $Destination)

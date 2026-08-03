@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import unicodedata
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -87,6 +88,41 @@ nodes: list[dict] = []
 links: list[dict] = []
 
 
+def _semantic_text(value: object) -> str:
+    normalized = unicodedata.normalize("NFD", str(value or ""))
+    return "".join(char for char in normalized if unicodedata.category(char) != "Mn").lower().strip()
+
+
+def decision_edge_semantic(document: dict, edge: dict) -> str:
+    node_by_id = {str(item.get("id")): item for item in document.get("nodes", [])}
+    source = node_by_id.get(str(edge.get("source"))) or {}
+    if str(source.get("type") or "") != "decision":
+        return "neutral"
+    target = node_by_id.get(str(edge.get("target"))) or {}
+    target_data = target.get("data") or {}
+    content = _semantic_text(" ".join([
+        str(edge.get("label") or ""),
+        str(edge.get("condition") or ""),
+        str(target_data.get("label") or ""),
+        " ".join(str(tag) for tag in target_data.get("tags") or []),
+    ]))
+    negative = (
+        "nao", "negativo", "negativa", "recus", "rejeit", "falha", "erro",
+        "cancel", "inval", "indispon", "fora do", "bloque", "reprov", "expir",
+        "sem saldo", "nao aprovado",
+    )
+    positive = (
+        "sim", "positivo", "positiva", "aprov", "aceit", "sucesso", "conclu",
+        "valido", "valida", "disponivel", "dentro da", "ativo", "ativa", "pago",
+        "confirmado",
+    )
+    if any(token in content for token in negative):
+        return "negative"
+    if any(token in content for token in positive):
+        return "positive"
+    return "neutral"
+
+
 def add_flow_node(record: dict, *, node_id: str | None = None, radius: float = 12) -> None:
     nodes.append({
         "id": node_id or record["id"],
@@ -158,6 +194,7 @@ elif scope == "flow":
                 "target": str(edge.get("target")),
                 "label": str(edge.get("label") or edge.get("condition") or ""),
                 "kind": "edge",
+                "semantic": decision_edge_semantic(document, edge),
             })
 else:
     graph = project_links(project_id, username, is_admin=is_admin)
@@ -179,8 +216,9 @@ else:
                 links.append({
                     "source": f"node::{record['id']}::{source}",
                     "target": f"node::{record['id']}::{target}",
-                    "label": "",
+                    "label": str(edge.get("label") or edge.get("condition") or ""),
                     "kind": "edge",
+                    "semantic": decision_edge_semantic(document, edge),
                 })
         if remaining <= 0:
             break
@@ -231,7 +269,7 @@ button:hover,button.active{{border-color:#00a35c;color:#00a35c;background:{panel
 </div>
 <div class="filter-note" id="filterNote">Os filtros mantêm os demais pontos visíveis em segundo plano. Use “Destacar” para isolar apenas os resultados.</div>
 <div class="info" id="info"><strong>Mapa interativo</strong><small>Arraste nós, use o scroll para zoom, arraste o fundo para mover e clique em um ponto para destacar sua vizinhança.</small></div>
-<div class="legend">Cor = tipo do card · Clique = vizinhança · Filtros = destaque</div></div>
+<div class="legend">Cor do ponto = tipo · Verde = Sim/positivo · Vermelho = Não/negativo · Seta = direção</div></div>
 <script>
 const DATA={payload};
 const canvas=document.getElementById('graph'),ctx=canvas.getContext('2d'),wrap=document.getElementById('wrap');
@@ -261,7 +299,9 @@ function visible(n){{return !isolated||matchesFilters(n)}}
 function highlighted(n){{return matchesFilters(n)&&selectedActive(n.id)}}
 function updateCounter(){{const matched=nodes.filter(matchesFilters).length;document.getElementById('counter').textContent=`${{matched}} em destaque · ${{nodes.length}} nós · ${{links.length}} ligações`;document.getElementById('isolate').textContent=isolated?'Mostrar todos':'Destacar';document.getElementById('isolate').classList.toggle('active',isolated)}}
 function step(){{if(paused||drag)return;const activeNodes=nodes.filter(visible),count=activeNodes.length;const repel=count>600?3200:count>300?4500:6500;for(let i=0;i<count;i++){{const a=activeNodes[i];for(let j=i+1;j<count;j++){{const b=activeNodes[j],dx=a.x-b.x,dy=a.y-b.y,d2=Math.max(90,dx*dx+dy*dy),f=repel/d2,inv=1/Math.sqrt(d2);a.vx+=dx*inv*f;a.vy+=dy*inv*f;b.vx-=dx*inv*f;b.vy-=dy*inv*f}}}}links.forEach(l=>{{if(!visible(l.source)||!visible(l.target))return;const dx=l.target.x-l.source.x,dy=l.target.y-l.source.y,d=Math.max(1,Math.hypot(dx,dy)),ideal=l.kind==='membership'?70:l.kind==='flow-link'?180:105,f=(d-ideal)*.0045,ux=dx/d,uy=dy/d;l.source.vx+=ux*f;l.source.vy+=uy*f;l.target.vx-=ux*f;l.target.vy-=uy*f}});activeNodes.forEach(n=>{{n.vx+=-n.x*.00045;n.vy+=-n.y*.00045;n.vx*=.86;n.vy*=.86;n.x+=n.vx;n.y+=n.vy}})}}
-function draw(){{ctx.clearRect(0,0,width,height);ctx.save();links.forEach(l=>{{if(!visible(l.source)||!visible(l.target))return;const a=screen(l.source),b=screen(l.target),on=highlighted(l.source)&&highlighted(l.target);ctx.globalAlpha=on?1:.11;ctx.strokeStyle=on?'{edge_color}':'{dim_edge}';ctx.lineWidth=(l.kind==='flow-link'?2.2:1)*Math.max(.65,Math.min(1.5,zoom));ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()}});nodes.forEach(n=>{{if(!visible(n))return;const p=screen(n),on=highlighted(n),r=Math.max(2.3,n.radius*zoom);ctx.globalAlpha=on?1:.09;ctx.fillStyle=n.color;ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();if(n.id===selected||n.id===hovered){{ctx.globalAlpha=1;ctx.strokeStyle='#ffffff';ctx.lineWidth=2.2;ctx.stroke()}}if(showLabels&&(zoom>.72||n.kind==='flow'||n.id===selected||n.id===hovered||matchesFilters(n)&&query)){{ctx.globalAlpha=on?1:.16;ctx.fillStyle='{text_color}';ctx.font=`${{n.kind==='flow'?'700 ':'600 '}}${{Math.max(10,Math.min(14,11*zoom))}}px Inter,Arial`;ctx.textAlign='center';ctx.fillText(n.label,p.x,p.y+r+13)}}}});ctx.restore();ctx.globalAlpha=1}}
+function semanticColor(l){{if(l.semantic==='positive')return '#16a34a';if(l.semantic==='negative')return '#dc2626';return '{edge_color}'}}
+function drawArrow(a,b,color,alpha){{const dx=b.x-a.x,dy=b.y-a.y,d=Math.max(1,Math.hypot(dx,dy)),ux=dx/d,uy=dy/d,targetRadius=6,tipX=b.x-ux*targetRadius,tipY=b.y-uy*targetRadius,size=Math.max(3.5,Math.min(7,5*zoom));ctx.globalAlpha=alpha;ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(tipX,tipY);ctx.lineTo(tipX-ux*size-uy*size*.65,tipY-uy*size+ux*size*.65);ctx.lineTo(tipX-ux*size+uy*size*.65,tipY-uy*size-ux*size*.65);ctx.closePath();ctx.fill()}}
+function draw(){{ctx.clearRect(0,0,width,height);ctx.save();links.forEach(l=>{{if(!visible(l.source)||!visible(l.target))return;const a=screen(l.source),b=screen(l.target),on=highlighted(l.source)&&highlighted(l.target),color=semanticColor(l),alpha=on?1:.11;ctx.globalAlpha=alpha;ctx.strokeStyle=l.semantic&&l.semantic!=='neutral'?color:(on?'{edge_color}':'{dim_edge}');ctx.lineWidth=(l.kind==='flow-link'?2.2:(l.semantic&&l.semantic!=='neutral'?1.8:1))*Math.max(.65,Math.min(1.5,zoom));ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();if(l.kind!=='membership')drawArrow(a,b,color,alpha)}});nodes.forEach(n=>{{if(!visible(n))return;const p=screen(n),on=highlighted(n),r=Math.max(2.3,n.radius*zoom);ctx.globalAlpha=on?1:.09;ctx.fillStyle=n.color;ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();if(n.id===selected||n.id===hovered){{ctx.globalAlpha=1;ctx.strokeStyle='#ffffff';ctx.lineWidth=2.2;ctx.stroke()}}if(showLabels&&(zoom>.72||n.kind==='flow'||n.id===selected||n.id===hovered||matchesFilters(n)&&query)){{ctx.globalAlpha=on?1:.16;ctx.fillStyle='{text_color}';ctx.font=`${{n.kind==='flow'?'700 ':'600 '}}${{Math.max(10,Math.min(14,11*zoom))}}px Inter,Arial`;ctx.textAlign='center';ctx.fillText(n.label,p.x,p.y+r+13)}}}});ctx.restore();ctx.globalAlpha=1}}
 function frame(){{step();draw();requestAnimationFrame(frame)}}frame();
 function hit(x,y){{let best=null,dist=Infinity;nodes.forEach(n=>{{if(!visible(n))return;const p=screen(n),d=Math.hypot(p.x-x,p.y-y),r=Math.max(8,n.radius*zoom+5);if(d<r&&d<dist){{best=n;dist=d}}}});return best}}
 function showInfo(n){{document.getElementById('info').innerHTML=n?`<strong>${{n.label}}</strong><small>${{n.flowName||n.group||''}}${{n.lane?' · '+n.lane:''}}${{n.owner?' · '+n.owner:''}} · ${{adjacency.get(n.id)?.size||0}} ligação(ões)</small>`:'<strong>Mapa interativo</strong><small>Arraste nós, use o scroll para zoom, arraste o fundo para mover e clique em um ponto para destacar sua vizinhança.</small>'}}

@@ -109,6 +109,7 @@ function normalizeDocument(input) {
     edgeRouting: "smooth",
     autosaveSeconds: 10,
     interactivePlayback: true,
+    autoFitLanes: true,
     ...(doc.settings || {}),
   };
   const presetAliases = {
@@ -137,7 +138,7 @@ function normalizeDocument(input) {
     lane.color ||= "#EEF2FF";
     lane.enabled = lane.enabled !== false;
     lane.collapsed = lane.collapsed === true;
-    lane.height = clamp(Number(lane.height) || 240, 110, 1200);
+    lane.height = clamp(Number(lane.height) || 240, 110, 2400);
   });
   doc.nodes.forEach((node) => {
     node.id ||= uid("node");
@@ -238,18 +239,24 @@ export default function flowEditor(component) {
   const localDraft = readLocalDraft(incomingProjectId, incomingUserId, incomingDocument.flow.id, incomingRevision);
   const incomingUpdatedAt = Date.parse(incomingDocument.flow?.updatedAt || "") || 0;
   const localSavedAt = Date.parse(localDraft?.savedAt || "") || 0;
-  const restoredLocalDraft = Boolean(localDraft?.document && localSavedAt >= incomingUpdatedAt);
+  const localDocument = localDraft?.document ? normalizeDocument(localDraft.document) : null;
+  const localDiffersFromDatabase = Boolean(localDocument && JSON.stringify(localDocument) !== JSON.stringify(incomingDocument));
+  const restoredLocalDraft = Boolean(localDocument && localSavedAt >= incomingUpdatedAt && localDiffersFromDatabase);
 
   const state = {
-    doc: restoredLocalDraft ? normalizeDocument(localDraft.document) : incomingDocument,
+    doc: restoredLocalDraft ? localDocument : incomingDocument,
     selected: null,
+    selectedNodeIds: new Set(),
     connecting: null,
     pointerWorld: { x: 0, y: 0 },
     history: [],
     future: [],
     dragging: null,
     panning: null,
+    marquee: null,
     spaceDown: false,
+    pendingNavigation: null,
+    allowNavigationOnce: false,
     dirty: restoredLocalDraft,
     destroyed: false,
     permission: String(data?.permission || "viewer"),
@@ -321,6 +328,8 @@ export default function flowEditor(component) {
   const propertiesBody = $('[data-role="properties-body"]');
   const fileInput = $('[data-role="file-input"]');
   const minimap = $('[data-role="minimap"]');
+  const selectionBox = $('[data-role="selection-box"]');
+  const navigationWarning = $('[data-role="navigation-warning"]');
 
   root.style.height = `${Number(data?.height) || 820}px`;
   root.dataset.theme = state.uiTheme;
@@ -406,6 +415,85 @@ export default function flowEditor(component) {
     return clamp(raw, minY, maxY);
   }
 
+  function horizontalRectsOverlap(leftNode, rightNode, gap = 24) {
+    const leftSize = nodeDimensions(leftNode);
+    const rightSize = nodeDimensions(rightNode);
+    const leftStart = Number(leftNode.position.x) || 0;
+    const leftEnd = leftStart + leftSize.width;
+    const rightStart = Number(rightNode.position.x) || 0;
+    const rightEnd = rightStart + rightSize.width;
+    return !(leftEnd + gap <= rightStart || rightEnd + gap <= leftStart);
+  }
+
+  function fitLanesToContent({ repack = true, shrink = true } = {}) {
+    if (state.doc.settings.autoFitLanes === false || !state.doc.lanes.length) return { changed: false, moved: 0 };
+    const oldGeometry = laneGeometry();
+    const assignments = new Map();
+    let changed = false;
+    let moved = 0;
+
+    oldGeometry.sorted.forEach((lane) => {
+      if (lane.collapsed) return;
+      const box = oldGeometry.map.get(lane.id);
+      const laneNodes = state.doc.nodes
+        .filter((node) => node.laneId === lane.id)
+        .sort((left, right) => (Number(left.position.y) || 0) - (Number(right.position.y) || 0) || (Number(left.position.x) || 0) - (Number(right.position.x) || 0));
+      const rows = [];
+      laneNodes.forEach((node) => {
+        const preferred = Math.max(0, Math.round(((Number(node.position.y) || box.top) - box.top - LANE_CONTENT_TOP) / LANE_ROW_GAP));
+        let row = Math.min(preferred, rows.length);
+        while (true) {
+          if (!rows[row]) rows[row] = [];
+          if (rows[row].every((other) => !horizontalRectsOverlap(node, other))) break;
+          row += 1;
+        }
+        rows[row].push(node);
+        assignments.set(node.id, row);
+      });
+      const rowCount = laneNodes.length ? Math.max(1, rows.length) : 1;
+      const requiredHeight = clamp(LANE_CONTENT_TOP + rowCount * LANE_ROW_GAP + LANE_BOTTOM_PADDING, 180, 2400);
+      const nextHeight = shrink ? requiredHeight : Math.max(Number(lane.height) || 180, requiredHeight);
+      if (Math.abs((Number(lane.height) || 0) - nextHeight) > 0.1) changed = true;
+      lane.height = nextHeight;
+    });
+
+    const newGeometry = laneGeometry();
+    state.doc.nodes.forEach((node) => {
+      if (!node.laneId) return;
+      const oldBox = oldGeometry.map.get(node.laneId);
+      const newBox = newGeometry.map.get(node.laneId);
+      if (!newBox) return;
+      let nextY = Number(node.position.y) || 0;
+      if (repack && node.data.locked !== true && assignments.has(node.id)) {
+        nextY = newBox.top + LANE_CONTENT_TOP + assignments.get(node.id) * LANE_ROW_GAP;
+      } else if (oldBox) {
+        nextY += newBox.top - oldBox.top;
+      }
+      nextY = snap(clamp(nextY, newBox.top + LANE_CONTENT_TOP, Math.max(newBox.top + LANE_CONTENT_TOP, newBox.bottom - NODE_HEIGHT - LANE_BOTTOM_PADDING)));
+      if (Math.abs(nextY - Number(node.position.y)) > 0.1) moved += 1;
+      node.position.y = nextY;
+    });
+    return { changed, moved };
+  }
+
+  function growLaneForDesiredY(laneId, desiredY) {
+    if (state.doc.settings.autoFitLanes === false || !laneId) return;
+    const oldGeometry = laneGeometry();
+    const lane = getLane(laneId);
+    const box = oldGeometry.map.get(laneId);
+    if (!lane || !box) return;
+    const requiredBottom = desiredY + NODE_HEIGHT + LANE_BOTTOM_PADDING;
+    if (requiredBottom <= box.bottom) return;
+    lane.height = clamp((Number(lane.height) || 180) + (requiredBottom - box.bottom), 180, 2400);
+    const newGeometry = laneGeometry();
+    state.doc.nodes.forEach((node) => {
+      if (!node.laneId || node.laneId === laneId) return;
+      const oldBox = oldGeometry.map.get(node.laneId);
+      const newBox = newGeometry.map.get(node.laneId);
+      if (oldBox && newBox) node.position.y += newBox.top - oldBox.top;
+    });
+  }
+
   function normalizeNodesIntoLanes() {
     const geometry = laneGeometry();
     const lanesById = new Set(geometry.sorted.map((lane) => lane.id));
@@ -451,6 +539,28 @@ export default function flowEditor(component) {
     return ["owner", "editor", "reviewer", "approver"].includes(state.permission);
   }
 
+  function isNodeSelected(nodeId) {
+    return state.selectedNodeIds.has(nodeId);
+  }
+
+  function setSingleNodeSelection(nodeId) {
+    state.selectedNodeIds = nodeId ? new Set([nodeId]) : new Set();
+    state.selected = nodeId ? { kind: "node", id: nodeId } : null;
+  }
+
+  function toggleNodeSelection(nodeId) {
+    const next = new Set(state.selectedNodeIds);
+    if (next.has(nodeId)) next.delete(nodeId);
+    else next.add(nodeId);
+    state.selectedNodeIds = next;
+    const primary = next.has(nodeId) ? nodeId : [...next][next.size - 1];
+    state.selected = primary ? { kind: "node", id: primary } : null;
+  }
+
+  function selectedNodes() {
+    return [...state.selectedNodeIds].map(getNode).filter(Boolean);
+  }
+
   function fingerprintDocument() {
     try { return JSON.stringify(state.doc); } catch (_) { return String(Date.now()); }
   }
@@ -493,11 +603,21 @@ export default function flowEditor(component) {
     state.autosaveTimer = setTimeout(persistLocalDraft, Math.min(2500, Math.max(700, state.autosaveSeconds * 120)));
   }
 
-  function syncDraftToMongo() {
+  function syncDraftToMongo({ navigation = false } = {}) {
     if (!canModify()) return toast("Seu acesso é somente leitura.", "warning");
     persistLocalDraft();
-    updateSaveState("Sincronizando rascunho com o MongoDB...", "pending");
-    setTriggerValue("autosave", { document: clone(state.doc), revision: state.revision, savedAt: nowIso(), explicit: true });
+    updateSaveState(
+      navigation ? "Salvando rascunho no MongoDB antes de sair..." : "Sincronizando rascunho com o MongoDB...",
+      "pending",
+    );
+    setTriggerValue("autosave", {
+      document: clone(state.doc),
+      revision: state.revision,
+      savedAt: nowIso(),
+      explicit: true,
+      navigation,
+    });
+    if (navigation) state.dirty = false;
   }
 
   function markDirty() {
@@ -505,6 +625,59 @@ export default function flowEditor(component) {
     state.doc.flow.updatedAt = nowIso();
     updateSaveState("Alterações pendentes", "pending");
     scheduleAutosave();
+  }
+
+  function hasPendingDatabaseChanges() {
+    return canModify() && state.dirty;
+  }
+
+  function hideNavigationWarning() {
+    if (navigationWarning) navigationWarning.hidden = true;
+  }
+
+  function showNavigationWarning(target) {
+    state.pendingNavigation = { target, href: target?.closest?.("a[href]")?.href || "" };
+    if (navigationWarning) navigationWarning.hidden = false;
+  }
+
+  function resumePendingNavigation(saveToDatabase = false) {
+    const pending = state.pendingNavigation;
+    hideNavigationWarning();
+    if (!pending) return;
+    if (saveToDatabase) syncDraftToMongo({ navigation: true });
+    state.allowNavigationOnce = true;
+    setTimeout(() => {
+      const element = pending.target;
+      state.pendingNavigation = null;
+      if (element?.isConnected) element.click();
+      else if (pending.href) window.location.assign(pending.href);
+      setTimeout(() => { state.allowNavigationOnce = false; }, 600);
+    }, saveToDatabase ? 220 : 20);
+  }
+
+  function navigationClickGuard(event) {
+    if (!hasPendingDatabaseChanges() || state.allowNavigationOnce || root.contains(event.target)) return;
+    const target = event.target?.closest?.("a[href], button");
+    if (!target) return;
+    const anchor = target.closest?.("a[href]");
+    const buttonText = String(target.textContent || "").trim().toLowerCase();
+    const knownNavigationButton = [
+      "abrir projeto", "mapa de relações", "mapa de relacoes", "central de processos",
+      "gestão de projetos", "gestao de projetos", "editor de processos", "voltar ao fluxo anterior",
+    ].some((label) => buttonText.includes(label));
+    const href = anchor?.getAttribute("href") || "";
+    const isPageLink = Boolean(anchor && href && !href.startsWith("#") && !href.startsWith("javascript:"));
+    if (!isPageLink && !knownNavigationButton) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    showNavigationWarning(target);
+  }
+
+  function beforeUnloadGuard(event) {
+    if (!hasPendingDatabaseChanges()) return;
+    event.preventDefault();
+    event.returnValue = "";
   }
 
   function checkpoint() {
@@ -540,6 +713,7 @@ export default function flowEditor(component) {
     state.future.push(clone(state.doc));
     state.doc = state.history.pop();
     state.selected = null;
+    state.selectedNodeIds = new Set();
     state.focusPath = null;
     clearPlaybackTimer();
     state.playback.running = false;
@@ -553,6 +727,7 @@ export default function flowEditor(component) {
     state.history.push(clone(state.doc));
     state.doc = state.future.pop();
     state.selected = null;
+    state.selectedNodeIds = new Set();
     state.focusPath = null;
     clearPlaybackTimer();
     state.playback.running = false;
@@ -1081,6 +1256,7 @@ export default function flowEditor(component) {
     if (state.searchIndex >= 0) {
       const id = state.searchResults[state.searchIndex];
       state.selected = { kind: "node", id };
+      state.selectedNodeIds = new Set([id]);
       centerOnNode(id);
     }
     renderNodes();
@@ -1102,7 +1278,8 @@ export default function flowEditor(component) {
       nodeEl.style.setProperty("--node-soft", state.uiTheme === "dark"
         ? `color-mix(in srgb, ${meta.color} 22%, var(--fe-panel))`
         : meta.soft);
-      nodeEl.classList.toggle("selected", state.selected?.kind === "node" && state.selected.id === node.id);
+      nodeEl.classList.toggle("selected", isNodeSelected(node.id));
+      nodeEl.classList.toggle("multi-selected", state.selectedNodeIds.size > 1 && isNodeSelected(node.id));
       nodeEl.classList.toggle("disabled", node.data.enabled === false);
       nodeEl.classList.toggle("locked", node.data.locked === true);
       nodeEl.classList.toggle("focus-member", Boolean(state.focusPath) && focusContainsNode(node.id));
@@ -1157,6 +1334,9 @@ export default function flowEditor(component) {
             ? `Saída ${index + 1}: ${branchEdge.label || branchEdge.condition || getNode(branchEdge.target)?.data.label || "ramificação"}`
             : `Saída ${index + 1}: arraste para conectar`;
           outputPort.classList.toggle("used", Boolean(branchEdge));
+          const semantic = branchEdge ? decisionEdgeSemantic(branchEdge, node, getNode(branchEdge.target)) : "neutral";
+          outputPort.classList.toggle("semantic-positive", semantic === "positive");
+          outputPort.classList.toggle("semantic-negative", semantic === "negative");
           outputPort.classList.toggle("connecting", state.connecting?.source === node.id && state.connecting?.sourceHandle === handle);
           outputPort.addEventListener("pointerdown", (event) => beginConnection(event, node.id, handle));
           outputPort.addEventListener("click", (event) => beginConnection(event, node.id, handle));
@@ -1211,7 +1391,6 @@ export default function flowEditor(component) {
       nodeEl.addEventListener("pointerdown", (event) => beginNodeDrag(event, node.id));
       nodeEl.addEventListener("click", (event) => {
         event.stopPropagation();
-        selectItem("node", node.id);
       });
       nodeEl.addEventListener("dblclick", (event) => {
         event.stopPropagation();
@@ -1420,6 +1599,22 @@ export default function flowEditor(component) {
     return node;
   }
 
+  function normalizeSemanticText(value) {
+    return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  }
+
+  function decisionEdgeSemantic(edge, sourceNode = null, targetNode = null) {
+    const source = sourceNode || getNode(edge?.source);
+    if (!edge || source?.type !== "decision") return "neutral";
+    const target = targetNode || getNode(edge.target);
+    const text = normalizeSemanticText([edge.label, edge.condition, target?.data?.label, ...(target?.data?.tags || [])].join(" "));
+    const negative = ["nao", "negativo", "negativa", "recus", "rejeit", "falha", "erro", "cancel", "inval", "indispon", "fora do", "bloque", "reprov", "expir", "sem saldo", "nao aprovado"];
+    const positive = ["sim", "positivo", "positiva", "aprov", "aceit", "sucesso", "conclu", "valido", "valida", "disponivel", "dentro da", "ativo", "ativa", "pago", "confirmado"];
+    if (negative.some((token) => text.includes(token))) return "negative";
+    if (positive.some((token) => text.includes(token))) return "positive";
+    return "neutral";
+  }
+
   function renderEdges() {
     Array.from(edgeLayer.querySelectorAll(".edge-group, .temp-edge")).forEach((item) => item.remove());
     const visibleIds = visibleNodeIds();
@@ -1431,9 +1626,10 @@ export default function flowEditor(component) {
       if (state.edgeVisibility === "none") return;
       if (state.edgeVisibility === "cross-lane" && sourceNode.laneId === targetNode.laneId) return;
       if (state.edgeVisibility === "selection") {
-        const selectedNodeId = state.selected?.kind === "node" ? state.selected.id : null;
+        const selectedNodeIds = state.selectedNodeIds;
         const selectedEdgeId = state.selected?.kind === "edge" ? state.selected.id : null;
-        if (edge.id !== selectedEdgeId && edge.source !== selectedNodeId && edge.target !== selectedNodeId && !focusContainsEdge(edge.id)) return;
+        const touchesSelection = selectedNodeIds.has(edge.source) || selectedNodeIds.has(edge.target);
+        if (edge.id !== selectedEdgeId && !touchesSelection && !focusContainsEdge(edge.id)) return;
       }
       const source = nodeCenter(sourceNode, "source", edge.sourceHandle);
       const target = nodeCenter(targetNode, "target");
@@ -1445,10 +1641,13 @@ export default function flowEditor(component) {
       if (state.focusPath) edgeClasses.push(focusContainsEdge(edge.id) ? "focus-member" : "focus-dimmed");
       if (state.playback.visitedEdgeIds.has(edge.id)) edgeClasses.push("play-visited");
       if (state.playback.currentEdgeId === edge.id) edgeClasses.push("play-current");
+      const semantic = decisionEdgeSemantic(edge, sourceNode, targetNode);
+      if (semantic === "positive") edgeClasses.push("edge-positive");
+      if (semantic === "negative") edgeClasses.push("edge-negative");
       const group = svgNode("g", { class: edgeClasses.join(" ") });
       group.dataset.id = edge.id;
       const sourceMeta = NODE_TYPES[sourceNode.type] || NODE_TYPES.task;
-      group.style.setProperty("--edge-color", sourceMeta.color);
+      group.style.setProperty("--edge-color", semantic === "positive" ? "#16a34a" : (semantic === "negative" ? "#dc2626" : sourceMeta.color));
       const hit = svgNode("path", { d: path, class: "edge-hit" });
       const underlay = svgNode("path", { d: path, class: "edge-underlay" });
       const visible = svgNode("path", { d: path, class: "edge-path" });
@@ -1578,7 +1777,8 @@ export default function flowEditor(component) {
   function renderHeaderAndStatus() {
     $('[data-role="flow-name"]').textContent = state.doc.flow.name || "Editor de Processos";
     let selectedText = "Nenhum item selecionado";
-    if (state.selected?.kind === "node") selectedText = `Elemento: ${getNode(state.selected.id)?.data.label || ""}`;
+    if (state.selectedNodeIds.size > 1) selectedText = `${state.selectedNodeIds.size} cards selecionados · arraste qualquer um para mover o grupo`;
+    else if (state.selected?.kind === "node") selectedText = `Elemento: ${getNode(state.selected.id)?.data.label || ""}`;
     if (state.selected?.kind === "edge") selectedText = `Conexão: ${getEdge(state.selected.id)?.label || "sem nome"}`;
     if (state.selected?.kind === "lane") selectedText = `Raia: ${getLane(state.selected.id)?.name || ""}`;
     $('[data-role="selection-label"]').textContent = selectedText;
@@ -1891,7 +2091,7 @@ export default function flowEditor(component) {
     const order = numberInput("lane-order", lane.order, 1);
     bindCommit(order, (input) => { lane.order = Math.max(1, Number(input.value) || 1); });
     const height = numberInput("lane-height", lane.height, 110);
-    bindCommit(height, (input) => { lane.height = clamp(Number(input.value) || 240, 110, 1200); });
+    bindCommit(height, (input) => { lane.height = clamp(Number(input.value) || 240, 110, 2400); });
     const color = el("input");
     color.type = "color";
     color.value = lane.color || "#EEF2FF";
@@ -1915,8 +2115,47 @@ export default function flowEditor(component) {
     );
   }
 
+  function renderMultiSelectionProperties() {
+    $('[data-role="properties-caption"]').textContent = "Seleção múltipla";
+    const nodes = selectedNodes();
+    const info = el("div", "multi-selection-summary");
+    info.append(el("strong", "", `${nodes.length} cards selecionados`), el("small", "", "Arraste qualquer card selecionado para mover o grupo. Use Ctrl/Shift + clique ou Shift + arrastar no fundo para alterar a seleção."));
+    const actions = el("div", "multi-selection-actions");
+    const makeAction = (label, callback) => {
+      const button = el("button", "", label);
+      button.type = "button";
+      button.addEventListener("click", callback);
+      return button;
+    };
+    const align = (mode) => mutate(() => {
+      const current = selectedNodes();
+      if (!current.length) return;
+      const values = current.map((node) => mode === "left" ? node.position.x : node.position.y);
+      const target = Math.min(...values);
+      current.forEach((node) => { if (mode === "left") node.position.x = snap(target); else node.position.y = snap(target); });
+      fitLanesToContent({ repack: true, shrink: true });
+    }, mode === "left" ? "Cards alinhados à esquerda" : "Cards alinhados pelo topo");
+    const distribute = (axis) => mutate(() => {
+      const current = selectedNodes().sort((a, b) => axis === "x" ? a.position.x - b.position.x : a.position.y - b.position.y);
+      if (current.length < 3) return;
+      const first = axis === "x" ? current[0].position.x : current[0].position.y;
+      const last = axis === "x" ? current[current.length - 1].position.x : current[current.length - 1].position.y;
+      const step = (last - first) / (current.length - 1);
+      current.forEach((node, index) => { if (axis === "x") node.position.x = snap(first + step * index); else node.position.y = snap(first + step * index); });
+      fitLanesToContent({ repack: axis === "y", shrink: true });
+    }, axis === "x" ? "Cards distribuídos horizontalmente" : "Cards distribuídos verticalmente");
+    actions.append(
+      makeAction("Alinhar à esquerda", () => align("left")),
+      makeAction("Alinhar pelo topo", () => align("top")),
+      makeAction("Distribuir horizontal", () => distribute("x")),
+      makeAction("Distribuir vertical", () => distribute("y")),
+    );
+    propertiesBody.append(info, actions);
+  }
+
   function renderProperties() {
     propertiesBody.innerHTML = "";
+    if (state.selectedNodeIds.size > 1) return renderMultiSelectionProperties();
     if (!state.selected) return renderDocumentProperties();
     if (state.selected.kind === "node") {
       const node = getNode(state.selected.id);
@@ -1945,6 +2184,8 @@ export default function flowEditor(component) {
 
   function selectItem(kind, id) {
     state.selected = kind && id ? { kind, id } : null;
+    if (kind === "node" && id) state.selectedNodeIds = new Set([id]);
+    else if (kind !== "node") state.selectedNodeIds = new Set();
     if (kind === "edge" && id) {
       const edge = getEdge(id);
       const source = edge ? getNode(edge.source) : null;
@@ -1971,6 +2212,8 @@ export default function flowEditor(component) {
         data: { label: meta.label, description: "", owner: "", enabled: true, locked: false, slaMinutes: null, tags: [] },
       });
       state.selected = { kind: "node", id };
+      state.selectedNodeIds = new Set([id]);
+      fitLanesToContent({ repack: true, shrink: true });
     });
   }
 
@@ -1981,53 +2224,74 @@ export default function flowEditor(component) {
     const id = uid("lane");
     mutate(() => {
       state.doc.lanes.push({ id, name: `Raia ${order}`, orientation: "horizontal", order, color: colors[(order - 1) % colors.length], collapsed: false, enabled: true, height: 240 });
+      state.selectedNodeIds = new Set();
       state.selected = { kind: "lane", id };
     }, "Raia adicionada");
   }
 
   function duplicateSelected() {
     if (!canModify()) return toast("Seu acesso é somente leitura.", "warning");
-    if (state.selected?.kind !== "node") return;
-    const source = getNode(state.selected.id);
-    if (!source) return;
-    const duplicate = clone(source);
-    duplicate.id = uid("node");
-    duplicate.position.x = Math.max(0, source.position.x + 40);
-    duplicate.position.y = constrainNodeYToLane(duplicate, source.position.y + 40);
-    duplicate.data.label = `${source.data.label} (cópia)`;
+    const sources = selectedNodes();
+    if (!sources.length) return;
     mutate(() => {
-      state.doc.nodes.push(duplicate);
-      state.selected = { kind: "node", id: duplicate.id };
-    }, "Elemento duplicado");
+      const idMap = new Map();
+      const duplicates = sources.map((source) => {
+        const duplicate = clone(source);
+        duplicate.id = uid("node");
+        idMap.set(source.id, duplicate.id);
+        duplicate.position.x = Math.max(0, source.position.x + 44);
+        duplicate.position.y = Math.max(0, source.position.y + 44);
+        duplicate.data.label = `${source.data.label} (cópia)`;
+        return duplicate;
+      });
+      const internalEdges = state.doc.edges
+        .filter((edge) => idMap.has(edge.source) && idMap.has(edge.target))
+        .map((edge) => ({ ...clone(edge), id: uid("edge"), source: idMap.get(edge.source), target: idMap.get(edge.target) }));
+      state.doc.nodes.push(...duplicates);
+      state.doc.edges.push(...internalEdges);
+      state.selectedNodeIds = new Set(duplicates.map((node) => node.id));
+      state.selected = { kind: "node", id: duplicates[0].id };
+      fitLanesToContent({ repack: true, shrink: true });
+    }, sources.length > 1 ? `${sources.length} cards duplicados` : "Elemento duplicado");
   }
 
   function deleteSelected() {
     if (!canModify()) return toast("Seu acesso é somente leitura.", "warning");
-    if (!state.selected) return;
+    if (!state.selected && !state.selectedNodeIds.size) return;
     const selected = clone(state.selected);
+    const selectedIds = new Set(state.selectedNodeIds);
     mutate(() => {
-      if (selected.kind === "node") {
-        state.doc.nodes = state.doc.nodes.filter((node) => node.id !== selected.id);
-        state.doc.edges = state.doc.edges.filter((edge) => edge.source !== selected.id && edge.target !== selected.id);
-      } else if (selected.kind === "edge") {
+      if (selectedIds.size) {
+        state.doc.nodes = state.doc.nodes.filter((node) => !selectedIds.has(node.id));
+        state.doc.edges = state.doc.edges.filter((edge) => !selectedIds.has(edge.source) && !selectedIds.has(edge.target));
+      } else if (selected?.kind === "edge") {
         state.doc.edges = state.doc.edges.filter((edge) => edge.id !== selected.id);
-      } else if (selected.kind === "lane") {
+      } else if (selected?.kind === "lane") {
         state.doc.lanes = state.doc.lanes.filter((lane) => lane.id !== selected.id);
         state.doc.nodes.forEach((node) => { if (node.laneId === selected.id) node.laneId = null; });
       }
       state.selected = null;
-    }, "Item excluído");
+      state.selectedNodeIds = new Set();
+      fitLanesToContent({ repack: true, shrink: true });
+    }, selectedIds.size > 1 ? `${selectedIds.size} cards excluídos` : "Item excluído");
   }
 
   function beginNodeDrag(event, nodeId) {
     if (!canModify()) return;
-    if (event.button !== 0 || event.target.classList.contains("node-port")) return;
+    if (event.button !== 0 || event.target.classList.contains("node-port") || event.target.classList.contains("node-flow-indicator")) return;
     const node = getNode(nodeId);
     if (!node || node.data.locked) return;
     event.stopPropagation();
-    selectItem("node", nodeId);
+    const additive = event.ctrlKey || event.metaKey || event.shiftKey;
+    if (additive) toggleNodeSelection(nodeId);
+    else if (!isNodeSelected(nodeId)) setSingleNodeSelection(nodeId);
+    if (!isNodeSelected(nodeId)) { renderAll(); return; }
+    const movable = selectedNodes().filter((item) => item.data.locked !== true);
+    if (!movable.length) return;
     const start = worldPoint(event.clientX, event.clientY);
-    state.dragging = { kind: "node", id: nodeId, start, origin: clone(node.position), snapshot: clone(state.doc) };
+    const origins = Object.fromEntries(movable.map((item) => [item.id, clone(item.position)]));
+    state.dragging = { kind: "node-group", ids: movable.map((item) => item.id), start, origins, snapshot: clone(state.doc), moved: false };
+    renderAll();
   }
 
   function beginLaneResize(event, laneId, initialHeight) {
@@ -2078,6 +2342,7 @@ export default function flowEditor(component) {
     const id = uid("edge");
     mutate(() => {
       state.doc.edges.push({ id, source: sourceId, target: targetId, sourceHandle, targetHandle: "input", type: "smoothstep", label: "", enabled: true, condition: "" });
+      state.selectedNodeIds = new Set();
       state.selected = { kind: "edge", id };
     }, "Elementos conectados");
   }
@@ -2086,18 +2351,24 @@ export default function flowEditor(component) {
     state.pointerWorld = worldPoint(event.clientX, event.clientY);
     if (state.connecting) renderTemporaryEdge();
 
-    if (state.dragging?.kind === "node") {
-      const node = getNode(state.dragging.id);
-      if (!node) return;
+    if (state.dragging?.kind === "node-group") {
       const point = worldPoint(event.clientX, event.clientY);
       const dx = point.x - state.dragging.start.x;
       const dy = point.y - state.dragging.start.y;
-      node.position.x = snap(Math.max(0, state.dragging.origin.x + dx));
-      node.position.y = snap(Math.max(0, state.dragging.origin.y + dy));
-      const detectedLane = laneAtY(node.position.y + NODE_HEIGHT / 2);
-      if (detectedLane) node.laneId = detectedLane;
-      node.position.y = snap(constrainNodeYToLane(node, node.position.y));
+      state.dragging.moved = state.dragging.moved || Math.abs(dx) > 2 || Math.abs(dy) > 2;
+      state.dragging.ids.forEach((nodeId) => {
+        const node = getNode(nodeId);
+        const origin = state.dragging.origins[nodeId];
+        if (!node || !origin) return;
+        node.position.x = snap(Math.max(0, origin.x + dx));
+        const desiredY = snap(Math.max(0, origin.y + dy));
+        const detectedLane = laneAtY(desiredY + NODE_HEIGHT / 2);
+        if (detectedLane) node.laneId = detectedLane;
+        growLaneForDesiredY(node.laneId, desiredY);
+        node.position.y = desiredY;
+      });
       updateWorldSize();
+      renderLanes();
       renderNodes();
       renderEdges();
       renderMinimap();
@@ -2108,11 +2379,23 @@ export default function flowEditor(component) {
       const lane = getLane(state.dragging.id);
       if (!lane) return;
       const point = worldPoint(event.clientX, event.clientY);
-      lane.height = clamp(state.dragging.initialHeight + (point.y - state.dragging.start.y), 110, 1200);
+      lane.height = clamp(state.dragging.initialHeight + (point.y - state.dragging.start.y), 110, 2400);
       renderLanes();
       renderNodes();
       renderEdges();
       renderMinimap();
+      return;
+    }
+
+    if (state.marquee) {
+      state.marquee.current = worldPoint(event.clientX, event.clientY);
+      const rect = viewport.getBoundingClientRect();
+      const left = Math.min(state.marquee.startClientX, event.clientX) - rect.left;
+      const top = Math.min(state.marquee.startClientY, event.clientY) - rect.top;
+      const width = Math.abs(event.clientX - state.marquee.startClientX);
+      const height = Math.abs(event.clientY - state.marquee.startClientY);
+      selectionBox.hidden = false;
+      Object.assign(selectionBox.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
       return;
     }
 
@@ -2127,11 +2410,34 @@ export default function flowEditor(component) {
   }
 
   function onPointerUp() {
+    if (state.marquee) {
+      const start = state.marquee.start;
+      const current = state.marquee.current || start;
+      const left = Math.min(start.x, current.x);
+      const right = Math.max(start.x, current.x);
+      const top = Math.min(start.y, current.y);
+      const bottom = Math.max(start.y, current.y);
+      const found = state.doc.nodes.filter((node) => {
+        if (!nodeMatchesView(node)) return false;
+        const size = nodeDimensions(node);
+        return node.position.x + size.width >= left && node.position.x <= right && node.position.y + size.height >= top && node.position.y <= bottom;
+      }).map((node) => node.id);
+      state.selectedNodeIds = state.marquee.additive ? new Set([...state.selectedNodeIds, ...found]) : new Set(found);
+      const primary = found[found.length - 1] || [...state.selectedNodeIds][0];
+      state.selected = primary ? { kind: "node", id: primary } : null;
+      state.marquee = null;
+      selectionBox.hidden = true;
+      renderAll();
+    }
     if (state.dragging) {
-      state.history.push(state.dragging.snapshot);
-      state.future = [];
+      const dragState = state.dragging;
       state.dragging = null;
-      markDirty();
+      if (dragState.moved) {
+        state.history.push(dragState.snapshot);
+        state.future = [];
+        fitLanesToContent({ repack: true, shrink: true });
+        markDirty();
+      }
       renderAll();
     }
     state.panning = null;
@@ -2139,8 +2445,16 @@ export default function flowEditor(component) {
   }
 
   function beginPan(event) {
-    const background = event.target === viewport || event.target === world || event.target === laneLayer || event.target.classList.contains("canvas-world");
-    const panIntent = event.button === 1 || state.spaceDown || (event.button === 0 && background);
+    const background = event.target === viewport || event.target === world || event.target === laneLayer || event.target.classList.contains("canvas-world") || event.target.classList.contains("flow-lane");
+    if (event.button === 0 && background && event.shiftKey && !state.spaceDown) {
+      event.preventDefault();
+      const start = worldPoint(event.clientX, event.clientY);
+      state.marquee = { start, current: start, startClientX: event.clientX, startClientY: event.clientY, additive: event.ctrlKey || event.metaKey };
+      selectionBox.hidden = false;
+      Object.assign(selectionBox.style, { left: `${event.offsetX}px`, top: `${event.offsetY}px`, width: "0px", height: "0px" });
+      return;
+    }
+    const panIntent = event.button === 2 || event.button === 1 || state.spaceDown || (event.button === 0 && background);
     if (!panIntent) return;
     event.preventDefault();
     if (event.button === 0 && background && !state.spaceDown) selectItem(null, null);
@@ -2733,6 +3047,7 @@ export default function flowEditor(component) {
         checkpoint();
         state.doc = normalized;
         state.selected = null;
+        state.selectedNodeIds = new Set();
         state.focusPath = null;
         state.branchChoices = {};
         state.doc.nodes.forEach((node) => {
@@ -2748,6 +3063,7 @@ export default function flowEditor(component) {
         const initialProblems = countLayoutProblems();
         const shouldOrganize = state.doc.nodes.length >= 60 || initialProblems.outside > 0 || initialProblems.overlaps > 2;
         const layoutSummary = shouldOrganize ? layoutDocumentInPlace() : null;
+        if (!layoutSummary) fitLanesToContent({ repack: true, shrink: true });
 
         markDirty();
         renderAll();
@@ -2870,6 +3186,7 @@ export default function flowEditor(component) {
         mutate(() => {
           state.branchChoices[decisionId] = edge.id;
           node.data.preferredEdgeId = edge.id;
+          state.selectedNodeIds = new Set();
           state.selected = { kind: "edge", id: edge.id };
         });
         if (action === "play") startPlayback(true);
@@ -3141,6 +3458,7 @@ export default function flowEditor(component) {
       state.routeExplorer = { startId: start.value, endId: end.value, mode: mode.value };
       state.focusPath = path;
       state.selected = { kind: "node", id: start.value };
+      state.selectedNodeIds = new Set([start.value]);
       modal.hidden = true;
       renderAll();
       setTimeout(() => fitNodeIds(path.nodeIds), 30);
@@ -3173,6 +3491,7 @@ export default function flowEditor(component) {
         card.addEventListener("click", () => {
           state.branchChoices[node.id] = edge.id;
           node.data.preferredEdgeId = edge.id;
+          state.selectedNodeIds = new Set();
           state.selected = { kind: "edge", id: edge.id };
           state.focusPath = combinePaths({ nodeSequence: [node.id, edge.target], edgeSequence: [edge.id] }, buildForwardRoute(edge.target, graph));
           modal.hidden = true;
@@ -3236,7 +3555,7 @@ export default function flowEditor(component) {
     const geometry = laneGeometry();
     const parts = [
       `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
-      `<defs><marker id="export-arrow" markerWidth="14" markerHeight="14" refX="12" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L0,10 L13,5 z" fill="#486581"/></marker></defs>`,
+      `<defs><marker id="export-arrow" markerWidth="14" markerHeight="14" refX="12" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L0,10 L13,5 z" fill="context-stroke"/></marker></defs>`,
       `<rect width="100%" height="100%" fill="${state.uiTheme === "dark" ? "#00141f" : "#f4f8fb"}"/>`,
     ];
     geometry.sorted.forEach((lane) => {
@@ -3248,7 +3567,9 @@ export default function flowEditor(component) {
       const sourceNode = getNode(edge.source), targetNode = getNode(edge.target);
       if (!sourceNode || !targetNode) return;
       const d = edgePath(nodeCenter(sourceNode, "source", edge.sourceHandle), nodeCenter(targetNode, "target"), "step", edge);
-      parts.push(`<path d="${d}" fill="none" stroke="#486581" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#export-arrow)"/>`);
+      const semantic = decisionEdgeSemantic(edge, sourceNode, targetNode);
+      const stroke = semantic === "positive" ? "#16a34a" : (semantic === "negative" ? "#dc2626" : "#486581");
+      parts.push(`<path d="${d}" fill="none" stroke="${stroke}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#export-arrow)"/>`);
     });
     state.doc.nodes.forEach((node) => {
       const size = nodeDimensions(node), meta = NODE_TYPES[node.type] || NODE_TYPES.task;
@@ -3336,6 +3657,9 @@ export default function flowEditor(component) {
     else if (action === "save") save();
     else if (action === "add-lane") addLane();
     else if (action === "close-modal") $('[data-role="modal"]').hidden = true;
+    else if (action === "nav-cancel") { state.pendingNavigation = null; hideNavigationWarning(); }
+    else if (action === "nav-continue") resumePendingNavigation(false);
+    else if (action === "nav-save") resumePendingNavigation(true);
   }
 
   function onKeyDown(event) {
@@ -3343,6 +3667,13 @@ export default function flowEditor(component) {
     if (event.code === "Space") { state.spaceDown = true; event.preventDefault(); }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      state.selectedNodeIds = visibleNodeIds();
+      const first = [...state.selectedNodeIds][0];
+      state.selected = first ? { kind: "node", id: first } : null;
+      renderAll();
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") { event.preventDefault(); duplicateSelected(); }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); save(); }
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "f") { event.preventDefault(); toggleFullscreen(); }
@@ -3352,6 +3683,7 @@ export default function flowEditor(component) {
     if (event.key === "Escape") {
       state.connecting = null;
       state.selected = null;
+      state.selectedNodeIds = new Set();
       $('[data-role="modal"]').hidden = true;
       if (root.classList.contains("pseudo-fullscreen")) root.classList.remove("pseudo-fullscreen");
       updateFullscreenButton();
@@ -3415,7 +3747,10 @@ export default function flowEditor(component) {
     $('[data-role="interactive-play"]')?.addEventListener("change", (event) => { state.doc.settings.interactivePlayback = event.target.checked; markDirty(); });
     fileInput.addEventListener("change", () => importJson(fileInput.files?.[0]));
     $$('[data-setting]').forEach((input) => input.addEventListener("change", () => {
-      mutate(() => { state.doc.settings[input.dataset.setting] = input.checked; });
+      mutate(() => {
+        state.doc.settings[input.dataset.setting] = input.checked;
+        if (input.dataset.setting === "autoFitLanes" && input.checked) fitLanesToContent({ repack: true, shrink: true });
+      });
     }));
     viewport.addEventListener("dragover", (event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; });
     viewport.addEventListener("drop", (event) => {
@@ -3426,6 +3761,7 @@ export default function flowEditor(component) {
       addNode(type, point.x - NODE_WIDTH / 2, point.y - NODE_HEIGHT / 2, laneAtY(point.y));
     });
     viewport.addEventListener("pointerdown", beginPan);
+    viewport.addEventListener("contextmenu", (event) => event.preventDefault());
     viewport.addEventListener("wheel", (event) => {
       event.preventDefault();
       zoomAt(event.clientX, event.clientY, event.deltaY < 0 ? 1.1 : 1 / 1.1);
@@ -3439,6 +3775,15 @@ export default function flowEditor(component) {
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("resize", renderMinimap);
     document.addEventListener("fullscreenchange", updateFullscreenButton);
+    document.addEventListener("click", navigationClickGuard, true);
+    try {
+      state.hostDocument = window.parent?.document && window.parent.document !== document ? window.parent.document : null;
+      state.hostDocument?.addEventListener("click", navigationClickGuard, true);
+    } catch (_) {
+      state.hostDocument = null;
+    }
+    window.addEventListener("beforeunload", beforeUnloadGuard);
+    try { window.parent?.addEventListener("beforeunload", beforeUnloadGuard); } catch (_) { /* componente isolado */ }
   }
 
   palette();
@@ -3457,12 +3802,19 @@ export default function flowEditor(component) {
   const initialLayoutProblems = countLayoutProblems();
   const repairedLargeLayout = state.doc.nodes.length >= 60
     && (initialLayoutProblems.outside > 0 || initialLayoutProblems.overlaps > 2);
+  let automaticLaneAdjustment = { changed: false, moved: 0 };
   if (repairedLargeLayout) layoutDocumentInPlace();
-  else normalizeNodesIntoLanes();
+  else {
+    normalizeNodesIntoLanes();
+    automaticLaneAdjustment = fitLanesToContent({ repack: true, shrink: true });
+  }
   renderAll();
   if (repairedLargeLayout) {
     markDirty();
     setTimeout(() => toast("O fluxo grande foi reorganizado dentro das raias. Salve para persistir o novo layout.", "success"), 120);
+  } else if (automaticLaneAdjustment.changed || automaticLaneAdjustment.moved) {
+    markDirty();
+    setTimeout(() => toast("As raias foram ajustadas automaticamente para evitar cards sobrepostos.", "info"), 120);
   }
   setTimeout(() => {
     if (state.initialNodeId && getNode(state.initialNodeId)) {
@@ -3490,6 +3842,10 @@ export default function flowEditor(component) {
     window.removeEventListener("keyup", onKeyUp);
     window.removeEventListener("resize", renderMinimap);
     document.removeEventListener("fullscreenchange", updateFullscreenButton);
+    document.removeEventListener("click", navigationClickGuard, true);
+    state.hostDocument?.removeEventListener("click", navigationClickGuard, true);
+    window.removeEventListener("beforeunload", beforeUnloadGuard);
+    try { window.parent?.removeEventListener("beforeunload", beforeUnloadGuard); } catch (_) { /* componente isolado */ }
     clearPlaybackTimer();
     clearAutosaveTimer();
   };

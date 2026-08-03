@@ -77,9 +77,11 @@
         <div class="editor-hints">
           <strong>Atalhos</strong>
           <span>Delete: excluir</span>
-          <span>Ctrl+D: duplicar</span>
-          <span>Ctrl+Z/Y: desfazer/refazer</span>
-          <span>Espaço + arrastar: mover tela</span>
+          <span>Ctrl/Shift + clique: selecionar vários</span>
+          <span>Shift + arrastar: seleção por área</span>
+          <span>Ctrl+A: selecionar cards visíveis</span>
+          <span>Ctrl+D: duplicar seleção</span>
+          <span>Espaço ou botão direito: mover tela</span>
         </div>
       </div>
     </aside>
@@ -134,6 +136,7 @@
           <label><input data-setting="showGrid" type="checkbox"> Grade</label>
           <label><input data-setting="snapToGrid" type="checkbox"> Encaixar</label>
           <label><input data-setting="showMiniMap" type="checkbox"> Minimapa</label>
+          <label title="Aumenta, reduz e reorganiza verticalmente as raias para evitar cards sobrepostos"><input data-setting="autoFitLanes" type="checkbox"> Raias automáticas</label>
         </div>
       </div>
       <div class="canvas-viewport" data-role="viewport" tabindex="0">
@@ -167,6 +170,20 @@
   </div>
 
   <div class="toast-container" data-role="toasts"></div>
+  <div class="modal-backdrop navigation-warning" data-role="navigation-warning" hidden>
+    <section class="modal-card navigation-warning-card">
+      <header><strong>Alterações ainda não estão no banco</strong></header>
+      <div class="navigation-warning-body">
+        <p>Este fluxo possui alterações salvas apenas neste navegador. Escolha o que fazer antes de mudar de página.</p>
+        <small>Salvar no banco cria ou atualiza o rascunho no MongoDB, sem publicar uma nova versão formal.</small>
+      </div>
+      <footer class="navigation-warning-actions">
+        <button type="button" data-action="nav-cancel">Continuar editando</button>
+        <button type="button" data-action="nav-continue">Sair sem sincronizar</button>
+        <button type="button" data-action="nav-save" class="button-primary">Salvar rascunho e sair</button>
+      </footer>
+    </section>
+  </div>
   <div class="modal-backdrop" data-role="modal" hidden>
     <section class="modal-card">
       <header><strong data-role="modal-title">Validação do fluxo</strong><button type="button" data-action="close-modal">×</button></header>

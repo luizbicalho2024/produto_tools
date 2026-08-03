@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.2.3 — Raias dinâmicas, edição em grupo e decisões semânticas
+
+- raias aumentam ou diminuem automaticamente de acordo com os cards e evitam sobreposição vertical;
+- cards desbloqueados são distribuídos em linhas internas quando ocupam a mesma faixa horizontal;
+- seleção múltipla por Ctrl/Shift + clique, área de seleção e Ctrl+A;
+- arraste, alinhamento, distribuição, duplicação e exclusão em grupo;
+- aviso antes de sair do editor quando há alterações locais ainda não sincronizadas com o MongoDB;
+- opções para continuar editando, sair mantendo o rascunho local ou salvar o rascunho no banco antes de sair;
+- conexões de decisões positivas em verde, negativas em vermelho e neutras em cinza;
+- semântica preservada no editor, SVG, PNG e Mapa de Relações;
+- pan do canvas com espaço, botão central ou botão direito do mouse;
+- correção ampliada dos inputs, selects, datas, campos desabilitados e placeholders do sidebar no tema escuro;
+- mapa de relações passa a exibir setas de direção e cores semânticas das decisões.
+
 ## 3.2.2 — Legibilidade de conexões, mapa e qualidade acionável
 
 - indicadores permanentes de entradas e saídas em cada card;

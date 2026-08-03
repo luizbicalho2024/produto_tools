@@ -209,6 +209,65 @@ def apply_global_styles(*, full_width: bool = False) -> None:
         input::placeholder, textarea::placeholder {{color: var(--pt-muted) !important; opacity: .9;}}
         div[data-baseweb="select"] svg, div[data-baseweb="input"] svg {{fill: var(--pt-muted) !important; color: var(--pt-muted) !important;}}
 
+        /* Correção específica dos inputs do sidebar no modo escuro. */
+        [data-testid="stSidebar"] [data-testid="stTextInputRootElement"],
+        [data-testid="stSidebar"] [data-testid="stNumberInput"] > div,
+        [data-testid="stSidebar"] [data-testid="stDateInput"] > div,
+        [data-testid="stSidebar"] [data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+        [data-testid="stSidebar"] [data-testid="stMultiSelect"] div[data-baseweb="select"] > div,
+        [data-testid="stSidebar"] div[data-baseweb="base-input"],
+        [data-testid="stSidebar"] div[data-baseweb="input"],
+        [data-testid="stSidebar"] div[data-baseweb="textarea"],
+        [data-testid="stSidebar"] div[data-baseweb="select"] > div {{
+          background-color: var(--pt-input) !important;
+          color: var(--pt-text) !important;
+          border-color: var(--pt-line) !important;
+          box-shadow: none !important;
+        }}
+        [data-testid="stSidebar"] input,
+        [data-testid="stSidebar"] textarea,
+        [data-testid="stSidebar"] select,
+        [data-testid="stSidebar"] button[role="combobox"],
+        [data-testid="stSidebar"] div[role="combobox"] {{
+          background-color: var(--pt-input) !important;
+          color: var(--pt-text) !important;
+          -webkit-text-fill-color: var(--pt-text) !important;
+          caret-color: var(--pt-text) !important;
+        }}
+        [data-testid="stSidebar"] div[data-baseweb="select"] span,
+        [data-testid="stSidebar"] div[data-baseweb="tag"] {{
+          color: var(--pt-text) !important;
+          background-color: var(--pt-panel-soft) !important;
+        }}
+        [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] div[data-baseweb="base-input"] > div,
+        [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] div[data-baseweb="input"] > div,
+        [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] div[data-baseweb="select"] > div,
+        [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] div[data-baseweb="textarea"] > div,
+        [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] div[data-baseweb="date-picker"] > div,
+        [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] div[data-baseweb="time-picker"] > div,
+        [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] [role="spinbutton"],
+        [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] [aria-haspopup="listbox"] {{
+          background: var(--pt-input) !important;
+          background-color: var(--pt-input) !important;
+          color: var(--pt-text) !important;
+          border-color: var(--pt-line) !important;
+          -webkit-text-fill-color: var(--pt-text) !important;
+        }}
+        [data-testid="stSidebar"] input:disabled,
+        [data-testid="stSidebar"] textarea:disabled,
+        [data-testid="stSidebar"] [aria-disabled="true"] {{
+          background-color: color-mix(in srgb, var(--pt-input) 82%, var(--pt-bg)) !important;
+          color: var(--pt-muted) !important;
+          -webkit-text-fill-color: var(--pt-muted) !important;
+          opacity: 1 !important;
+        }}
+        [data-testid="stSidebar"] input::placeholder,
+        [data-testid="stSidebar"] textarea::placeholder {{
+          color: var(--pt-muted) !important;
+          -webkit-text-fill-color: var(--pt-muted) !important;
+          opacity: .9 !important;
+        }}
+
         /* Menus, calendários e popovers são portais fora do container principal. */
         div[data-baseweb="popover"], div[data-baseweb="popover"] > div,
         div[data-baseweb="menu"], ul[role="listbox"], div[role="listbox"],
