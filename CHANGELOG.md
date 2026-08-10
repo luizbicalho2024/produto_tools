@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.2.4 — Central de downloads e exportação PDF
+
+- centraliza as exportações do fluxo em um único painel;
+- adiciona PDF vetorial contendo somente o diagrama completo;
+- adiciona PDF de documentação completa com fluxo, cards, decisões, conexões, raias, qualidade, correções, RACI e configurações;
+- adiciona pacote ZIP com JSON, PDFs, HTML e CSVs;
+- inclui versão e revisão nos nomes dos arquivos exportados;
+- mantém SVG e PNG no menu visual do canvas, agora identificado como Exportar visual.
+
 ## 3.2.3 — Raias dinâmicas, edição em grupo e decisões semânticas
 
 - raias aumentam ou diminuem automaticamente de acordo com os cards e evitam sobreposição vertical;
@@ -77,3 +86,10 @@
 - Layout automático para fluxos grandes.
 - Roteamento por corredores.
 - Correções dos filtros de visão.
+
+## 3.2.4.1
+
+- Corrige o publicador PowerShell no Windows quando o ambiente local possui pytest, mas nao possui todas as dependencias do projeto.
+- Captura e exibe a saida completa de comandos Python/Git em caso de falha.
+- Testes locais passam a ser nao bloqueantes por padrao; use `-StrictTests` para bloquear o push em caso de falha da suite.
+- Mantem `-SkipTests` para pular completamente as validacoes locais.

@@ -68,4 +68,4 @@ def test_quality_pages_show_exact_cards_and_actions():
     assert "Como corrigir" in projects
     assert "Cards com problema" in central
     assert "issue_detail_rows" in editor
-    assert "st.popover(\"Baixar relatórios\"" in editor
+    assert "Downloads do fluxo" in editor

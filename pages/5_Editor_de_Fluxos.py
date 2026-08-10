@@ -58,7 +58,14 @@ from services.project_repository import (
     project_impact,
     update_project,
 )
-from services.report_export import html_report, nodes_csv, pdf_report, raci_csv
+from services.report_export import (
+    export_bundle,
+    flow_only_pdf,
+    full_documentation_pdf,
+    html_report,
+    nodes_csv,
+    raci_csv,
+)
 from services.template_library import built_in_templates, clone_template
 
 st.set_page_config(page_title="Editor de Processos e Projetos", page_icon="🧭", layout="wide")
@@ -108,6 +115,27 @@ def flash(message: str, kind: str = "success") -> None:
 
 def selected_flow_id() -> str | None:
     return st.session_state.get("selected_flowchart_id")
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def cached_flow_pdf(document_json: str, metadata_json: str) -> bytes:
+    return flow_only_pdf(json.loads(document_json), json.loads(metadata_json))
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def cached_full_pdf(document_json: str, metadata_json: str) -> bytes:
+    return full_documentation_pdf(json.loads(document_json), json.loads(metadata_json))
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def cached_export_bundle(document_json: str, metadata_json: str, diagram_pdf: bytes, documentation_pdf: bytes) -> bytes:
+    return export_bundle(
+        json.loads(document_json),
+        json.loads(metadata_json),
+        diagram_pdf=diagram_pdf,
+        documentation_pdf=documentation_pdf,
+    )
+
 
 
 if "flow_flash" in st.session_state:
@@ -355,6 +383,95 @@ st.caption(
     f"Proprietário: @{record['owner_username']} · Permissão: {FLOW_ACCESS_LABELS.get(permission, 'Proprietário' if permission == 'owner' else permission)} · "
     f"Atualizado por @{record['last_saved_by']} em {format_datetime(record['updated_at'])}"
 )
+
+# Central de downloads. Os PDFs usam o documento carregado pelo Streamlit (versão salva ou rascunho MongoDB recuperado).
+export_metadata = {
+    "current_version": record.get("current_version"),
+    "revision": record.get("revision"),
+    "workflow_status": record.get("workflow_status"),
+    "owner_username": record.get("owner_username"),
+}
+export_document_json = json.dumps(editor_document, ensure_ascii=False, sort_keys=True)
+export_metadata_json = json.dumps(export_metadata, ensure_ascii=False, sort_keys=True)
+export_base_name = record["name"].replace(" ", "_").lower()
+export_base_name = "".join(ch for ch in export_base_name if ch.isalnum() or ch in "_-.") or "fluxo"
+export_suffix = f"_v{record.get('current_version', 1)}_r{record.get('revision', 1)}"
+export_flow_pdf = cached_flow_pdf(export_document_json, export_metadata_json)
+export_full_pdf = cached_full_pdf(export_document_json, export_metadata_json)
+export_zip = cached_export_bundle(export_document_json, export_metadata_json, export_flow_pdf, export_full_pdf)
+
+export_col, export_help_col = st.columns([1.15, 4.85])
+with export_col:
+    with st.popover("Downloads do fluxo", use_container_width=True):
+        st.markdown("**PDF**")
+        st.caption("Escolha entre o diagrama vetorial para zoom/impressão ou a documentação completa do processo.")
+        pdf_left, pdf_right = st.columns(2)
+        with pdf_left:
+            st.download_button(
+                "PDF - somente fluxo",
+                data=export_flow_pdf,
+                file_name=f"{export_base_name}{export_suffix}_fluxo.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                help="Uma página vetorial dimensionada ao fluxo. Ideal para zoom, plotter e apresentação técnica.",
+            )
+        with pdf_right:
+            st.download_button(
+                "PDF - documentação completa",
+                data=export_full_pdf,
+                file_name=f"{export_base_name}{export_suffix}_documentacao_completa.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                help="Inclui visão do fluxo, etapas, decisões, conexões, qualidade, pontos de melhoria, raias e matriz RACI.",
+            )
+
+        st.markdown("**Dados e documentação**")
+        data_left, data_right = st.columns(2)
+        with data_left:
+            st.download_button(
+                "JSON editável",
+                data=json.dumps(editor_document, ensure_ascii=False, indent=2),
+                file_name=f"{export_base_name}{export_suffix}.json",
+                mime="application/json",
+                use_container_width=True,
+            )
+            st.download_button(
+                "Etapas CSV",
+                data=nodes_csv(editor_document),
+                file_name=f"{export_base_name}{export_suffix}_etapas.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        with data_right:
+            st.download_button(
+                "Relatório HTML",
+                data=html_report(editor_document),
+                file_name=f"{export_base_name}{export_suffix}_relatorio.html",
+                mime="text/html",
+                use_container_width=True,
+            )
+            st.download_button(
+                "Matriz RACI CSV",
+                data=raci_csv(editor_document),
+                file_name=f"{export_base_name}{export_suffix}_raci.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
+        st.divider()
+        st.download_button(
+            "Baixar pacote completo (.zip)",
+            data=export_zip,
+            file_name=f"{export_base_name}{export_suffix}_pacote_completo.zip",
+            mime="application/zip",
+            use_container_width=True,
+            type="primary",
+            help="Inclui JSON, os dois PDFs, HTML, CSV de etapas e matriz RACI.",
+        )
+        st.caption("SVG e PNG continuam disponíveis no menu Baixar dentro do canvas, pois refletem diretamente o desenho visual do navegador.")
+with export_help_col:
+    st.caption("PDF do fluxo = diagrama vetorial completo. PDF com documentação = relatório paginado com todos os cards, decisões, conexões, responsabilidades e qualidade.")
+
 if presence_text:
     st.info(f"Também visualizando este fluxo: {presence_text}")
 if using_draft:
@@ -546,12 +663,7 @@ with manage_tabs[4]:
         score_cols[index].metric(label, f"{analysis['scores'][key]}%")
     count_df = pd.DataFrame([{"Indicador": key, "Valor": value} for key, value in analysis["counts"].items()])
     st.dataframe(count_df, use_container_width=True, hide_index=True)
-    safe_name = record["name"].replace(" ", "_").lower()
-    with st.popover("Baixar relatórios", use_container_width=False):
-        st.download_button("Relatório PDF", pdf_report(editor_document), f"{safe_name}.pdf", "application/pdf", use_container_width=True)
-        st.download_button("Relatório HTML", html_report(editor_document), f"{safe_name}.html", "text/html", use_container_width=True)
-        st.download_button("Etapas CSV", nodes_csv(editor_document), f"{safe_name}_etapas.csv", "text/csv", use_container_width=True)
-        st.download_button("Matriz RACI", raci_csv(editor_document), f"{safe_name}_raci.csv", "text/csv", use_container_width=True)
+    st.info("Os arquivos de exportação foram centralizados no botão **Downloads do fluxo**, acima do editor. Lá estão os PDFs, JSON, HTML, CSV, RACI e o pacote ZIP completo.")
     with st.expander("Problemas identificados"):
         issue_rows = issue_detail_rows(editor_document, analysis)
         if issue_rows:

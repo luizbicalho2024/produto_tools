@@ -1173,3 +1173,12 @@ button { color: inherit; }
   .multi-selection-actions { grid-template-columns: 1fr; }
   .navigation-warning-actions { display: grid; grid-template-columns: 1fr; }
 }
+
+.toolbar-dropdown-note {
+  padding: 9px 10px 7px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border, #d9e2ec);
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted, #627d98);
+}

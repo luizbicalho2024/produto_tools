@@ -10,7 +10,7 @@ CONFIG = ROOT / "core" / "configuration.py"
 
 
 def test_release_version_and_component_features():
-    assert 'APP_VERSION = "3.2.3"' in CONFIG.read_text(encoding="utf-8")
+    assert 'APP_VERSION = "3.2.' in CONFIG.read_text(encoding="utf-8")
     source = MAIN_JS.read_text(encoding="utf-8")
     for token in (
         "autoFitLanes",

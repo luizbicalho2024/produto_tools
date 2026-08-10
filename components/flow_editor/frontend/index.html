@@ -29,11 +29,12 @@
       <button type="button" data-action="theme" data-role="theme-button" title="Alternar modo claro e escuro">☾ Escuro</button>
       <button type="button" data-action="import">Importar JSON</button>
       <details class="toolbar-dropdown" data-role="download-menu">
-        <summary title="Baixar ou exportar o fluxo">Baixar ▾</summary>
+        <summary title="Exportar o desenho atual do canvas">Exportar visual ▾</summary>
         <div class="toolbar-dropdown-menu">
-          <button type="button" data-action="export"><span>JSON</span><small>Editar ou importar depois</small></button>
-          <button type="button" data-action="export-svg"><span>SVG</span><small>Imagem vetorial</small></button>
-          <button type="button" data-action="export-png"><span>PNG</span><small>Imagem para apresentação</small></button>
+          <button type="button" data-action="export"><span>JSON local</span><small>Estado atual do canvas</small></button>
+          <button type="button" data-action="export-svg"><span>SVG vetorial</span><small>Ideal para edição e impressão</small></button>
+          <button type="button" data-action="export-png"><span>PNG</span><small>Imagem pronta para apresentação</small></button>
+          <div class="toolbar-dropdown-note">PDF e pacote completo: use <strong>Downloads do fluxo</strong> acima do editor.</div>
         </div>
       </details>
       <button type="button" data-action="sync-draft" class="button-soft" title="Sincronizar o rascunho local com o MongoDB">☁ Rascunho</button>
