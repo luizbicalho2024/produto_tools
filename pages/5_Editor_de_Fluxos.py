@@ -404,7 +404,7 @@ export_col, export_help_col = st.columns([1.15, 4.85])
 with export_col:
     with st.popover("Downloads do fluxo", use_container_width=True):
         st.markdown("**PDF**")
-        st.caption("Escolha entre o diagrama vetorial para zoom/impressão ou a documentação completa do processo.")
+        st.caption("O PDF do fluxo mantém a visão geral vetorial e, em fluxos densos, acrescenta páginas por raia com as mensagens dos cards legíveis.")
         pdf_left, pdf_right = st.columns(2)
         with pdf_left:
             st.download_button(
@@ -413,7 +413,7 @@ with export_col:
                 file_name=f"{export_base_name}{export_suffix}_fluxo.pdf",
                 mime="application/pdf",
                 use_container_width=True,
-                help="Uma página vetorial dimensionada ao fluxo. Ideal para zoom, plotter e apresentação técnica.",
+                help="Visão geral vetorial do fluxo. Em diagramas densos, inclui automaticamente páginas de detalhe por raia com título, descrição, responsável e conexões de cada card.",
             )
         with pdf_right:
             st.download_button(
@@ -470,7 +470,7 @@ with export_col:
         )
         st.caption("SVG e PNG continuam disponíveis no menu Baixar dentro do canvas, pois refletem diretamente o desenho visual do navegador.")
 with export_help_col:
-    st.caption("PDF do fluxo = diagrama vetorial completo. PDF com documentação = relatório paginado com todos os cards, decisões, conexões, responsabilidades e qualidade.")
+    st.caption("PDF do fluxo = visão geral vetorial + detalhe legível dos cards quando necessário. PDF com documentação = relatório completo com decisões, conexões, responsabilidades, qualidade e RACI.")
 
 if presence_text:
     st.info(f"Também visualizando este fluxo: {presence_text}")

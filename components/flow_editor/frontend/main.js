@@ -237,11 +237,13 @@ export default function flowEditor(component) {
   const incomingProjectId = String(data?.projectId || incomingDocument.flow?.projectId || "");
   const incomingUserId = String(data?.userId || "");
   const localDraft = readLocalDraft(incomingProjectId, incomingUserId, incomingDocument.flow.id, incomingRevision);
-  const incomingUpdatedAt = Date.parse(incomingDocument.flow?.updatedAt || "") || 0;
-  const localSavedAt = Date.parse(localDraft?.savedAt || "") || 0;
   const localDocument = localDraft?.document ? normalizeDocument(localDraft.document) : null;
   const localDiffersFromDatabase = Boolean(localDocument && JSON.stringify(localDocument) !== JSON.stringify(incomingDocument));
-  const restoredLocalDraft = Boolean(localDocument && localSavedAt >= incomingUpdatedAt && localDiffersFromDatabase);
+  // O rascunho local usa a mesma revisão do MongoDB como chave. Se ele difere do
+  // documento recebido, ele representa trabalho ainda não persistido e deve sempre
+  // prevalecer. Não usamos relógio do navegador/servidor para decidir, pois pequenas
+  // diferenças de timestamp faziam o editor restaurar o último backup e perder a edição.
+  const restoredLocalDraft = Boolean(localDocument && localDiffersFromDatabase);
 
   const state = {
     doc: restoredLocalDraft ? localDocument : incomingDocument,
@@ -620,10 +622,29 @@ export default function flowEditor(component) {
     if (navigation) state.dirty = false;
   }
 
+  function protectCurrentDocumentLocally() {
+    if (!canModify()) return null;
+    const payload = writeLocalDraft(state.projectId, state.userId, state.doc.flow.id, state.revision, state.doc);
+    if (!payload) {
+      updateSaveState("Falha ao proteger a alteração local", "error");
+      return null;
+    }
+    state.lastAutosaveFingerprint = fingerprintDocument();
+    state.lastLocalDraftAt = payload.savedAt;
+    return payload;
+  }
+
   function markDirty() {
     state.dirty = true;
     state.doc.flow.updatedAt = nowIso();
-    updateSaveState("Alterações pendentes", "pending");
+    // Persistência síncrona no navegador: qualquer rerun do Streamlit que aconteça
+    // logo após a alteração encontra o documento atualizado, em vez do último draft
+    // existente no MongoDB. A sincronização com o banco continua explícita.
+    const protectedDraft = protectCurrentDocumentLocally();
+    updateSaveState(
+      protectedDraft ? "Alterações protegidas localmente · pendentes no banco" : "Alterações pendentes",
+      protectedDraft ? "pending" : "error",
+    );
     scheduleAutosave();
   }
 
@@ -3791,7 +3812,7 @@ export default function flowEditor(component) {
   pruneLocalDrafts(state.projectId, state.userId, state.doc.flow.id, state.revision);
   if (restoredLocalDraft) {
     updateSaveState("Rascunho local recuperado", "success");
-    setTimeout(() => toast("As alterações locais foram recuperadas sem recarregar o editor.", "success"), 120);
+    setTimeout(() => toast("As alterações locais mais recentes foram recuperadas e preservadas.", "success"), 120);
   } else {
     state.lastAutosaveFingerprint = fingerprintDocument();
     updateSaveState("Alterações sincronizadas", "muted");

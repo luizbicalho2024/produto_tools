@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_release_324_version_and_download_ui():
-    assert APP_VERSION == "3.2.4"
+    assert tuple(map(int, APP_VERSION.split("."))) >= (3, 2, 4)
     editor = (ROOT / "pages" / "5_Editor_de_Fluxos.py").read_text(encoding="utf-8")
     index = (ROOT / "components" / "flow_editor" / "frontend" / "index.html").read_text(encoding="utf-8")
     service = (ROOT / "services" / "report_export.py").read_text(encoding="utf-8")

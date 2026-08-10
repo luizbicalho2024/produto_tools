@@ -1,13 +1,18 @@
-# Produto Tools 3.2.4 Professional
+# Produto Tools 3.2.5 Professional
 
 Aplicação Streamlit para modelagem, governança e publicação de processos, com autenticação compartilhada, persistência no MongoDB Atlas e projetos compostos por vários fluxos vinculados.
 
 
 
-## Novidades da versão 3.2.4
+## Novidades da versão 3.2.5
+
+- Editor resistente a reruns: cada alteração é protegida imediatamente no navegador antes de qualquer reconstrução do componente.
+- Rascunhos locais da mesma revisão sempre prevalecem sobre snapshots antigos do MongoDB até o usuário sincronizar ou salvar formalmente.
+- PDF do fluxo mostra título e mensagem/descrição dos cards e acrescenta páginas de detalhe por raia em diagramas densos.
+- Badge de criticidade foi movido para fora da área de texto do card.
 
 - nova Central de Downloads no topo do Editor de Fluxos;
-- PDF **somente fluxo** em página vetorial dimensionada ao diagrama, adequado para zoom e impressão em plotter;
+- PDF **somente fluxo** com visão geral vetorial e, quando o diagrama é denso, páginas adicionais por raia com título, mensagem/descrição, responsável e contexto de conexões de cada card;
 - PDF **documentação completa** com capa, resumo executivo, visão do fluxo, raias, inventário de cards, decisões, conexões, qualidade, orientações de correção, matriz RACI e configurações;
 - pacote ZIP completo contendo JSON, os dois PDFs, relatório HTML, etapas CSV e RACI CSV;
 - nomes de arquivos incluem versão e revisão do fluxo;

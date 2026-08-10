@@ -12,7 +12,7 @@ from typing import Any
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
-from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.pagesizes import A3, A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.pdfbase.pdfmetrics import stringWidth
@@ -116,6 +116,36 @@ def _truncate(text: Any, font: str, size: float, max_width: float) -> str:
         value = value[:-1]
     return value.rstrip() + suffix
 
+
+
+
+def _wrap_text_lines(text: Any, font: str, size: float, max_width: float, max_lines: int) -> list[str]:
+    value = _safe_text(text).strip()
+    if not value or max_width <= 2 or max_lines <= 0:
+        return []
+    words = value.replace("\n", " ").split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = word if not current else f"{current} {word}"
+        if stringWidth(candidate, font, size) <= max_width:
+            current = candidate
+            continue
+        if current:
+            lines.append(current)
+            current = word
+        else:
+            lines.append(_truncate(word, font, size, max_width))
+            current = ""
+        if len(lines) >= max_lines:
+            break
+    if current and len(lines) < max_lines:
+        lines.append(current)
+    if len(lines) == max_lines and words:
+        consumed = " ".join(lines)
+        if len(consumed) < len(value):
+            lines[-1] = _truncate(lines[-1] + "...", font, size, max_width)
+    return lines
 
 def _decision_semantic(edge: dict[str, Any], source: dict[str, Any] | None, target: dict[str, Any] | None) -> str:
     if not source or str(source.get("type")) != "decision":
@@ -272,16 +302,39 @@ def _draw_flow_diagram(
 
         if scale >= 0.045:
             data = node.get("data") or {}
-            title_size = max(4.5, min(8.2, 10.0 * scale))
-            owner_size = max(3.8, min(6.4, 8.0 * scale))
+            title_size = max(4.2, min(8.2, 10.0 * scale))
+            description_size = max(3.5, min(6.1, 7.4 * scale))
+            owner_size = max(3.5, min(6.0, 7.6 * scale))
             max_text_w = max(10, nwp - 14 * scale)
+            text_x = nx + 7 * scale
+            top_y = ny + nhp - max(7.0, 16 * scale)
+
+            title_lines = _wrap_text_lines(data.get("label"), "Helvetica-Bold", title_size, max_text_w, 2)
             c.setFillColor(colors.HexColor("#102a43"))
             c.setFont("Helvetica-Bold", title_size)
-            c.drawString(nx + 7 * scale, ny + nhp - 24 * scale, _truncate(data.get("label"), "Helvetica-Bold", title_size, max_text_w))
+            line_y = top_y
+            for line in title_lines:
+                c.drawString(text_x, line_y, line)
+                line_y -= title_size * 1.12
+
+            # A descrição é a mensagem principal do card. Em fluxos grandes ela continua
+            # vetorial; ao ampliar o PDF, o texto permanece nítido.
+            description = _safe_text(data.get("description")).strip()
+            owner_floor = ny + max(4.0, 8 * scale) + owner_size
+            available_description_h = max(0.0, line_y - owner_floor - 1.5)
+            max_description_lines = max(0, min(3, int(available_description_h / max(description_size * 1.12, 1))))
+            if description and max_description_lines:
+                description_lines = _wrap_text_lines(description, "Helvetica", description_size, max_text_w, max_description_lines)
+                c.setFillColor(colors.HexColor("#334e68"))
+                c.setFont("Helvetica", description_size)
+                for line in description_lines:
+                    c.drawString(text_x, line_y, line)
+                    line_y -= description_size * 1.12
+
             c.setFillColor(colors.HexColor("#486581"))
             c.setFont("Helvetica", owner_size)
             subtitle = _safe_text(data.get("owner") or meta["label"])
-            c.drawString(nx + 7 * scale, ny + 11 * scale, _truncate(subtitle, "Helvetica", owner_size, max_text_w))
+            c.drawString(text_x, ny + max(4.0, 7 * scale), _truncate(subtitle, "Helvetica", owner_size, max_text_w))
 
         dot = max(1.2, min(3.2, 3.8 * scale))
         c.setFillColor(colors.HexColor("#64748b"))
@@ -352,8 +405,129 @@ def html_report(document: dict[str, Any]) -> bytes:
     return page.encode("utf-8")
 
 
+
+
+def _draw_flow_card_detail_page(
+    c: canvas.Canvas,
+    document: dict[str, Any],
+    lane: dict[str, Any],
+    nodes: list[dict[str, Any]],
+    page_number: int,
+    page_total: int,
+) -> None:
+    page_w, page_h = landscape(A3)
+    c.setPageSize((page_w, page_h))
+    c.setFillColor(colors.white)
+    c.rect(0, 0, page_w, page_h, fill=1, stroke=0)
+    margin = 12 * mm
+    c.setFillColor(colors.HexColor("#102a43"))
+    c.setFont("Helvetica-Bold", 15)
+    c.drawString(margin, page_h - margin - 4, _truncate(lane.get("name") or "Sem raia", "Helvetica-Bold", 15, page_w - 2 * margin - 130))
+    c.setFont("Helvetica", 8)
+    c.setFillColor(colors.HexColor("#526d82"))
+    c.drawRightString(page_w - margin, page_h - margin - 2, f"Detalhe dos cards {page_number}/{page_total}")
+    c.setFont("Helvetica", 7.5)
+    c.drawString(margin, page_h - margin - 18, "Os cards abaixo preservam título, mensagem/descrição e contexto das conexões para leitura e impressão.")
+
+    node_map = {str(node.get("id") or ""): node for node in document.get("nodes", [])}
+    edges = [edge for edge in document.get("edges", []) if edge.get("enabled", True) is not False]
+    cols = 2
+    rows = 5
+    gap_x = 8 * mm
+    gap_y = 6 * mm
+    top = page_h - margin - 30
+    bottom = margin
+    usable_h = top - bottom
+    card_h = (usable_h - gap_y * (rows - 1)) / rows
+    card_w = (page_w - 2 * margin - gap_x) / cols
+
+    for index, node in enumerate(nodes[: cols * rows]):
+        row = index // cols
+        col = index % cols
+        x = margin + col * (card_w + gap_x)
+        y = top - (row + 1) * card_h - row * gap_y
+        data = node.get("data") or {}
+        meta = NODE_TYPES.get(str(node.get("type") or "task"), NODE_TYPES["task"])
+        border = colors.HexColor(meta["color"])
+        c.setFillColor(colors.HexColor("#fbfdff"))
+        c.setStrokeColor(border)
+        c.setLineWidth(1.1)
+        c.roundRect(x, y, card_w, card_h, 7, fill=1, stroke=1)
+        c.setFillColor(border)
+        c.roundRect(x + 8, y + card_h - 5, card_w - 16, 4, 2, fill=1, stroke=0)
+
+        criticality = _safe_text(data.get("criticality") or "medium").lower()
+        criticality_label = {"critical": "CRÍTICO", "high": "ALTO", "medium": "MÉDIO", "low": "BAIXO"}.get(criticality, criticality.upper())
+        if criticality in {"critical", "high"}:
+            badge_color = colors.HexColor("#b91c1c" if criticality == "critical" else "#b45309")
+            badge_w = stringWidth(criticality_label, "Helvetica-Bold", 6.5) + 12
+            c.setFillColor(badge_color)
+            c.roundRect(x + card_w - badge_w - 8, y + card_h - 19, badge_w, 11, 5, fill=1, stroke=0)
+            c.setFillColor(colors.white)
+            c.setFont("Helvetica-Bold", 6.5)
+            c.drawCentredString(x + card_w - badge_w / 2 - 8, y + card_h - 15.5, criticality_label)
+
+        c.setFillColor(colors.HexColor("#102a43"))
+        c.setFont("Helvetica-Bold", 10)
+        title_lines = _wrap_text_lines(data.get("label") or node.get("id"), "Helvetica-Bold", 10, card_w - 26, 2)
+        line_y = y + card_h - 22
+        for line in title_lines:
+            c.drawString(x + 10, line_y, line)
+            line_y -= 11.5
+
+        c.setFillColor(colors.HexColor("#526d82"))
+        c.setFont("Helvetica", 7)
+        context = f"{meta['label']} · {data.get('owner') or 'Sem responsável'} · ID {node.get('id') or '-'}"
+        c.drawString(x + 10, line_y - 1, _truncate(context, "Helvetica", 7, card_w - 20))
+        line_y -= 13
+
+        c.setFillColor(colors.HexColor("#243b53"))
+        c.setFont("Helvetica", 7.7)
+        description_lines = _wrap_text_lines(data.get("description") or "Sem descrição cadastrada.", "Helvetica", 7.7, card_w - 20, 5)
+        for line in description_lines:
+            c.drawString(x + 10, line_y, line)
+            line_y -= 9.2
+
+        incoming = [edge for edge in edges if str(edge.get("target") or "") == str(node.get("id") or "")]
+        outgoing = [edge for edge in edges if str(edge.get("source") or "") == str(node.get("id") or "")]
+        incoming_names = [((node_map.get(str(edge.get("source") or ""), {}).get("data") or {}).get("label") or str(edge.get("source") or "")) for edge in incoming]
+        outgoing_names = [((node_map.get(str(edge.get("target") or ""), {}).get("data") or {}).get("label") or str(edge.get("target") or "")) for edge in outgoing]
+        c.setFont("Helvetica", 6.6)
+        c.setFillColor(colors.HexColor("#486581"))
+        receives = "Recebe de: " + (", ".join(map(_safe_text, incoming_names[:3])) if incoming_names else "-")
+        sends = "Envia para: " + (", ".join(map(_safe_text, outgoing_names[:3])) if outgoing_names else "-")
+        c.drawString(x + 10, y + 18, _truncate(receives, "Helvetica", 6.6, card_w - 20))
+        c.drawString(x + 10, y + 8, _truncate(sends, "Helvetica", 6.6, card_w - 20))
+
+
+def _append_dense_flow_detail_pages(c: canvas.Canvas, document: dict[str, Any], scale: float) -> None:
+    enabled_nodes = [node for node in document.get("nodes", []) if (node.get("data") or {}).get("enabled", True) is not False]
+    if scale >= 0.55 and len(enabled_nodes) <= 70:
+        return
+    lanes, _, _ = _lane_geometry(document)
+    nodes_by_lane: dict[str, list[dict[str, Any]]] = {}
+    for node in enabled_nodes:
+        nodes_by_lane.setdefault(str(node.get("laneId") or ""), []).append(node)
+    ordered_lanes = list(lanes)
+    if nodes_by_lane.get(""):
+        ordered_lanes.append({"id": "", "name": "Sem raia"})
+    cards_per_page = 10
+    for lane in ordered_lanes:
+        lane_nodes = sorted(
+            nodes_by_lane.get(str(lane.get("id") or ""), []),
+            key=lambda node: (float((node.get("position") or {}).get("x") or 0), float((node.get("position") or {}).get("y") or 0)),
+        )
+        if not lane_nodes:
+            continue
+        total = math.ceil(len(lane_nodes) / cards_per_page)
+        for page_index in range(total):
+            c.showPage()
+            chunk = lane_nodes[page_index * cards_per_page : (page_index + 1) * cards_per_page]
+            _draw_flow_card_detail_page(c, document, lane, chunk, page_index + 1, total)
+
+
 def flow_only_pdf(document: dict[str, Any], metadata: dict[str, Any] | None = None) -> bytes:
-    """PDF vetorial de uma pagina com o diagrama inteiro, adequado para zoom e impressao em plotter."""
+    """PDF vetorial com visão geral e detalhe legível dos cards em fluxos densos."""
     flow = document.get("flow", {})
     world_w, world_h = _flow_bounds(document)
     margin = 26.0
@@ -389,6 +563,9 @@ def flow_only_pdf(document: dict[str, Any], metadata: dict[str, Any] | None = No
         detail += f" | revisao {revision}"
     c.drawRightString(page_w - margin, page_h - margin - 3, detail)
     _draw_flow_diagram(c, document, margin, margin, page_w - margin * 2, page_h - margin * 2 - header)
+    # Para fluxos densos, o PDF mantém a visão geral vetorial e acrescenta páginas
+    # de detalhe por raia. Assim as mensagens/descrições dos cards permanecem legíveis.
+    _append_dense_flow_detail_pages(c, document, scale)
     c.showPage()
     c.save()
     return buffer.getvalue()

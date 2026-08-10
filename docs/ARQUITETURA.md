@@ -1,4 +1,4 @@
-# Arquitetura — Produto Tools 3.2.4
+# Arquitetura — Produto Tools 3.2.5
 
 ## Camadas
 

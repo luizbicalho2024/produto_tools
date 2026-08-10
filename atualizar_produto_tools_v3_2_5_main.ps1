@@ -4,7 +4,7 @@
 param(
     [string]$RepositoryUrl = "https://github.com/luizbicalho2024/produto_tools.git",
     [string]$Branch = "main",
-    [string]$CommitMessage = "Corrige publicador local do Produto Tools 3.2.4.1",
+    [string]$CommitMessage = "Atualiza Produto Tools 3.2.5 - editor persistente e PDF legivel",
     [switch]$SkipTests,
     [switch]$StrictTests
 )
@@ -96,7 +96,7 @@ $Destination = Join-Path $Parent ("produto_tools_publicacao_" + $Timestamp)
 $OriginalLocation = Get-Location
 
 try {
-    Write-Step "Produto Tools 3.2.4.1 - Publicacao segura"
+    Write-Step "Produto Tools 3.2.5 - Publicacao segura"
     Write-Host ("Origem: " + $Source)
     Write-Host ("Clone:  " + $Destination)
 
@@ -166,9 +166,10 @@ try {
 from pathlib import Path
 checks = {
     'components/flow_editor/frontend/index.html': ['Exportar visual'],
-    'components/flow_editor/frontend/main.js': ['fitLanesToContent', 'selectedNodeIds', 'decisionEdgeSemantic'],
+    'components/flow_editor/frontend/main.js': ['fitLanesToContent', 'selectedNodeIds', 'decisionEdgeSemantic', 'protectCurrentDocumentLocally', 'pendentes no banco'],
+    'components/flow_editor/frontend/styles.css': ['top: -13px', 'translateX(-50%)'],
     'pages/5_Editor_de_Fluxos.py': ['Downloads do fluxo', 'flow_only_pdf', 'full_documentation_pdf', 'cached_export_bundle'],
-    'services/report_export.py': ['flow_only_pdf', 'full_documentation_pdf', 'export_bundle'],
+    'services/report_export.py': ['flow_only_pdf', 'full_documentation_pdf', 'export_bundle', '_append_dense_flow_detail_pages', 'description_lines = _wrap_text_lines'],
 }
 missing = []
 for file_name, tokens in checks.items():
@@ -183,7 +184,7 @@ if missing:
                 Invoke-PythonCaptured `
                     -Launcher $PythonLauncher `
                     -Arguments @("-c", $FeatureScript) `
-                    -Label "Validacao dos recursos 3.2.4" | Out-Null
+                    -Label "Validacao dos recursos 3.2.5" | Out-Null
                 Write-Host "OK - recursos da versao" -ForegroundColor Green
 
                 $NodeCommand = Get-Command node -ErrorAction SilentlyContinue
@@ -371,7 +372,7 @@ if missing:
     Invoke-NativeCaptured -Executable $GitExe -Arguments @("push", "origin", $Branch) -Label "Git push" | Out-Null
 
     Write-Host ""
-    Write-Host "Produto Tools 3.2.4.1 publicado com sucesso." -ForegroundColor Green
+    Write-Host "Produto Tools 3.2.5 publicado com sucesso." -ForegroundColor Green
     Write-Host ("Repositorio: " + $RepositoryUrl)
     Write-Host ("Branch:      " + $Branch)
     Write-Host ("Clone local: " + $Destination)

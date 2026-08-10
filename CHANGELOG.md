@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.2.5 — Persistência de edição e PDF legível
+
+- Proteção síncrona de cada alteração no armazenamento local do navegador.
+- Restauração do rascunho local baseada em fluxo + usuário + projeto + revisão, sem depender de relógio entre navegador e servidor.
+- Correção do problema em que um rerun do Streamlit podia remontar o editor com o último rascunho do MongoDB e desfazer a edição recém-feita.
+- PDF de fluxo com mensagens/descrições dentro dos cards.
+- Fluxos densos recebem páginas adicionais de detalhe por raia para leitura confortável.
+- Criticidade Alta/Crítica posicionada acima do card, sem cobrir título ou descrição.
+
 ## 3.2.4 — Central de downloads e exportação PDF
 
 - centraliza as exportações do fluxo em um único painel;

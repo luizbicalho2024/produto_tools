@@ -1,4 +1,4 @@
-# Validação — Produto Tools 3.2.4
+# Validação — Produto Tools 3.2.5
 
 ## Comandos
 
@@ -48,3 +48,13 @@ node --check components/flow_editor/frontend/main.js
 13. conferir saídas Sim/Não em verde/vermelho no editor, exportação e mapa;
 14. mover o canvas com o botão direito do mouse;
 15. baixar e reimportar o pacote.
+
+
+## Validação 3.2.5
+
+- persistência local imediata testada por inspeção de fonte e suíte automatizada;
+- restauração do rascunho da mesma revisão não depende mais de comparação entre relógio do navegador e do servidor;
+- PDF do fluxo SIGYO de 153 cards gerou 22 páginas: 1 visão geral e 21 páginas de detalhe por raia;
+- renderização visual do PDF validada em PNG, com mensagens dos cards legíveis e sem sobreposição;
+- badge de criticidade Alta/Crítica posicionado acima do card, fora da área de texto;
+- suíte automatizada: 31 aprovados e 2 opcionais ignorados no ambiente de validação.
