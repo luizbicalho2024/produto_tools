@@ -139,7 +139,6 @@ def new_flowchart_document(name: str = "Novo processo", owner_email: str = "") -
             "showGrid": True,
             "layoutPreset": "readable",
             "edgeRouting": "smooth",
-            "autosaveSeconds": 10,
             "interactivePlayback": True,
         },
         "viewport": {"x": 0, "y": 0, "zoom": 1},
@@ -203,7 +202,7 @@ def normalize_document(document: dict[str, Any], owner_email: str = "") -> dict[
     defaults = {
         "snapToGrid": True, "gridSize": 20, "autoLayout": False,
         "showMiniMap": True, "showGrid": True, "layoutPreset": "readable",
-        "edgeRouting": "smooth", "autosaveSeconds": 10,
+        "edgeRouting": "smooth",
         "interactivePlayback": True,
     }
     for key, value in defaults.items():
@@ -229,7 +228,7 @@ def normalize_document(document: dict[str, Any], owner_email: str = "") -> dict[
     )
     if settings["edgeRouting"] not in {"corridor", "corridor-v2", "orthogonal", "smooth", "straight"}:
         settings["edgeRouting"] = "smooth"
-    settings["autosaveSeconds"] = max(5, min(300, int(settings.get("autosaveSeconds") or 10)))
+    settings.pop("autosaveSeconds", None)
     doc.setdefault("viewport", {"x": 0, "y": 0, "zoom": 1})
     doc.setdefault("lanes", [])
     doc.setdefault("nodes", [])

@@ -43,45 +43,24 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function draftStorageKey(projectId, userId, flowId, revision) {
+const FLOW_EDITOR_RUNTIME_CACHE = globalThis.__produtoToolsFlowEditorRuntimeCache instanceof Map
+  ? globalThis.__produtoToolsFlowEditorRuntimeCache
+  : new Map();
+globalThis.__produtoToolsFlowEditorRuntimeCache = FLOW_EDITOR_RUNTIME_CACHE;
+
+function editorRuntimeKey(projectId, userId, flowId, sessionEpoch = 0) {
   const project = String(projectId || "standalone").replaceAll(":", "_");
   const user = String(userId || "anonymous").replaceAll(":", "_");
-  return `produto_tools_draft:${project}:${user}:${String(flowId || "unknown")}:${Number(revision) || 1}`;
+  return `${project}:${user}:${String(flowId || "unknown")}:${Number(sessionEpoch) || 0}`;
 }
 
-function readLocalDraft(projectId, userId, flowId, revision) {
+function clearLegacyDraftStorage() {
   try {
-    const raw = localStorage.getItem(draftStorageKey(projectId, userId, flowId, revision));
-    if (!raw) return null;
-    const payload = JSON.parse(raw);
-    if (!payload || Number(payload.revision) !== Number(revision) || !payload.document) return null;
-    return payload;
-  } catch (_) {
-    return null;
-  }
-}
-
-function writeLocalDraft(projectId, userId, flowId, revision, documentValue) {
-  try {
-    const payload = { revision: Number(revision) || 1, savedAt: nowIso(), document: clone(documentValue) };
-    localStorage.setItem(draftStorageKey(projectId, userId, flowId, revision), JSON.stringify(payload));
-    return payload;
-  } catch (_) {
-    return null;
-  }
-}
-
-function pruneLocalDrafts(projectId, userId, flowId, keepRevision) {
-  try {
-    const project = String(projectId || "standalone").replaceAll(":", "_");
-    const user = String(userId || "anonymous").replaceAll(":", "_");
-    const prefix = `produto_tools_draft:${project}:${user}:${String(flowId || "unknown")}:`;
     for (let index = localStorage.length - 1; index >= 0; index -= 1) {
       const key = localStorage.key(index);
-      if (!key || !key.startsWith(prefix)) continue;
-      if (key !== draftStorageKey(projectId, userId, flowId, keepRevision)) localStorage.removeItem(key);
+      if (key?.startsWith("produto_tools_draft:")) localStorage.removeItem(key);
     }
-  } catch (_) { /* armazenamento local indisponível */ }
+  } catch (_) { /* preferências do navegador podem estar indisponíveis */ }
 }
 
 function clamp(value, min, max) {
@@ -107,7 +86,6 @@ function normalizeDocument(input) {
     showGrid: true,
     layoutPreset: "readable",
     edgeRouting: "smooth",
-    autosaveSeconds: 10,
     interactivePlayback: true,
     autoFitLanes: true,
     ...(doc.settings || {}),
@@ -123,7 +101,6 @@ function normalizeDocument(input) {
   const routingAliases = { step: "orthogonal", smoothstep: "smooth", bezier: "smooth", curve: "smooth" };
   doc.settings.edgeRouting = routingAliases[String(doc.settings.edgeRouting || "").toLowerCase()] || String(doc.settings.edgeRouting || "smooth").toLowerCase();
   if (!["corridor", "corridor-v2", "orthogonal", "smooth", "straight"].includes(doc.settings.edgeRouting)) doc.settings.edgeRouting = "smooth";
-  doc.settings.autosaveSeconds = clamp(Number(doc.settings.autosaveSeconds) || 10, 5, 300);
   if (!["LR", "RL"].includes(doc.flow.orientation)) doc.flow.orientation = "LR";
   doc.viewport = { x: 0, y: 0, zoom: 1, ...(doc.viewport || {}) };
   doc.lanes = Array.isArray(doc.lanes) ? doc.lanes : [];
@@ -236,17 +213,19 @@ export default function flowEditor(component) {
   const incomingRevision = Number(data?.revision) || 1;
   const incomingProjectId = String(data?.projectId || incomingDocument.flow?.projectId || "");
   const incomingUserId = String(data?.userId || "");
-  const localDraft = readLocalDraft(incomingProjectId, incomingUserId, incomingDocument.flow.id, incomingRevision);
-  const localDocument = localDraft?.document ? normalizeDocument(localDraft.document) : null;
-  const localDiffersFromDatabase = Boolean(localDocument && JSON.stringify(localDocument) !== JSON.stringify(incomingDocument));
-  // O rascunho local usa a mesma revisão do MongoDB como chave. Se ele difere do
-  // documento recebido, ele representa trabalho ainda não persistido e deve sempre
-  // prevalecer. Não usamos relógio do navegador/servidor para decidir, pois pequenas
-  // diferenças de timestamp faziam o editor restaurar o último backup e perder a edição.
-  const restoredLocalDraft = Boolean(localDocument && localDiffersFromDatabase);
+  const sessionEpoch = Number(data?.sessionEpoch) || 0;
+  const runtimeKey = editorRuntimeKey(incomingProjectId, incomingUserId, incomingDocument.flow.id, sessionEpoch);
+  const cachedRuntime = FLOW_EDITOR_RUNTIME_CACHE.get(runtimeKey);
+  const cachedDocument = cachedRuntime?.document ? normalizeDocument(cachedRuntime.document) : null;
+  const sameRevision = Boolean(cachedRuntime && Number(cachedRuntime.revision) === incomingRevision);
+  const cachedDiffersFromDatabase = Boolean(cachedDocument && JSON.stringify(cachedDocument) !== JSON.stringify(incomingDocument));
+  // Não existe salvamento automático. Este cache é somente memória da aba atual e serve para impedir
+  // que um rerun do Streamlit substitua a edição em andamento pelo último documento do banco.
+  const restoredWorkingSession = Boolean(sameRevision && cachedRuntime?.dirty && cachedDiffersFromDatabase);
+  if (cachedRuntime && (!sameRevision || !cachedDiffersFromDatabase)) FLOW_EDITOR_RUNTIME_CACHE.delete(runtimeKey);
 
   const state = {
-    doc: restoredLocalDraft ? localDocument : incomingDocument,
+    doc: restoredWorkingSession ? cachedDocument : incomingDocument,
     selected: null,
     selectedNodeIds: new Set(),
     connecting: null,
@@ -259,7 +238,7 @@ export default function flowEditor(component) {
     spaceDown: false,
     pendingNavigation: null,
     allowNavigationOnce: false,
-    dirty: restoredLocalDraft,
+    dirty: restoredWorkingSession,
     destroyed: false,
     permission: String(data?.permission || "viewer"),
     revision: incomingRevision,
@@ -277,10 +256,8 @@ export default function flowEditor(component) {
     projectReturnSent: false,
     flowCatalog: Array.isArray(data?.flowCatalog) ? data.flowCatalog : [],
     comments: Array.isArray(data?.comments) ? data.comments : [],
-    autosaveSeconds: Math.max(5, Number(data?.autosaveSeconds || data?.document?.settings?.autosaveSeconds) || 10),
-    autosaveTimer: null,
-    lastAutosaveFingerprint: restoredLocalDraft ? JSON.stringify(localDraft.document) : "",
-    lastLocalDraftAt: restoredLocalDraft ? String(localDraft.savedAt || "") : "",
+    runtimeKey,
+    sessionEpoch,
     searchQuery: "",
     searchResults: [],
     searchIndex: -1,
@@ -496,6 +473,64 @@ export default function flowEditor(component) {
     });
   }
 
+  function resizeLaneKeepingRelativePositions(laneId, requestedHeight) {
+    const lane = getLane(laneId);
+    if (!lane) return false;
+    const before = laneGeometry();
+    const nextHeight = clamp(Number(requestedHeight) || 240, 110, 2400);
+    const previousHeight = Number(lane.height) || 240;
+    if (Math.abs(nextHeight - previousHeight) < 0.1) return false;
+    lane.height = nextHeight;
+    const after = laneGeometry();
+    state.doc.nodes.forEach((node) => {
+      if (!node.laneId || node.laneId === laneId) return;
+      const oldBox = before.map.get(node.laneId);
+      const newBox = after.map.get(node.laneId);
+      if (oldBox && newBox) node.position.y += newBox.top - oldBox.top;
+    });
+    return true;
+  }
+
+  function rectanglesOverlapAt(node, candidateY, other, gap = 14) {
+    const size = nodeDimensions(node);
+    const otherSize = nodeDimensions(other);
+    const left = Number(node.position.x) || 0;
+    const right = left + size.width;
+    const otherLeft = Number(other.position.x) || 0;
+    const otherRight = otherLeft + otherSize.width;
+    const horizontal = !(right + gap <= otherLeft || otherRight + gap <= left);
+    const top = candidateY;
+    const bottom = candidateY + size.height;
+    const otherTop = Number(other.position.y) || 0;
+    const otherBottom = otherTop + otherSize.height;
+    const vertical = !(bottom + gap <= otherTop || otherBottom + gap <= top);
+    return horizontal && vertical;
+  }
+
+  function resolveMovedNodeOverlaps(nodeIds) {
+    if (state.doc.settings.autoFitLanes === false) return;
+    const moving = new Set(nodeIds || []);
+    const ordered = [...moving].map(getNode).filter(Boolean).sort((a, b) => (a.position.y - b.position.y) || (a.position.x - b.position.x));
+    ordered.forEach((node) => {
+      if (!node.laneId) return;
+      let geometry = laneGeometry();
+      let box = geometry.map.get(node.laneId);
+      if (!box) return;
+      let candidate = snap(Math.max(box.top + LANE_CONTENT_TOP, Number(node.position.y) || 0));
+      const others = state.doc.nodes.filter((other) => other.id !== node.id && other.laneId === node.laneId);
+      let attempts = 0;
+      while (others.some((other) => rectanglesOverlapAt(node, candidate, other)) && attempts < 80) {
+        candidate += LANE_ROW_GAP;
+        attempts += 1;
+      }
+      growLaneForDesiredY(node.laneId, candidate);
+      geometry = laneGeometry();
+      box = geometry.map.get(node.laneId);
+      if (box) node.position.y = snap(clamp(candidate, box.top + LANE_CONTENT_TOP, Math.max(box.top + LANE_CONTENT_TOP, box.bottom - nodeDimensions(node).height - LANE_BOTTOM_PADDING)));
+    });
+    fitLanesToContent({ repack: false, shrink: true });
+  }
+
   function normalizeNodesIntoLanes() {
     const geometry = laneGeometry();
     const lanesById = new Set(geometry.sorted.map((lane) => lane.id));
@@ -567,11 +602,6 @@ export default function flowEditor(component) {
     try { return JSON.stringify(state.doc); } catch (_) { return String(Date.now()); }
   }
 
-  function clearAutosaveTimer() {
-    if (state.autosaveTimer) clearTimeout(state.autosaveTimer);
-    state.autosaveTimer = null;
-  }
-
   function updateSaveState(message, tone = "muted") {
     const status = $('[data-role="save-state"]');
     if (!status) return;
@@ -585,67 +615,42 @@ export default function flowEditor(component) {
     status.style.color = tones[tone] || tones.muted;
   }
 
-  function persistLocalDraft() {
+  function rememberWorkingSession() {
     if (!canModify() || !state.dirty) return;
-    const fingerprint = fingerprintDocument();
-    if (fingerprint === state.lastAutosaveFingerprint) return;
-    const payload = writeLocalDraft(state.projectId, state.userId, state.doc.flow.id, state.revision, state.doc);
-    if (!payload) {
-      updateSaveState("Falha ao salvar o rascunho local", "error");
-      return;
-    }
-    state.lastAutosaveFingerprint = fingerprint;
-    state.lastLocalDraftAt = payload.savedAt;
-    updateSaveState("Rascunho salvo neste navegador", "success");
+    // Memória volátil da aba, sem localStorage, timer ou gravação automática no MongoDB.
+    FLOW_EDITOR_RUNTIME_CACHE.set(state.runtimeKey, {
+      revision: state.revision,
+      document: state.doc,
+      dirty: true,
+      updatedAt: Date.now(),
+    });
   }
 
-  function scheduleAutosave() {
-    if (!canModify()) return;
-    clearAutosaveTimer();
-    state.autosaveTimer = setTimeout(persistLocalDraft, Math.min(2500, Math.max(700, state.autosaveSeconds * 120)));
+  function clearWorkingSession() {
+    FLOW_EDITOR_RUNTIME_CACHE.delete(state.runtimeKey);
   }
 
-  function syncDraftToMongo({ navigation = false } = {}) {
+  function saveDraftToMongo({ navigation = false } = {}) {
     if (!canModify()) return toast("Seu acesso é somente leitura.", "warning");
-    persistLocalDraft();
+    state.doc.flow.updatedAt = nowIso();
+    rememberWorkingSession();
     updateSaveState(
-      navigation ? "Salvando rascunho no MongoDB antes de sair..." : "Sincronizando rascunho com o MongoDB...",
+      navigation ? "Salvando rascunho no banco antes de sair..." : "Salvando rascunho no MongoDB...",
       "pending",
     );
-    setTriggerValue("autosave", {
+    setTriggerValue("draft_save", {
       document: clone(state.doc),
       revision: state.revision,
-      savedAt: nowIso(),
-      explicit: true,
+      requestedAt: nowIso(),
       navigation,
     });
-    if (navigation) state.dirty = false;
-  }
-
-  function protectCurrentDocumentLocally() {
-    if (!canModify()) return null;
-    const payload = writeLocalDraft(state.projectId, state.userId, state.doc.flow.id, state.revision, state.doc);
-    if (!payload) {
-      updateSaveState("Falha ao proteger a alteração local", "error");
-      return null;
-    }
-    state.lastAutosaveFingerprint = fingerprintDocument();
-    state.lastLocalDraftAt = payload.savedAt;
-    return payload;
   }
 
   function markDirty() {
     state.dirty = true;
     state.doc.flow.updatedAt = nowIso();
-    // Persistência síncrona no navegador: qualquer rerun do Streamlit que aconteça
-    // logo após a alteração encontra o documento atualizado, em vez do último draft
-    // existente no MongoDB. A sincronização com o banco continua explícita.
-    const protectedDraft = protectCurrentDocumentLocally();
-    updateSaveState(
-      protectedDraft ? "Alterações protegidas localmente · pendentes no banco" : "Alterações pendentes",
-      protectedDraft ? "pending" : "error",
-    );
-    scheduleAutosave();
+    rememberWorkingSession();
+    updateSaveState("Alterações pendentes — ainda não salvas no banco", "pending");
   }
 
   function hasPendingDatabaseChanges() {
@@ -665,7 +670,7 @@ export default function flowEditor(component) {
     const pending = state.pendingNavigation;
     hideNavigationWarning();
     if (!pending) return;
-    if (saveToDatabase) syncDraftToMongo({ navigation: true });
+    if (saveToDatabase) saveDraftToMongo({ navigation: true });
     state.allowNavigationOnce = true;
     setTimeout(() => {
       const element = pending.target;
@@ -843,6 +848,15 @@ export default function flowEditor(component) {
       header.addEventListener("click", (event) => {
         if (event.target === handle) return;
         selectItem("lane", lane.id);
+      });
+      header.addEventListener("dblclick", (event) => {
+        if (event.target === handle) return;
+        event.preventDefault();
+        event.stopPropagation();
+        selectItem("lane", lane.id);
+        const laneNameInput = propertiesBody.querySelector('[data-field="lane-name"]');
+        laneNameInput?.focus();
+        laneNameInput?.select();
       });
       handle.addEventListener("pointerdown", (event) => beginLaneResize(event, lane.id, box.height));
       laneEl.appendChild(header);
@@ -1885,7 +1899,44 @@ export default function flowEditor(component) {
     return row;
   }
 
+  function protectEditorControl(control) {
+    control.dataset.editorControl = "true";
+    ["keydown", "keyup", "keypress"].forEach((eventName) => {
+      control.addEventListener(eventName, (event) => event.stopPropagation());
+    });
+    control.addEventListener("pointerdown", (event) => event.stopPropagation());
+    control.addEventListener("dblclick", (event) => event.stopPropagation());
+    return control;
+  }
+
+  function isLiveTextControl(control, eventName) {
+    if (eventName !== "change") return false;
+    if (control.tagName === "TEXTAREA") return true;
+    return control.tagName === "INPUT" && ["text", "search", "url", "email"].includes(String(control.type || "text").toLowerCase());
+  }
+
   function bindCommit(control, callback, eventName = "change") {
+    protectEditorControl(control);
+    if (isLiveTextControl(control, eventName)) {
+      let checkpointTaken = false;
+      let changed = false;
+      control.addEventListener("focus", () => { checkpointTaken = false; changed = false; });
+      control.addEventListener("input", () => {
+        if (!canModify()) return;
+        if (!checkpointTaken) { checkpoint(); checkpointTaken = true; }
+        callback(control);
+        changed = true;
+        markDirty();
+        scheduleCanvasRender();
+      });
+      control.addEventListener("blur", () => {
+        if (!changed) return;
+        callback(control);
+        scheduleCanvasRender();
+        changed = false;
+      });
+      return;
+    }
     control.addEventListener(eventName, () => mutate(() => callback(control)));
   }
 
@@ -1902,6 +1953,7 @@ export default function flowEditor(component) {
     });
     const input = el("textarea");
     input.placeholder = "Adicionar comentário. Use @usuario para mencionar.";
+    protectEditorControl(input);
     const button = el("button", "", "Comentar");
     button.type = "button";
     button.disabled = !canModify();
@@ -2112,7 +2164,7 @@ export default function flowEditor(component) {
     const order = numberInput("lane-order", lane.order, 1);
     bindCommit(order, (input) => { lane.order = Math.max(1, Number(input.value) || 1); });
     const height = numberInput("lane-height", lane.height, 110);
-    bindCommit(height, (input) => { lane.height = clamp(Number(input.value) || 240, 110, 2400); });
+    bindCommit(height, (input) => { resizeLaneKeepingRelativePositions(lane.id, Number(input.value) || 240); });
     const color = el("input");
     color.type = "color";
     color.value = lane.color || "#EEF2FF";
@@ -2192,15 +2244,28 @@ export default function flowEditor(component) {
     }
   }
 
-  function renderAll() {
+  function renderCanvasOnly() {
     updateWorldSize();
     renderViewport();
     renderLanes();
     renderNodes();
     renderEdges();
-    renderProperties();
     renderHeaderAndStatus();
     renderMinimap();
+  }
+
+  let pendingVisualFrame = 0;
+  function scheduleCanvasRender() {
+    if (pendingVisualFrame) return;
+    pendingVisualFrame = requestAnimationFrame(() => {
+      pendingVisualFrame = 0;
+      if (!state.destroyed) renderCanvasOnly();
+    });
+  }
+
+  function renderAll() {
+    renderCanvasOnly();
+    renderProperties();
   }
 
   function selectItem(kind, id) {
@@ -2234,7 +2299,7 @@ export default function flowEditor(component) {
       });
       state.selected = { kind: "node", id };
       state.selectedNodeIds = new Set([id]);
-      fitLanesToContent({ repack: true, shrink: true });
+      resolveMovedNodeOverlaps([id]);
     });
   }
 
@@ -2272,7 +2337,7 @@ export default function flowEditor(component) {
       state.doc.edges.push(...internalEdges);
       state.selectedNodeIds = new Set(duplicates.map((node) => node.id));
       state.selected = { kind: "node", id: duplicates[0].id };
-      fitLanesToContent({ repack: true, shrink: true });
+      resolveMovedNodeOverlaps(duplicates.map((node) => node.id));
     }, sources.length > 1 ? `${sources.length} cards duplicados` : "Elemento duplicado");
   }
 
@@ -2293,7 +2358,7 @@ export default function flowEditor(component) {
       }
       state.selected = null;
       state.selectedNodeIds = new Set();
-      fitLanesToContent({ repack: true, shrink: true });
+      fitLanesToContent({ repack: false, shrink: true });
     }, selectedIds.size > 1 ? `${selectedIds.size} cards excluídos` : "Item excluído");
   }
 
@@ -2400,7 +2465,10 @@ export default function flowEditor(component) {
       const lane = getLane(state.dragging.id);
       if (!lane) return;
       const point = worldPoint(event.clientX, event.clientY);
-      lane.height = clamp(state.dragging.initialHeight + (point.y - state.dragging.start.y), 110, 2400);
+      const nextHeight = clamp(state.dragging.initialHeight + (point.y - state.dragging.start.y), 110, 2400);
+      const changed = resizeLaneKeepingRelativePositions(lane.id, nextHeight);
+      state.dragging.moved = state.dragging.moved || changed;
+      updateWorldSize();
       renderLanes();
       renderNodes();
       renderEdges();
@@ -2456,7 +2524,7 @@ export default function flowEditor(component) {
       if (dragState.moved) {
         state.history.push(dragState.snapshot);
         state.future = [];
-        fitLanesToContent({ repack: true, shrink: true });
+        if (dragState.kind === "node-group") resolveMovedNodeOverlaps(dragState.ids);
         markDirty();
       }
       renderAll();
@@ -3109,11 +3177,10 @@ export default function flowEditor(component) {
     if (!canModify()) return toast("Seu acesso é somente leitura.", "warning");
     const issues = validationReport().filter((issue) => issue.level === "error");
     if (issues.length) toast(`O fluxo possui ${issues.length} erro(s) e será salvo como rascunho.`, "warning");
-    clearAutosaveTimer();
     state.doc.flow.updatedAt = nowIso();
     $('[data-role="save-state"]').textContent = "Salvando versão...";
     $('[data-role="save-state"]').style.color = "var(--fe-primary)";
-    persistLocalDraft();
+    rememberWorkingSession();
     updateSaveState("Salvando versão no MongoDB...", "pending");
     setTriggerValue("save", { document: clone(state.doc), revision: state.revision, validationErrors: issues.length });
   }
@@ -3674,7 +3741,7 @@ export default function flowEditor(component) {
     else if (action === "export-png") exportPng();
     else if (action === "search-prev") updateSearch(state.searchQuery, -1);
     else if (action === "search-next") updateSearch(state.searchQuery, 1);
-    else if (action === "sync-draft") syncDraftToMongo();
+    else if (action === "save-draft") saveDraftToMongo();
     else if (action === "save") save();
     else if (action === "add-lane") addLane();
     else if (action === "close-modal") $('[data-role="modal"]').hidden = true;
@@ -3683,8 +3750,21 @@ export default function flowEditor(component) {
     else if (action === "nav-save") resumePendingNavigation(true);
   }
 
+  function isEditingText(event) {
+    const candidates = [];
+    if (event?.target) candidates.push(event.target);
+    if (document.activeElement) candidates.push(document.activeElement);
+    if (typeof event?.composedPath === "function") candidates.push(...event.composedPath());
+    return candidates.some((candidate) => {
+      if (!(candidate instanceof Element)) return false;
+      if (["INPUT", "TEXTAREA", "SELECT", "OPTION"].includes(candidate.tagName)) return true;
+      if (candidate.isContentEditable) return true;
+      return Boolean(candidate.closest?.('[data-editor-control="true"], [contenteditable="true"], [role="textbox"], [role="combobox"]'));
+    });
+  }
+
   function onKeyDown(event) {
-    if (["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
+    if (isEditingText(event)) return;
     if (event.code === "Space") { state.spaceDown = true; event.preventDefault(); }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redo() : undo(); }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); }
@@ -3809,34 +3889,18 @@ export default function flowEditor(component) {
 
   palette();
   bindEvents();
-  pruneLocalDrafts(state.projectId, state.userId, state.doc.flow.id, state.revision);
-  if (restoredLocalDraft) {
-    updateSaveState("Rascunho local recuperado", "success");
-    setTimeout(() => toast("As alterações locais mais recentes foram recuperadas e preservadas.", "success"), 120);
+  clearLegacyDraftStorage();
+  if (restoredWorkingSession) {
+    updateSaveState("Alterações pendentes recuperadas da sessão atual", "pending");
+    setTimeout(() => toast("A edição em andamento foi preservada durante o rerun da página.", "info"), 120);
   } else {
-    state.lastAutosaveFingerprint = fingerprintDocument();
-    updateSaveState("Alterações sincronizadas", "muted");
+    updateSaveState("Sem alterações pendentes", "muted");
   }
   const interactiveControl = $('[data-role="interactive-play"]');
   if (interactiveControl) interactiveControl.checked = state.doc.settings.interactivePlayback !== false;
-  ensureUnassignedLane();
-  const initialLayoutProblems = countLayoutProblems();
-  const repairedLargeLayout = state.doc.nodes.length >= 60
-    && (initialLayoutProblems.outside > 0 || initialLayoutProblems.overlaps > 2);
-  let automaticLaneAdjustment = { changed: false, moved: 0 };
-  if (repairedLargeLayout) layoutDocumentInPlace();
-  else {
-    normalizeNodesIntoLanes();
-    automaticLaneAdjustment = fitLanesToContent({ repack: true, shrink: true });
-  }
+  // Abrir um fluxo nunca reorganiza, redimensiona ou corrige o documento automaticamente.
+  // Mudanças de layout só acontecem após uma ação explícita do usuário.
   renderAll();
-  if (repairedLargeLayout) {
-    markDirty();
-    setTimeout(() => toast("O fluxo grande foi reorganizado dentro das raias. Salve para persistir o novo layout.", "success"), 120);
-  } else if (automaticLaneAdjustment.changed || automaticLaneAdjustment.moved) {
-    markDirty();
-    setTimeout(() => toast("As raias foram ajustadas automaticamente para evitar cards sobrepostos.", "info"), 120);
-  }
   setTimeout(() => {
     if (state.initialNodeId && getNode(state.initialNodeId)) {
       selectItem("node", state.initialNodeId);
@@ -3868,6 +3932,8 @@ export default function flowEditor(component) {
     window.removeEventListener("beforeunload", beforeUnloadGuard);
     try { window.parent?.removeEventListener("beforeunload", beforeUnloadGuard); } catch (_) { /* componente isolado */ }
     clearPlaybackTimer();
-    clearAutosaveTimer();
+    if (pendingVisualFrame) cancelAnimationFrame(pendingVisualFrame);
+    if (state.dirty) rememberWorkingSession();
+    else clearWorkingSession();
   };
 }

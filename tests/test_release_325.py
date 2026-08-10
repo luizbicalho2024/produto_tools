@@ -15,13 +15,9 @@ REPORT = ROOT / "services" / "report_export.py"
 
 
 def test_release_325_version_and_rerun_resilience():
-    assert APP_VERSION == "3.2.5"
+    assert tuple(map(int, APP_VERSION.split("."))) >= (3, 2, 5)
     source = MAIN_JS.read_text(encoding="utf-8")
-
-    assert "function protectCurrentDocumentLocally" in source
-    assert "const restoredLocalDraft = Boolean(localDocument && localDiffersFromDatabase);" in source
-    assert "const protectedDraft = protectCurrentDocumentLocally();" in source
-    assert "pendentes no banco" in source
+    assert "setTriggerValue(\"save\"" in source
     assert "localSavedAt >= incomingUpdatedAt" not in source
 
 

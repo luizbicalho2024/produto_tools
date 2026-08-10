@@ -4,7 +4,7 @@
 param(
     [string]$RepositoryUrl = "https://github.com/luizbicalho2024/produto_tools.git",
     [string]$Branch = "main",
-    [string]$CommitMessage = "Atualiza Produto Tools 3.2.5 - editor persistente e PDF legivel",
+    [string]$CommitMessage = "Atualiza Produto Tools 3.2.6.1 - corrige publicador PowerShell 5.1",
     [switch]$SkipTests,
     [switch]$StrictTests
 )
@@ -96,7 +96,7 @@ $Destination = Join-Path $Parent ("produto_tools_publicacao_" + $Timestamp)
 $OriginalLocation = Get-Location
 
 try {
-    Write-Step "Produto Tools 3.2.5 - Publicacao segura"
+    Write-Step "Produto Tools 3.2.6.1 - Publicacao segura"
     Write-Host ("Origem: " + $Source)
     Write-Host ("Clone:  " + $Destination)
 
@@ -166,10 +166,12 @@ try {
 from pathlib import Path
 checks = {
     'components/flow_editor/frontend/index.html': ['Exportar visual'],
-    'components/flow_editor/frontend/main.js': ['fitLanesToContent', 'selectedNodeIds', 'decisionEdgeSemantic', 'protectCurrentDocumentLocally', 'pendentes no banco'],
+    'components/flow_editor/frontend/main.js': ['fitLanesToContent', 'selectedNodeIds', 'decisionEdgeSemantic', 'FLOW_EDITOR_RUNTIME_CACHE', 'saveDraftToMongo', 'isEditingText', 'protectEditorControl', 'resolveMovedNodeOverlaps', 'resizeLaneKeepingRelativePositions'],
     'components/flow_editor/frontend/styles.css': ['top: -13px', 'translateX(-50%)'],
-    'pages/5_Editor_de_Fluxos.py': ['Downloads do fluxo', 'flow_only_pdf', 'full_documentation_pdf', 'cached_export_bundle'],
+    'pages/5_Editor_de_Fluxos.py': ['Downloads do fluxo', 'flow_only_pdf', 'full_documentation_pdf', 'cached_export_bundle', 'draft_save_payload'],
+    'components/flow_editor/component.py': ['produto_tools_flow_editor_v326', 'on_draft_save_change', 'sessionEpoch'],
     'services/report_export.py': ['flow_only_pdf', 'full_documentation_pdf', 'export_bundle', '_append_dense_flow_detail_pages', 'description_lines = _wrap_text_lines'],
+    'schemas/flowchart_schema.py': ['settings.pop("autosaveSeconds", None)'],
 }
 missing = []
 for file_name, tokens in checks.items():
@@ -177,14 +179,40 @@ for file_name, tokens in checks.items():
     for token in tokens:
         if token not in text:
             missing.append(f'{file_name}: {token}')
+forbidden = {
+    'components/flow_editor/frontend/main.js': ['scheduleAutosave', 'persistLocalDraft', 'setTriggerValue("autosave"'],
+    'components/flow_editor/component.py': ['autosave_seconds', 'on_autosave_change'],
+    'pages/5_Editor_de_Fluxos.py': ['getattr(result, "autosave"'],
+}
+for file_name, tokens in forbidden.items():
+    text = Path(file_name).read_text(encoding='utf-8')
+    for token in tokens:
+        if token in text:
+            missing.append(f'{file_name}: recurso antigo ainda presente: {token}')
 if missing:
     raise RuntimeError('Recursos ausentes: ' + '; '.join(missing))
 '@
 
-                Invoke-PythonCaptured `
-                    -Launcher $PythonLauncher `
-                    -Arguments @("-c", $FeatureScript) `
-                    -Label "Validacao dos recursos 3.2.5" | Out-Null
+                # Windows PowerShell 5.1 altera aspas internas de argumentos nativos
+                # enviados com python -c. Gravar a validacao em arquivo temporario evita
+                # falsos negativos como settings.pop("autosaveSeconds", None).
+                $FeatureScriptPath = Join-Path `
+                    ([System.IO.Path]::GetTempPath()) `
+                    ("produto_tools_validate_" + [Guid]::NewGuid().ToString("N") + ".py")
+                try {
+                    $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+                    [System.IO.File]::WriteAllText($FeatureScriptPath, $FeatureScript, $Utf8NoBom)
+
+                    Invoke-PythonCaptured `
+                        -Launcher $PythonLauncher `
+                        -Arguments @($FeatureScriptPath) `
+                        -Label "Validacao dos recursos 3.2.6.1" | Out-Null
+                }
+                finally {
+                    if (Test-Path -LiteralPath $FeatureScriptPath) {
+                        Remove-Item -LiteralPath $FeatureScriptPath -Force -ErrorAction SilentlyContinue
+                    }
+                }
                 Write-Host "OK - recursos da versao" -ForegroundColor Green
 
                 $NodeCommand = Get-Command node -ErrorAction SilentlyContinue
@@ -372,7 +400,7 @@ if missing:
     Invoke-NativeCaptured -Executable $GitExe -Arguments @("push", "origin", $Branch) -Label "Git push" | Out-Null
 
     Write-Host ""
-    Write-Host "Produto Tools 3.2.5 publicado com sucesso." -ForegroundColor Green
+    Write-Host "Produto Tools 3.2.6.1 publicado com sucesso." -ForegroundColor Green
     Write-Host ("Repositorio: " + $RepositoryUrl)
     Write-Host ("Branch:      " + $Branch)
     Write-Host ("Clone local: " + $Destination)

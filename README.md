@@ -1,23 +1,24 @@
-# Produto Tools 3.2.5 Professional
+# Produto Tools 3.2.6 Professional
+> **Hotfix 3.2.6.1:** o editor continua na base funcional 3.2.6. O publicador foi corrigido para Windows PowerShell 5.1, evitando falso erro na validação de `autosaveSeconds`.
 
 Aplicação Streamlit para modelagem, governança e publicação de processos, com autenticação compartilhada, persistência no MongoDB Atlas e projetos compostos por vários fluxos vinculados.
 
 
 
-## Novidades da versão 3.2.5
+## Novidades da versão 3.2.6
 
-- Editor resistente a reruns: cada alteração é protegida imediatamente no navegador antes de qualquer reconstrução do componente.
-- Rascunhos locais da mesma revisão sempre prevalecem sobre snapshots antigos do MongoDB até o usuário sincronizar ou salvar formalmente.
-- PDF do fluxo mostra título e mensagem/descrição dos cards e acrescenta páginas de detalhe por raia em diagramas densos.
-- Badge de criticidade foi movido para fora da área de texto do card.
+- Autosave removido do editor: nenhuma gravação automática no MongoDB ou `localStorage`.
+- Edição de cards, raias e conexões mantém foco durante a digitação.
+- Backspace/Delete atuam como edição de texto quando o foco está em inputs, textareas, selects ou conteúdo editável.
+- Rascunho é salvo somente por ação explícita do usuário.
+- Reruns do Streamlit preservam o documento em memória durante a sessão sem substituir a edição pelo snapshot do banco.
+- Abertura do fluxo não reorganiza nem altera o layout automaticamente.
+- Raias dinâmicas evitam sobreposição sem executar um repack global ao editar propriedades.
 
-- nova Central de Downloads no topo do Editor de Fluxos;
-- PDF **somente fluxo** com visão geral vetorial e, quando o diagrama é denso, páginas adicionais por raia com título, mensagem/descrição, responsável e contexto de conexões de cada card;
-- PDF **documentação completa** com capa, resumo executivo, visão do fluxo, raias, inventário de cards, decisões, conexões, qualidade, orientações de correção, matriz RACI e configurações;
-- pacote ZIP completo contendo JSON, os dois PDFs, relatório HTML, etapas CSV e RACI CSV;
-- nomes de arquivos incluem versão e revisão do fluxo;
-- menu interno do canvas passa a se chamar **Exportar visual** e concentra JSON local, SVG e PNG;
-- relatórios deixam de ficar espalhados entre diferentes áreas da tela.
+## Hotfix 3.2.6.1
+
+- Publicador compatível com Windows PowerShell 5.1 sem perda das aspas do script de validação.
+- A validação de recursos é gravada em um arquivo Python temporário e executada pelo caminho do arquivo, em vez de usar `python -c` para código com aspas internas.
 
 ## Novidades da versão 3.2.3
 

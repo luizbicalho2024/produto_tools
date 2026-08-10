@@ -22,7 +22,7 @@ def test_revised_sigyo_normalization_and_decisions():
     assert len(document["edges"]) == 203
     assert document["settings"]["layoutPreset"] == "compact"
     assert document["settings"]["edgeRouting"] == "corridor"
-    assert document["settings"]["autosaveSeconds"] == 10
+    assert "autosaveSeconds" not in document["settings"]
 
     decisions = {node["id"] for node in document["nodes"] if node["type"] == "decision"}
     outgoing = {node_id: 0 for node_id in decisions}
@@ -33,14 +33,13 @@ def test_revised_sigyo_normalization_and_decisions():
     assert min(outgoing.values()) >= 2
 
 
-def test_autosave_is_local_and_mongo_sync_is_explicit():
+def test_draft_persistence_is_manual_and_reruns_use_memory_only():
     source = MAIN_JS.read_text(encoding="utf-8")
-    assert "function writeLocalDraft" in source
-    assert "function persistLocalDraft" in source
-    assert "function syncDraftToMongo" in source
-    assert source.count('setTriggerValue("autosave"') == 1
-    assert 'action === "sync-draft"' in source
-
+    assert "function writeLocalDraft" not in source
+    assert "function persistLocalDraft" not in source
+    assert "FLOW_EDITOR_RUNTIME_CACHE" in source
+    assert "rememberWorkingSession" in source
+    assert "setTriggerValue(\"draft_save\"" in source
 
 def test_filter_layout_routing_and_dark_mode_guards_are_present():
     source = MAIN_JS.read_text(encoding="utf-8")

@@ -28,7 +28,6 @@
     "showGrid": true,
     "layoutPreset": "compact",
     "edgeRouting": "corridor-v2",
-    "autosaveSeconds": 10,
     "interactivePlayback": true
   },
   "viewport": {

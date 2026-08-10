@@ -300,12 +300,16 @@ approvable = can_approve(permission)
 touch_presence(selected_id, username, str(user.get("name") or username))
 presence = list_presence(selected_id, exclude_username=username)
 
-# Usa o rascunho automático somente quando ainda corresponde à revisão atual.
+# Rascunhos são sempre manuais: nunca substituem automaticamente a versão salva.
 draft = get_draft(selected_id, username)
-editor_document = record["document"]
-using_draft = bool(draft and draft.get("base_revision") == record["revision"])
-if using_draft:
-    editor_document = draft["document"]
+draft_valid = bool(draft and draft.get("base_revision") == record["revision"])
+draft_session_key = f"flow_manual_draft::{username}::{selected_id}::{record['revision']}"
+editor_epoch_key = f"flow_editor_epoch::{username}::{selected_id}"
+if not draft_valid:
+    st.session_state.pop(draft_session_key, None)
+using_draft = bool(draft_valid and st.session_state.get(draft_session_key, False))
+editor_document = draft["document"] if using_draft else record["document"]
+editor_session_epoch = int(st.session_state.get(editor_epoch_key, 0))
 
 page_header(
     "Editor de Processos e Projetos",
@@ -474,13 +478,39 @@ with export_help_col:
 
 if presence_text:
     st.info(f"Também visualizando este fluxo: {presence_text}")
-if using_draft:
-    col_draft_info, col_draft_discard = st.columns([4, 1])
-    col_draft_info.warning(f"Rascunho automático recuperado de {format_datetime(draft.get('updated_at'))}.")
-    if col_draft_discard.button("Descartar rascunho", use_container_width=True):
-        discard_draft(selected_id, username)
-        flash("Rascunho automático descartado.", "info")
-        st.rerun()
+if draft_valid:
+    if using_draft:
+        col_draft_info, col_use_saved, col_draft_discard = st.columns([4, 1.2, 1.2])
+        col_draft_info.warning(
+            f"Rascunho manual carregado de {format_datetime(draft.get('updated_at'))}. "
+            "Ele só será atualizado quando você clicar em Salvar rascunho."
+        )
+        if col_use_saved.button("Usar versão salva", use_container_width=True):
+            st.session_state[draft_session_key] = False
+            st.session_state[editor_epoch_key] = editor_session_epoch + 1
+            st.rerun()
+        if col_draft_discard.button("Descartar rascunho", use_container_width=True):
+            discard_draft(selected_id, username)
+            st.session_state.pop(draft_session_key, None)
+            st.session_state[editor_epoch_key] = editor_session_epoch + 1
+            flash("Rascunho manual descartado.", "info")
+            st.rerun()
+    else:
+        col_draft_info, col_draft_load, col_draft_discard = st.columns([4, 1.2, 1.2])
+        col_draft_info.info(
+            f"Existe um rascunho manual salvo em {format_datetime(draft.get('updated_at'))}. "
+            "Ele não é carregado automaticamente."
+        )
+        if col_draft_load.button("Carregar rascunho", use_container_width=True):
+            st.session_state[draft_session_key] = True
+            st.session_state[editor_epoch_key] = editor_session_epoch + 1
+            st.rerun()
+        if col_draft_discard.button("Descartar rascunho", use_container_width=True):
+            discard_draft(selected_id, username)
+            st.session_state.pop(draft_session_key, None)
+            st.session_state[editor_epoch_key] = editor_session_epoch + 1
+            flash("Rascunho manual descartado.", "info")
+            st.rerun()
 
 # Conflito de concorrência pendente.
 conflict = st.session_state.get("flow_conflict")
@@ -496,6 +526,8 @@ if conflict and conflict.get("flow_id") == selected_id:
     if reload_col.button("Recarregar versão atual", use_container_width=True):
         st.session_state.pop("flow_conflict", None)
         discard_draft(selected_id, username)
+        st.session_state.pop(draft_session_key, None)
+        st.session_state[editor_epoch_key] = editor_session_epoch + 1
         st.rerun()
     if copy_col.button("Salvar alterações como cópia", use_container_width=True):
         copy_doc = normalize_document(deepcopy(local_doc), username)
@@ -752,7 +784,7 @@ project_playback_config = {
     "mode": "project" if project else "flow",
 }
 
-component_key = f"flow_editor_v310_{selected_project_id or 'standalone'}_{selected_id}_{record['revision']}"
+component_key = f"flow_editor_v326_{selected_project_id or 'standalone'}_{selected_id}_{record['revision']}_{editor_session_epoch}"
 result = flow_editor(
     editor_document,
     key=component_key,
@@ -762,29 +794,33 @@ result = flow_editor(
     permission=permission or "viewer",
     flow_catalog=flow_catalog,
     comments=comments_for_editor,
-    autosave_seconds=int(editor_document.get("settings", {}).get("autosaveSeconds") or 10),
     project_id=selected_project_id,
     user_id=username,
     initial_node_id=initial_node_id,
     project_playback=project_playback_config,
+    session_epoch=editor_session_epoch,
     on_save_change=lambda: None,
-    on_autosave_change=lambda: None,
+    on_draft_save_change=lambda: None,
     on_open_flow_change=lambda: None,
     on_project_return_change=lambda: None,
     on_comment_create_change=lambda: None,
 )
 
-# Eventos emitidos pelo componente V2.
-autosave_payload = getattr(result, "autosave", None)
-if autosave_payload and editable:
+# Eventos emitidos pelo componente V2. Não existe autosave: rascunho só é gravado por ação explícita.
+draft_save_payload = getattr(result, "draft_save", None)
+if draft_save_payload and editable:
     try:
-        autosave_doc = autosave_payload.get("document") if isinstance(autosave_payload, dict) else None
-        autosave_revision = int(autosave_payload.get("revision", record["revision"])) if isinstance(autosave_payload, dict) else record["revision"]
-        if autosave_doc:
-            autosave_doc.setdefault("flow", {})["id"] = selected_id
-            save_draft(selected_id, username, autosave_doc, autosave_revision)
+        draft_doc = draft_save_payload.get("document") if isinstance(draft_save_payload, dict) else None
+        draft_revision = int(draft_save_payload.get("revision", record["revision"])) if isinstance(draft_save_payload, dict) else record["revision"]
+        if draft_doc:
+            draft_doc.setdefault("flow", {})["id"] = selected_id
+            save_draft(selected_id, username, draft_doc, draft_revision)
+            st.session_state[draft_session_key] = True
+            flash("Rascunho salvo manualmente no MongoDB.")
+            if not bool(draft_save_payload.get("navigation")):
+                st.rerun()
     except Exception as exc:
-        st.warning(f"O rascunho automático não pôde ser salvo: {exc}")
+        st.warning(f"O rascunho não pôde ser salvo: {exc}")
 
 comment_payload = getattr(result, "comment_create", None)
 if comment_payload and editable:
@@ -883,6 +919,7 @@ if save_payload and editable:
             save_reason="manual",
         )
         discard_draft(selected_id, username)
+        st.session_state.pop(draft_session_key, None)
         st.session_state["selected_flowchart_id"] = saved["id"]
         flash(f"Processo salvo na versão {saved['version']} e revisão {saved['revision']}.")
         st.rerun()

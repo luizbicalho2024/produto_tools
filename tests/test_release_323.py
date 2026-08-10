@@ -21,7 +21,7 @@ def test_release_version_and_component_features():
         "decisionEdgeSemantic",
         'event.button === 2',
         "navigationClickGuard",
-        "syncDraftToMongo({ navigation: true })",
+        "saveDraftToMongo({ navigation: true })",
         "hostDocument",
     ):
         assert token in source

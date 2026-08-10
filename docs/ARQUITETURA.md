@@ -1,4 +1,4 @@
-# Arquitetura — Produto Tools 3.2.5
+# Arquitetura — Produto Tools 3.2.6
 
 ## Camadas
 
@@ -61,7 +61,7 @@ O frontend calcula a ocupação horizontal dos cards de cada raia, distribui con
 
 ## Proteção de navegação
 
-O autosave periódico permanece local e silencioso. Quando existe diferença ainda não sincronizada com o MongoDB, o frontend intercepta a navegação disponível no documento host e apresenta as opções de permanecer, sair mantendo o rascunho local ou emitir a sincronização explícita antes de continuar. O `beforeunload` do navegador atua como proteção adicional.
+Não há autosave. Alterações ficam somente na memória da sessão do componente até uma ação explícita de **Salvar rascunho** ou **Salvar versão**. O cache volátil da aba existe apenas para impedir que reruns do Streamlit substituam a edição em andamento. A navegação com alterações pendentes exige confirmação e o `beforeunload` do navegador atua como proteção adicional.
 
 ## Semântica das decisões
 

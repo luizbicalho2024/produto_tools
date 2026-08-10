@@ -353,7 +353,7 @@ def save_draft(flowchart_id: str, username: str, document: dict, base_revision: 
         )
         return {"updated_at": now, "base_revision": int(base_revision)}
     except PyMongoError as exc:
-        raise RuntimeError("Falha ao salvar o rascunho automático.") from exc
+        raise RuntimeError("Falha ao salvar o rascunho manual.") from exc
 
 
 def get_draft(flowchart_id: str, username: str) -> dict[str, Any] | None:
@@ -363,7 +363,7 @@ def get_draft(flowchart_id: str, username: str) -> dict[str, Any] | None:
             return None
         return {"document": deepcopy(record.get("document") or {}), "base_revision": int(record.get("base_revision") or 0), "updated_at": record.get("updated_at")}
     except PyMongoError as exc:
-        raise RuntimeError("Falha ao carregar o rascunho automático.") from exc
+        raise RuntimeError("Falha ao carregar o rascunho manual.") from exc
 
 
 def discard_draft(flowchart_id: str, username: str) -> bool:

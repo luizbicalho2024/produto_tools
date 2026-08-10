@@ -4,7 +4,7 @@
       <span class="brand-mark">PT</span>
       <div>
         <strong data-role="flow-name">Editor de Processos</strong>
-        <small data-role="save-state">Alterações sincronizadas</small>
+        <small data-role="save-state">Sem alterações pendentes</small>
       </div>
     </div>
 
@@ -37,7 +37,7 @@
           <div class="toolbar-dropdown-note">PDF e pacote completo: use <strong>Downloads do fluxo</strong> acima do editor.</div>
         </div>
       </details>
-      <button type="button" data-action="sync-draft" class="button-soft" title="Sincronizar o rascunho local com o MongoDB">☁ Rascunho</button>
+      <button type="button" data-action="save-draft" class="button-soft" title="Salvar manualmente o estado atual como rascunho no MongoDB">Salvar rascunho</button>
       <button type="button" data-action="save" class="button-primary">Salvar versão</button>
       <input data-role="file-input" type="file" accept="application/json,.json" hidden>
     </div>
@@ -77,12 +77,13 @@
         </div>
         <div class="editor-hints">
           <strong>Atalhos</strong>
-          <span>Delete: excluir</span>
+          <span>Delete: excluir somente fora dos campos de edição</span>
           <span>Ctrl/Shift + clique: selecionar vários</span>
           <span>Shift + arrastar: seleção por área</span>
           <span>Ctrl+A: selecionar cards visíveis</span>
           <span>Ctrl+D: duplicar seleção</span>
           <span>Espaço ou botão direito: mover tela</span>
+          <span>Backspace/Delete funcionam normalmente ao editar textos</span>
         </div>
       </div>
     </aside>
@@ -175,8 +176,8 @@
     <section class="modal-card navigation-warning-card">
       <header><strong>Alterações ainda não estão no banco</strong></header>
       <div class="navigation-warning-body">
-        <p>Este fluxo possui alterações salvas apenas neste navegador. Escolha o que fazer antes de mudar de página.</p>
-        <small>Salvar no banco cria ou atualiza o rascunho no MongoDB, sem publicar uma nova versão formal.</small>
+        <p>Este fluxo possui alterações em andamento que ainda não foram enviadas ao banco. Escolha o que fazer antes de mudar de página.</p>
+        <small>Salvar rascunho envia manualmente o estado atual ao MongoDB, sem publicar uma nova versão formal.</small>
       </div>
       <footer class="navigation-warning-actions">
         <button type="button" data-action="nav-cancel">Continuar editando</button>

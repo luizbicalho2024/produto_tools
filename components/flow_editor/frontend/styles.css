@@ -1183,3 +1183,24 @@ button { color: inherit; }
   line-height: 1.35;
   color: var(--muted, #627d98);
 }
+
+/* 3.2.6 - campos do inspector sempre editaveis e independentes dos atalhos do canvas */
+.properties-body [data-editor-control="true"],
+.properties-body input,
+.properties-body textarea,
+.properties-body select {
+  pointer-events: auto;
+  position: relative;
+  z-index: 2;
+}
+.properties-body input:not([type="checkbox"]):not([type="radio"]),
+.properties-body textarea {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+.properties-body select,
+.properties-body input[type="color"] {
+  user-select: none;
+  -webkit-user-select: none;
+}

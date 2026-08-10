@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.2.6.1
+
+- Corrige falso negativo do publicador no Windows PowerShell 5.1 durante a validação de remoção do autosave.
+- A validação de recursos agora é executada por arquivo Python temporário, evitando perda de aspas em argumentos nativos enviados com `python -c`.
+- Nenhuma regra funcional do editor 3.2.6 foi alterada nesta revisão; trata-se de hotfix do processo de publicação.
+
 ## 3.2.5 — Persistência de edição e PDF legível
 
 - Proteção síncrona de cada alteração no armazenamento local do navegador.
