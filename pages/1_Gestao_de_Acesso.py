@@ -76,13 +76,13 @@ with create_tab:
         name = right.text_input("Nome completo")
         email = left.text_input("E-mail")
         role = right.selectbox("Perfil", role_options, format_func=role_label)
-        password = st.text_input("Senha inicial", type="password", help="Mínimo de oito caracteres.")
+        password = st.text_input("Senha inicial", type="password", help="Mínimo de doze caracteres.")
         submitted = st.form_submit_button("Cadastrar usuário", type="primary", use_container_width=True)
     if submitted:
         if not all([username.strip(), name.strip(), email.strip(), password]):
             st.warning("Preencha todos os campos.")
-        elif len(password) < 8:
-            st.warning("A senha deve possuir pelo menos oito caracteres.")
+        elif len(password) < 12:
+            st.warning("A senha deve possuir pelo menos doze caracteres.")
         elif db.add_user(username, name, email, password, role):
             db.add_log(current_user["username"], "Criou usuário compartilhado", {"usuario": username.strip().lower(), "perfil": role})
             st.success("Usuário criado e disponibilizado nas duas aplicações.")
@@ -108,8 +108,8 @@ with edit_tab:
         if submitted:
             if selected_username == current_user["username"] and not active:
                 st.error("Você não pode desativar a própria conta durante a sessão.")
-            elif new_password and len(new_password) < 8:
-                st.warning("A nova senha deve possuir pelo menos oito caracteres.")
+            elif new_password and len(new_password) < 12:
+                st.warning("A nova senha deve possuir pelo menos doze caracteres.")
             elif db.update_user(selected_username, new_name, new_email, new_role, active):
                 if new_password:
                     db.update_user_password(selected_username, new_password)
@@ -126,12 +126,12 @@ with delete_tab:
     if selected_label:
         selected = options[selected_label]
         selected_username = str(selected.get("username") or "")
-        st.warning(f"A exclusão de **@{selected_username}** será permanente e afetará também o Simulador-Telemetria.")
+        st.warning(f"A desativação de **@{selected_username}** preservará histórico e referências e afetará também o acesso compartilhado.")
         confirmation = st.text_input("Digite o usuário para confirmar")
-        if st.button("Excluir usuário", type="primary", disabled=confirmation.strip().lower() != selected_username.lower()):
+        if st.button("Desativar usuário", type="primary", disabled=confirmation.strip().lower() != selected_username.lower()):
             if db.delete_user(selected_username):
                 db.add_log(current_user["username"], "Excluiu usuário compartilhado", {"usuario": selected_username})
-                st.success("Usuário excluído das duas aplicações.")
+                st.success("Usuário desativado, com histórico preservado.")
                 st.rerun()
             else:
                 st.error("A exclusão foi bloqueada. O último administrador ativo não pode ser removido.")

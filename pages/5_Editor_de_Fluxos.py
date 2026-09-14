@@ -67,6 +67,7 @@ from services.report_export import (
     raci_csv,
 )
 from services.template_library import built_in_templates, clone_template
+from services.portfolio_service import build_flow_catalog
 
 st.set_page_config(page_title="Editor de Processos e Projetos", page_icon="🧭", layout="wide")
 apply_global_styles(full_width=True)
@@ -738,31 +739,7 @@ with manage_tabs[5]:
                 st.rerun()
 
 st.divider()
-flow_catalog = []
-for item in flows:
-    catalog_item = {
-        "id": item["id"], "name": item["name"], "status": item.get("workflow_status", "draft"),
-        "role": item.get("project_role", ""), "group": item.get("project_group", ""),
-        "entries": [], "exits": [],
-    }
-    target_record = get_flowchart(item["id"], actor_username=username, is_admin=is_admin)
-    if target_record:
-        target_doc = target_record.get("document") or {}
-        target_nodes = target_doc.get("nodes", [])
-        target_edges = [edge for edge in target_doc.get("edges", []) if edge.get("enabled", True)]
-        incoming_ids = {str(edge.get("target") or "") for edge in target_edges}
-        outgoing_ids = {str(edge.get("source") or "") for edge in target_edges}
-        catalog_item["entries"] = [
-            {"id": str(node.get("id") or ""), "label": str((node.get("data") or {}).get("label") or node.get("id"))}
-            for node in target_nodes
-            if node.get("type") == "start" or str(node.get("id") or "") not in incoming_ids
-        ][:30]
-        catalog_item["exits"] = [
-            {"id": str(node.get("id") or ""), "label": str((node.get("data") or {}).get("label") or node.get("id"))}
-            for node in target_nodes
-            if node.get("type") == "end" or str(node.get("id") or "") not in outgoing_ids
-        ][:30]
-    flow_catalog.append(catalog_item)
+flow_catalog = build_flow_catalog(flows)
 comments_for_editor = serialize_comments(list_comments(selected_id, include_resolved=True))
 
 auto_play_request = st.session_state.get("project_auto_play_request")

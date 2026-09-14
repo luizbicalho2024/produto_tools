@@ -27,7 +27,7 @@ def permission_for(record: dict[str, Any], username: str, *, is_admin: bool = Fa
 
 
 def can_edit(permission: str | None) -> bool:
-    return permission in {"owner", "editor", "reviewer", "approver"}
+    return permission in {"owner", "editor"}
 
 
 def can_review(permission: str | None) -> bool:

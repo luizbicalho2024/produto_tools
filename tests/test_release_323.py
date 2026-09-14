@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN_JS = ROOT / "components" / "flow_editor" / "frontend" / "main.js"
@@ -10,7 +11,10 @@ CONFIG = ROOT / "core" / "configuration.py"
 
 
 def test_release_version_and_component_features():
-    assert 'APP_VERSION = "3.2.' in CONFIG.read_text(encoding="utf-8")
+    config_source = CONFIG.read_text(encoding="utf-8")
+    match = re.search(r'APP_VERSION\s*=\s*"(\d+\.\d+\.\d+)"', config_source)
+    assert match is not None
+    assert tuple(int(part) for part in match.group(1).split(".")) >= (3, 2, 3)
     source = MAIN_JS.read_text(encoding="utf-8")
     for token in (
         "autoFitLanes",

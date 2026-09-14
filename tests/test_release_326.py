@@ -12,7 +12,7 @@ EDITOR_PAGE = ROOT / "pages" / "5_Editor_de_Fluxos.py"
 
 
 def test_release_326_version_and_autosave_removed():
-    assert APP_VERSION == "3.2.6"
+    assert tuple(int(part) for part in APP_VERSION.split(".")) >= (3, 2, 6)
     js = MAIN_JS.read_text(encoding="utf-8")
     component = COMPONENT.read_text(encoding="utf-8")
     page = EDITOR_PAGE.read_text(encoding="utf-8")

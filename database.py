@@ -336,7 +336,7 @@ def add_user(username: str, name: str, email: str, password: str, role: str) -> 
     normalized_email = str(email or "").strip().lower()
     clean_name = str(name or "").strip()
     clean_role = role if role in VALID_USER_ROLES else "user"
-    if not normalized_username or not clean_name or not normalized_email or len(password) < 8:
+    if not normalized_username or not clean_name or not normalized_email or len(password) < 12:
         return False
 
     now = utc_now()
@@ -406,7 +406,7 @@ def update_user(
 
 def update_user_password(username: str, new_password: str) -> bool:
     users_collection = get_users_collection()
-    if users_collection is None or len(new_password) < 8:
+    if users_collection is None or len(new_password) < 12:
         return False
     try:
         result = users_collection.update_one(
@@ -442,7 +442,11 @@ def delete_user(username: str) -> bool:
             <= 1
         ):
             return False
-        return users_collection.delete_one({"username": normalized}).deleted_count > 0
+        result = users_collection.update_one(
+            {"username": normalized},
+            {"$set": {"active": False, "deleted_at": utc_now(), "updated_at": utc_now()}},
+        )
+        return result.matched_count > 0
     except PyMongoError:
         log.exception("Falha ao excluir usuário.")
         return False
