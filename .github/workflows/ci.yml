@@ -13,11 +13,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
       - name: Instalar dependências
         run: pip install -r requirements-dev.txt
       - name: Compilar Python
         run: python -m compileall -q .
-      - name: Executar testes
-        run: pytest -q
+      - name: Lint crítico
+        run: ruff check core services schemas pages tests --select E9,F63,F7,F82
+      - name: Executar testes e cobertura
+        run: pytest -q --cov=core --cov=services --cov=schemas --cov-report=term-missing
+      - name: Segurança estática
+        run: bandit -q -r core services -x tests || true
+      - name: Auditoria de dependências
+        run: pip-audit -r requirements.txt || true
       - name: Validar JavaScript
         run: node --check components/flow_editor/frontend/main.js

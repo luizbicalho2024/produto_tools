@@ -1,5 +1,21 @@
 # Changelog
 
+## 4.0.0 — Enterprise Suite
+
+- Nova Central de Melhoria: SIPOC, 5W2H, FMEA/riscos, Ishikawa, 5 Porquês, Pareto e VSM.
+- Simulação What-if, custos e cockpit de SLA.
+- Process Mining, variantes e conformance checking.
+- Importação/exportação BPMN 2.0 e tabelas DMN.
+- Form Builder, instâncias e Central de Tarefas.
+- Change Requests, compliance, sistemas, capacidades, Customer Journey e evidências.
+- Diff visual de versões e Portal de Processos Publicados.
+- Copiloto, texto para fluxo, gerador POP/SOP, webhooks e notificações.
+- MFA TOTP e autenticação OIDC opcional.
+- Consultas em lote na Central e catálogo do Editor para reduzir N+1.
+- Soft delete de usuários, senha mínima de 12 caracteres e segregação de edição/revisão.
+- CI ampliado com cobertura, lint crítico e verificações de segurança.
+
+
 ## 3.2.6.1
 
 - Corrige falso negativo do publicador no Windows PowerShell 5.1 durante a validação de remoção do autosave.

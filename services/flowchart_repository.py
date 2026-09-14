@@ -124,7 +124,7 @@ def permission_for(record: dict[str, Any], username: str, *, is_admin: bool = Fa
 
 
 def can_edit(permission: str | None) -> bool:
-    return permission in {"owner", "editor", "reviewer", "approver"}
+    return permission in {"owner", "editor"}
 
 
 def can_review(permission: str | None) -> bool:
@@ -462,7 +462,15 @@ def transition_workflow(flowchart_id: str, actor: str, action: str, *, comment: 
         raise ValueError(f"A transição {action} não é permitida a partir de {current}.")
     if not permission_fn(permission):
         raise FlowPermissionError("Seu perfil não possui permissão para esta transição.")
-    update: dict[str, Any] = {"workflow_status": target, "status": target, "updated_at": utc_now(), "last_saved_by": actor}
+    if action in {"approve", "publish"} and not is_admin:
+        last_editor = str(record.get("last_saved_by") or "").strip().lower()
+        if last_editor and last_editor == actor.strip().lower():
+            raise FlowPermissionError(
+                "Regra de quatro-olhos: quem realizou a última edição não pode aprovar/publicar a própria alteração."
+            )
+    # Transicoes de governanca nao sao edicoes de conteudo.
+    # Mantemos last_saved_by apontando para quem realmente alterou o fluxo.
+    update: dict[str, Any] = {"workflow_status": target, "status": target, "updated_at": utc_now()}
     if target == "published":
         update["published_version"] = int(record.get("current_version") or 1)
         update["published_at"] = utc_now()
@@ -473,6 +481,18 @@ def transition_workflow(flowchart_id: str, actor: str, action: str, *, comment: 
         "action": action, "comment": comment.strip(), "created_by": actor.strip().lower(), "created_at": utc_now(),
     })
     db.add_log(actor, "Alterou status de governança", {"flowchart_id": flowchart_id, "from": current, "to": target, "action": action})
+    try:
+        from services.event_bus import emit_event
+        event_name = {
+            "approved": "process.approved",
+            "published": "process.published",
+            "archived": "process.archived",
+            "draft": "process.changes_requested",
+            "in_review": "process.review_requested",
+        }.get(target, "process.status_changed")
+        emit_event(event_name, {"flow_id": str(flowchart_id), "from": current, "to": target, "action": action, "actor": actor})
+    except Exception:
+        pass
     return {"from": current, "to": target}
 
 
@@ -485,12 +505,28 @@ def add_comment(flowchart_id: str, target_kind: str, target_id: str, content: st
     if not clean:
         raise ValueError("O comentário não pode ficar vazio.")
     comment_id = f"comment_{uuid4().hex[:12]}"
+    clean_mentions = sorted({item.strip().lower() for item in (mentions or []) if item.strip()})
     _collection(FLOWCHART_COMMENTS_COLLECTION).insert_one({
         "_id": comment_id, "flowchart_id": str(flowchart_id), "target_kind": target_kind,
         "target_id": str(target_id), "content": clean, "author": author.strip().lower(),
-        "mentions": sorted({item.strip().lower() for item in (mentions or []) if item.strip()}),
+        "mentions": clean_mentions,
         "resolved": False, "created_at": utc_now(), "updated_at": utc_now(),
     })
+    if clean_mentions:
+        try:
+            from services.enterprise_repository import add_notification
+            from services.event_bus import emit_event
+            for mentioned in clean_mentions:
+                add_notification(
+                    mentioned,
+                    "Você foi mencionado em um comentário",
+                    clean[:500],
+                    category="comment",
+                    link=f"flow:{flowchart_id}",
+                )
+            emit_event("comment.mentioned", {"flow_id": str(flowchart_id), "comment_id": comment_id, "author": author, "mentions": clean_mentions})
+        except Exception:
+            pass
     return comment_id
 
 

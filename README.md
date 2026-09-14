@@ -246,3 +246,13 @@ Sem testes locais:
 ```powershell
 .\atualizar_produto_tools_v3_2_2_main.ps1 -SkipTests
 ```
+
+## Produto Tools 4.0 Enterprise Suite
+
+A versão 4.0 adiciona melhoria contínua (SIPOC, 5W2H, FMEA, Ishikawa, Pareto e VSM),
+simulação e custos, Process Mining e conformance, BPMN/DMN, execução real com formulários
+e tarefas, Change Requests, compliance, catálogo de sistemas, capacidades, Customer Journey,
+evidências, portal de processos publicados, copiloto de IA, POP/SOP, webhooks, notificações,
+MFA TOTP e SSO/OIDC opcional.
+
+Consulte `docs/ENTERPRISE_SUITE_4.md` para configuração e detalhes.

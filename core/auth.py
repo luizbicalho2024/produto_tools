@@ -21,6 +21,16 @@ LOGIN_FIELDS = {
 _AUTHENTICATOR_KEY = "_produto_tools_authenticator"
 _AUTHENTICATOR_SIGNATURE_KEY = "_produto_tools_authenticator_signature"
 
+def _secret(name: str, default: Any = None) -> Any:
+    try:
+        value = st.secrets.get(name)
+    except Exception:
+        value = None
+    return value if value not in (None, "") else os.getenv(name, default)
+
+def auth_mode() -> str:
+    value = str(_secret("AUTH_MODE", "local") or "local").strip().lower()
+    return value if value in {"local", "oidc"} else "local"
 
 def _apply_profile_theme(profile: dict | None) -> None:
     if not isinstance(profile, dict):
@@ -38,60 +48,27 @@ def _apply_profile_theme(profile: dict | None) -> None:
         except Exception:
             pass
 
-
-def _credentials_signature(
-    credentials: dict,
-    cookie_name: str,
-    cookie_key: str,
-    cookie_expiry_days: int,
-) -> str:
+def _credentials_signature(credentials: dict, cookie_name: str, cookie_key: str, cookie_expiry_days: int) -> str:
     payload = {
         "credentials": credentials,
         "cookie_name": cookie_name,
         "cookie_key": cookie_key,
         "cookie_expiry_days": cookie_expiry_days,
     }
-    serialized = json.dumps(
-        payload,
-        sort_keys=True,
-        ensure_ascii=False,
-        default=str,
-        separators=(",", ":"),
-    ).encode("utf-8")
+    serialized = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(serialized).hexdigest()
 
-
 def build_authenticator() -> tuple[Any, dict]:
-    """Usa a mesma coleção de usuários e configuração do Simulador-Telemetria."""
     credentials = db.fetch_all_users_for_auth()
-    try:
-        cookie_name_value = st.secrets.get("AUTH_COOKIE_NAME")
-        cookie_key_value = st.secrets.get("AUTH_COOKIE_KEY")
-        cookie_expiry_value = st.secrets.get("AUTH_COOKIE_EXPIRY_DAYS")
-    except Exception:
-        cookie_name_value = None
-        cookie_key_value = None
-        cookie_expiry_value = None
-
-    cookie_name = str(
-        cookie_name_value or os.getenv("AUTH_COOKIE_NAME") or "simulador_telemetria_auth"
-    ).strip()
-    cookie_key = str(cookie_key_value or os.getenv("AUTH_COOKIE_KEY") or "").strip()
-    cookie_expiry_days = int(
-        cookie_expiry_value or os.getenv("AUTH_COOKIE_EXPIRY_DAYS") or 30
-    )
-
+    cookie_name = str(_secret("AUTH_COOKIE_NAME", "simulador_telemetria_auth") or "simulador_telemetria_auth").strip()
+    cookie_key = str(_secret("AUTH_COOKIE_KEY", "") or "").strip()
+    cookie_expiry_days = int(_secret("AUTH_COOKIE_EXPIRY_DAYS", 30) or 30)
     if len(cookie_key) < 32:
         raise RuntimeError("AUTH_COOKIE_KEY deve possuir pelo menos 32 caracteres.")
-
-    signature = _credentials_signature(
-        credentials, cookie_name, cookie_key, cookie_expiry_days
-    )
+    signature = _credentials_signature(credentials, cookie_name, cookie_key, cookie_expiry_days)
     existing = st.session_state.get(_AUTHENTICATOR_KEY)
-    existing_signature = st.session_state.get(_AUTHENTICATOR_SIGNATURE_KEY)
-    if existing is not None and existing_signature == signature:
+    if existing is not None and st.session_state.get(_AUTHENTICATOR_SIGNATURE_KEY) == signature:
         return existing, credentials
-
     authenticator = stauth.Authenticate(
         credentials,
         cookie_name,
@@ -103,23 +80,46 @@ def build_authenticator() -> tuple[Any, dict]:
     st.session_state[_AUTHENTICATOR_SIGNATURE_KEY] = signature
     return authenticator, credentials
 
+def _profile_by_email(email: str) -> dict | None:
+    normalized = str(email or "").strip().lower()
+    if not normalized:
+        return None
+    for item in db.get_all_users():
+        if item.get("active") is False:
+            continue
+        if str(item.get("email") or "").strip().lower() == normalized:
+            return db.get_user_profile(str(item.get("username") or ""))
+    return None
 
 def restore_authentication() -> None:
+    if auth_mode() == "oidc":
+        try:
+            logged = bool(st.user.is_logged_in)
+        except Exception:
+            logged = False
+        if not logged:
+            return
+        email = str(getattr(st.user, "email", "") or "")
+        profile = _profile_by_email(email)
+        if not profile:
+            return
+        st.session_state["authentication_status"] = True
+        st.session_state["username"] = profile["username"]
+        st.session_state["name"] = profile["name"]
+        st.session_state["role"] = profile["role"]
+        st.session_state["user_info"] = profile
+        _apply_profile_theme(profile)
+        return
+
     try:
         authenticator, _ = build_authenticator()
     except Exception:
         return
-
     if not st.session_state.get("authentication_status"):
         try:
-            authenticator.login(
-                location="unrendered",
-                key="produto_tools_background_login",
-                max_login_attempts=5,
-            )
+            authenticator.login(location="unrendered", key="produto_tools_background_login", max_login_attempts=5)
         except Exception:
             return
-
     username = str(st.session_state.get("username") or "").strip().lower()
     if st.session_state.get("authentication_status") and username:
         profile = db.get_user_profile(username)
@@ -128,7 +128,6 @@ def restore_authentication() -> None:
             st.session_state["role"] = profile["role"]
             st.session_state["user_info"] = profile
             _apply_profile_theme(profile)
-
 
 def current_user() -> dict | None:
     restore_authentication()
@@ -141,7 +140,6 @@ def current_user() -> dict | None:
         st.session_state["user_info"] = profile
     return profile
 
-
 def require_login() -> dict:
     restore_authentication()
     if not st.session_state.get("authentication_status"):
@@ -149,20 +147,17 @@ def require_login() -> dict:
         if st.button("Ir para o login", use_container_width=False):
             st.switch_page("login_app.py")
         st.stop()
-
     username = str(st.session_state.get("username") or "").strip().lower()
     profile = db.get_user_profile(username) if username else None
     if not profile:
         clear_auth_state()
         st.error("A conta está inativa ou não existe mais. Entre novamente.")
         st.stop()
-
     st.session_state["username"] = username
     st.session_state["role"] = profile["role"]
     st.session_state["user_info"] = profile
     _apply_profile_theme(profile)
     return profile
-
 
 def require_roles(roles: Iterable[str]) -> dict:
     user = require_login()
@@ -172,36 +167,30 @@ def require_roles(roles: Iterable[str]) -> dict:
         st.stop()
     return user
 
-
 def require_admin() -> dict:
     return require_roles(["admin"])
 
-
 def clear_auth_state(*, keep_authenticator: bool = False) -> None:
     for key in (
-        "authentication_status",
-        "name",
-        "username",
-        "role",
-        "user_info",
-        "logged_in_log",
-        "logout",
-        "failed_login_attempts",
+        "authentication_status", "name", "username", "role", "user_info",
+        "logged_in_log", "logout", "failed_login_attempts", "mfa_verified_username",
     ):
         st.session_state.pop(key, None)
     if not keep_authenticator:
         st.session_state.pop(_AUTHENTICATOR_KEY, None)
         st.session_state.pop(_AUTHENTICATOR_SIGNATURE_KEY, None)
 
-
 def perform_logout() -> None:
+    if auth_mode() == "oidc":
+        clear_auth_state()
+        st.logout()
+        return
     authenticator, _ = build_authenticator()
     try:
         authenticator.logout(location="unrendered")
     finally:
         clear_auth_state(keep_authenticator=False)
     st.switch_page("login_app.py")
-
 
 def render_account_sidebar() -> None:
     user = current_user()

@@ -94,3 +94,30 @@ def test_repository_concurrency_drafts_comments_and_governance(monkeypatch):
     assert presence and presence[0]["username"] == "reviewer"
 
     assert database["produto_tools_flowchart_versions"].count_documents({"flowchart_id": created["id"]}) == 2
+
+
+
+def test_four_eyes_blocks_content_editor_from_self_approval(monkeypatch):
+    configure_repository(monkeypatch)
+    document = demo_flowchart_document("owner")
+
+    created = repository.save_flowchart(
+        document,
+        "owner",
+        "owner@example.com",
+        actor_username="owner",
+        save_reason="four_eyes_create",
+    )
+
+    repository.transition_workflow(
+        created["id"],
+        "owner",
+        "submit_review",
+    )
+
+    with pytest.raises(repository.FlowPermissionError, match="quatro-olhos"):
+        repository.transition_workflow(
+            created["id"],
+            "owner",
+            "approve",
+        )
