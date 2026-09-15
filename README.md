@@ -256,3 +256,19 @@ evidências, portal de processos publicados, copiloto de IA, POP/SOP, webhooks, 
 MFA TOTP e SSO/OIDC opcional.
 
 Consulte `docs/ENTERPRISE_SUITE_4.md` para configuração e detalhes.
+
+## WBS / EAP — Work Breakdown Structure
+
+A partir da versão **4.1.0**, o Produto Tools possui uma página dedicada à WBS/EAP, com:
+
+- CRUD de WBS e pacotes de trabalho;
+- vínculo com projetos existentes;
+- códigos hierárquicos automáticos (`1`, `1.1`, `1.1.1`...);
+- visualização gráfica, tabela, outline e indicadores;
+- edição por formulário e edição tabular rápida;
+- responsável, status, entregável, datas, duração, progresso, custo, marcos e tags;
+- importação de JSON, XML, Microsoft Project XML, XLS/XLSX, CSV, TSV, TXT, Markdown e PDF textual;
+- exportação para JSON, XML, Excel, CSV, TSV, PDF, Markdown, TXT e pacote ZIP completo;
+- controle de revisão e auditoria no MongoDB.
+
+Consulte `docs/WBS.md` para detalhes.

@@ -1,5 +1,17 @@
 # Changelog
 
+## 4.1.0 — WBS / EAP
+
+- nova página exclusiva `WBS — Work Breakdown Structure`;
+- CRUD completo de WBS e pacotes hierárquicos;
+- vínculo da WBS aos projetos existentes;
+- visão gráfica Graphviz, tabela, outline e indicadores;
+- importação JSON/XML/Microsoft Project XML/Excel/CSV/TSV/TXT/Markdown/PDF;
+- exportação JSON/XML/Excel/CSV/TSV/PDF/Markdown/TXT/ZIP;
+- controle de revisão otimista e trilha de auditoria;
+- coleção MongoDB dedicada `produto_tools_wbs`;
+- testes de hierarquia, formatos, exportação e repositório.
+
 ## 4.0.0 — Enterprise Suite
 
 - Nova Central de Melhoria: SIPOC, 5W2H, FMEA/riscos, Ishikawa, 5 Porquês, Pareto e VSM.

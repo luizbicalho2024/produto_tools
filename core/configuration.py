@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 
 APP_NAME = os.getenv("PRODUTO_TOOLS_APP_NAME", "Produto Tools")
-APP_VERSION = "4.0.0"
+APP_VERSION = "4.1.0"
 
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "simulador_db")
 USERS_COLLECTION = "users"
@@ -19,6 +19,7 @@ PROJECTS_COLLECTION = "produto_tools_projects"
 PROJECT_RELEASES_COLLECTION = "produto_tools_project_releases"
 PROJECT_RELEASE_FLOWS_COLLECTION = "produto_tools_project_release_flows"
 PROJECT_MEMBERS_COLLECTION = "produto_tools_project_members"
+WBS_COLLECTION = "produto_tools_wbs"
 
 VALID_USER_ROLES = {"user", "head_comercial", "admin"}
 ROLE_LABELS = {
