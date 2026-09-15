@@ -25,6 +25,9 @@ def test_wbs_page_exposes_crud_views_and_formats():
         "duplicate_wbs",
         "import_wbs",
         "export_wbs",
+        "export_import_template",
+        "Baixar modelo Excel",
+        "Baixar modelo CSV",
         '"json", "xml", "xlsx", "xls", "csv", "tsv", "txt", "md", "pdf"',
         "Todos (ZIP)",
     ):

@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.1.1
+
+- Adiciona download de modelo de importação WBS em Excel e CSV.
+- Excel inclui exemplos, instruções, valores aceitos e validação de campos.
+- O mesmo modelo baixado pode ser preenchido e reenviado no importador WBS.
+
+
 ## 4.1.0 — WBS / EAP
 
 - nova página exclusiva `WBS — Work Breakdown Structure`;

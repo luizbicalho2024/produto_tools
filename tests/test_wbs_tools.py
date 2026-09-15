@@ -4,6 +4,7 @@ import pytest
 
 from services.wbs_tools import (
     delete_node,
+    export_import_template,
     export_wbs,
     graphviz_dot,
     import_wbs,
@@ -84,6 +85,31 @@ def test_pdf_and_zip_exports():
     assert package.startswith(b"PK")
     assert package_mime == "application/zip"
     assert package_name.endswith(".zip")
+
+
+def test_import_templates_are_reimportable():
+    pytest.importorskip("openpyxl")
+
+    xlsx, xlsx_mime, xlsx_name = export_import_template("xlsx")
+    assert xlsx.startswith(b"PK")
+    assert xlsx_name == "modelo_importacao_wbs.xlsx"
+    assert "spreadsheetml" in xlsx_mime
+
+    imported_xlsx = import_wbs(xlsx_name, xlsx)
+    assert [node["code"] for node in imported_xlsx["nodes"]] == [
+        "1",
+        "1.1",
+        "1.1.1",
+        "1.2",
+    ]
+
+    csv_data, csv_mime, csv_name = export_import_template("csv")
+    assert csv_name == "modelo_importacao_wbs.csv"
+    assert csv_mime == "text/csv"
+
+    imported_csv = import_wbs(csv_name, csv_data)
+    assert len(imported_csv["nodes"]) == 4
+    assert imported_csv["nodes"][2]["name"] == "Levantamento de requisitos"
 
 
 def test_graphviz_contains_hierarchy():
