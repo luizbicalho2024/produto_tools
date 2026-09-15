@@ -26,6 +26,7 @@ from core.configuration import (
     PROJECT_RELEASES_COLLECTION,
     PROJECT_RELEASE_FLOWS_COLLECTION,
     PROJECT_MEMBERS_COLLECTION,
+    WBS_COLLECTION,
     MONGO_DB_NAME,
     USERS_COLLECTION,
     VALID_USER_ROLES,
@@ -175,6 +176,18 @@ def initialize_database() -> bool:
         database[FLOWCHARTS_COLLECTION].create_index(
             [("project_id", ASCENDING), ("project_order", ASCENDING)],
             name="ix_pt_flows_project_order",
+        )
+        database[WBS_COLLECTION].create_index(
+            [("owner_username", ASCENDING), ("updated_at", DESCENDING)],
+            name="ix_pt_wbs_owner_updated",
+        )
+        database[WBS_COLLECTION].create_index(
+            [("project_id", ASCENDING), ("updated_at", DESCENDING)],
+            name="ix_pt_wbs_project_updated",
+        )
+        database[WBS_COLLECTION].create_index(
+            [("status", ASCENDING), ("updated_at", DESCENDING)],
+            name="ix_pt_wbs_status_updated",
         )
         database[ACTIVITY_LOGS_COLLECTION].create_index(
             [("timestamp", DESCENDING)], name="ix_logs_timestamp"
