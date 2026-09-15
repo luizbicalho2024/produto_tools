@@ -54,3 +54,24 @@ O modelo Excel contém:
 
 Após preencher o modelo, envie-o no próprio campo de importação da WBS.
 
+## Visualizacao de estruturas grandes
+
+Para WBS extensas, a aba **Grafico** oferece:
+
+- visualizacao completa;
+- limite de exibicao por nivel;
+- foco em uma subarvore;
+- orientacao vertical ou horizontal;
+- modo compacto;
+- exibicao opcional de responsavel, status e entregavel;
+- cores por status.
+
+A aba **Tabela** oferece:
+
+- coluna de estrutura hierarquica;
+- filtro por ramo principal, status, nivel e busca textual;
+- paginacao;
+- modos de coluna compacta, operacional e completa;
+- fundo escuro e destaque visual dos niveis;
+- editor tabular rapido recolhivel.
+

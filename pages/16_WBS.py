@@ -31,6 +31,8 @@ from services.wbs_tools import (
     new_node,
     normalize_nodes,
     outline_text,
+    primary_branch_map,
+    select_graph_nodes,
     summary_metrics,
     table_rows,
     top_level_rollup,
@@ -67,6 +69,100 @@ def rerun_select(wbs_id: str | None = None) -> None:
     st.rerun()
 
 
+def apply_wbs_visual_styles() -> None:
+    st.markdown(
+        """
+<style>
+[data-testid="stMetric"] {
+    background: linear-gradient(180deg, #0F172A 0%, #1E293B 100%);
+    border: 1px solid rgba(148, 163, 184, .22);
+    border-radius: 14px;
+    padding: 10px 14px;
+}
+[data-testid="stMetricLabel"],
+[data-testid="stMetricValue"] {
+    color: #E5E7EB;
+}
+div[data-testid="stDataFrame"],
+div[data-testid="stDataEditor"] {
+    border: 1px solid rgba(71, 85, 105, .55);
+    border-radius: 12px;
+    overflow: hidden;
+}
+div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+    background: rgba(30, 41, 59, .10);
+    border-radius: 10px 10px 0 0;
+}
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def visual_table_frame(nodes: list[dict]) -> pd.DataFrame:
+    frame = pd.DataFrame(table_rows(nodes))
+
+    if frame.empty:
+        return frame
+
+    normalized = normalize_nodes(nodes)
+    branch_ids = primary_branch_map(normalized)
+
+    branch_labels = {
+        str(node["id"]): f"{node['code']} · {node['name']}"
+        for node in normalized
+    }
+
+    frame["Ramo principal"] = frame["ID"].map(
+        lambda node_id: branch_labels.get(
+            branch_ids.get(str(node_id), ""),
+            "",
+        )
+    )
+
+    def hierarchy_label(row: pd.Series) -> str:
+        level = max(1, int(row.get("Nível", 1)))
+        indent = " " * (level - 1)
+        marker = "↳ " if level > 1 else ""
+        return f"{indent}{marker}{row['Código']} · {row['Nome']}"
+
+    frame["Estrutura"] = frame.apply(hierarchy_label, axis=1)
+    return frame
+
+
+def style_readonly_table(frame: pd.DataFrame):
+    def row_style(row: pd.Series) -> list[str]:
+        level = int(row.get("Nível", 1) or 1)
+
+        if level == 1:
+            background = "#172554"
+        elif level == 2:
+            background = "#1E293B"
+        else:
+            background = "#0F172A" if row.name % 2 == 0 else "#111827"
+
+        style = (
+            f"background-color: {background}; "
+            "color: #E5E7EB; "
+            "border-bottom: 1px solid #334155;"
+        )
+        return [style] * len(row)
+
+    return frame.style.apply(row_style, axis=1).set_table_styles(
+        [
+            {
+                "selector": "th",
+                "props": [
+                    ("background-color", "#020617"),
+                    ("color", "#F8FAFC"),
+                    ("font-weight", "600"),
+                    ("border-bottom", "1px solid #475569"),
+                ],
+            }
+        ]
+    )
+
+
 def render_import_template_downloads(key_prefix: str) -> None:
     st.caption(
         "Baixe um modelo pronto, preencha sua estrutura e envie o mesmo arquivo "
@@ -87,6 +183,8 @@ def render_import_template_downloads(key_prefix: str) -> None:
             key=f"{key_prefix}_{fmt}",
         )
 
+
+apply_wbs_visual_styles()
 
 with st.expander("➕ Criar nova WBS", expanded=False):
     with st.form("create_wbs_form", clear_on_submit=False):
@@ -213,86 +311,433 @@ with tabs[0]:
     if not nodes:
         st.info("Adicione pacotes na aba Editor.")
     else:
-        direction = st.radio("Orientação", ["Vertical", "Horizontal"], horizontal=True, key="wbs_graph_direction")
-        st.graphviz_chart(graphviz_dot(nodes, rankdir="LR" if direction == "Horizontal" else "TB"), use_container_width=True)
-        with st.expander("Árvore textual / outline"):
-            st.code(outline_text(nodes), language=None)
+        st.markdown("#### Visualização gráfica")
+
+        g1, g2, g3, g4 = st.columns([1.5, 1.2, 1, 1])
+
+        graph_mode = g1.selectbox(
+            "Modo de exibição",
+            ["Completa", "Até um nível", "Subárvore"],
+            index=1 if len(nodes) > 80 else 0,
+            key="wbs_graph_mode",
+        )
+
+        direction = g2.radio(
+            "Orientação",
+            ["Vertical", "Horizontal"],
+            horizontal=True,
+            key="wbs_graph_direction",
+        )
+
+        compact_graph = g3.checkbox(
+            "Modo compacto",
+            value=len(nodes) > 40,
+            key="wbs_graph_compact",
+        )
+
+        show_owner = g4.checkbox(
+            "Responsável",
+            value=len(nodes) <= 80,
+            key="wbs_graph_owner",
+        )
+
+        d1, d2 = st.columns(2)
+        show_status = d1.checkbox(
+            "Exibir status",
+            value=True,
+            key="wbs_graph_status",
+        )
+        show_deliverable = d2.checkbox(
+            "Exibir entregável",
+            value=False,
+            key="wbs_graph_deliverable",
+        )
+
+        graph_nodes = nodes
+
+        if graph_mode == "Até um nível":
+            default_level = 2 if len(nodes) > 120 else min(3, int(metrics["levels"]))
+            max_visible_level = st.slider(
+                "Níveis visíveis",
+                min_value=1,
+                max_value=max(1, int(metrics["levels"])),
+                value=max(1, default_level),
+                key="wbs_graph_max_level",
+            )
+            graph_nodes = select_graph_nodes(
+                nodes,
+                max_level=max_visible_level,
+            )
+
+        elif graph_mode == "Subárvore":
+            focus_id = st.selectbox(
+                "Pacote raiz da subárvore",
+                [node["id"] for node in nodes],
+                format_func=lambda value: next(
+                    f"{node['code']} · {node['name']}"
+                    for node in nodes
+                    if node["id"] == value
+                ),
+                key="wbs_graph_focus",
+            )
+
+            max_relative_depth = st.slider(
+                "Profundidade da subárvore",
+                min_value=0,
+                max_value=max(0, int(metrics["levels"]) - 1),
+                value=min(3, max(0, int(metrics["levels"]) - 1)),
+                key="wbs_graph_depth",
+            )
+
+            graph_nodes = select_graph_nodes(
+                nodes,
+                focus_id=focus_id,
+                max_relative_depth=max_relative_depth,
+            )
+
+        if graph_mode == "Completa" and len(nodes) > 120:
+            st.warning(
+                "Esta WBS é muito grande para uma leitura confortável em uma única árvore. "
+                "Use 'Até um nível' ou 'Subárvore' para navegar."
+            )
+
+        st.caption(
+            f"Exibindo **{len(graph_nodes)}** de **{len(nodes)}** itens."
+        )
+
+        st.graphviz_chart(
+            graphviz_dot(
+                graph_nodes,
+                rankdir="LR" if direction == "Horizontal" else "TB",
+                compact=compact_graph,
+                include_owner=show_owner,
+                include_status=show_status,
+                include_deliverable=show_deliverable,
+            ),
+            use_container_width=True,
+        )
+
+        with st.expander("Árvore textual / outline", expanded=False):
+            st.code(outline_text(graph_nodes), language=None)
+
+        with st.expander("Tabela dos itens exibidos", expanded=False):
+            graph_preview = pd.DataFrame(
+                [
+                    {
+                        "Código": node.get("code", ""),
+                        "Nível": len(str(node.get("code", "")).split(".")),
+                        "Nome": node.get("name", ""),
+                        "Responsável": node.get("owner", ""),
+                        "Status": STATUS_LABELS.get(node.get("status"), node.get("status")),
+                        "Entregável": node.get("deliverable", ""),
+                    }
+                    for node in graph_nodes
+                ]
+            )
+            st.dataframe(
+                graph_preview,
+                use_container_width=True,
+                hide_index=True,
+                height=420,
+            )
+
+
 
 with tabs[1]:
     if not nodes:
         st.info("A WBS ainda não possui itens.")
     else:
-        frame = pd.DataFrame(table_rows(nodes))
-        f1, f2, f3 = st.columns([2, 1, 1])
-        query = f1.text_input("Pesquisar", placeholder="Código, pacote, responsável, entregável...")
+        st.markdown("#### Visualização da tabela")
+        st.caption(
+            "Use os filtros e a paginação para navegar em WBS grandes. "
+            "A edição ficou recolhida para priorizar a leitura."
+        )
+
+        frame = visual_table_frame(nodes)
+
+        f1, f2, f3, f4 = st.columns([2.2, 1.6, 1.1, 1.1])
+
+        query = f1.text_input(
+            "Pesquisar",
+            placeholder="Código, pacote, responsável, entregável, descrição...",
+            key="wbs_table_search",
+        )
+
+        branches = [
+            item
+            for item in sorted(frame["Ramo principal"].dropna().unique().tolist())
+            if item
+        ]
+
+        branch_filter = f2.multiselect(
+            "Ramo principal",
+            branches,
+            key="wbs_table_branch",
+        )
+
         statuses = sorted(frame["Status"].dropna().unique().tolist())
-        status_filter = f2.multiselect("Status", statuses)
+        status_filter = f3.multiselect(
+            "Status",
+            statuses,
+            key="wbs_table_status",
+        )
+
         levels = sorted(frame["Nível"].dropna().unique().tolist())
-        level_filter = f3.multiselect("Nível", levels)
+        level_filter = f4.multiselect(
+            "Nível",
+            levels,
+            key="wbs_table_level",
+        )
+
         filtered = frame.copy()
+
         if query:
-            mask = filtered.astype(str).apply(lambda col: col.str.contains(query, case=False, na=False)).any(axis=1)
+            mask = filtered.astype(str).apply(
+                lambda column: column.str.contains(query, case=False, na=False)
+            ).any(axis=1)
             filtered = filtered[mask]
+
+        if branch_filter:
+            filtered = filtered[
+                filtered["Ramo principal"].isin(branch_filter)
+            ]
+
         if status_filter:
             filtered = filtered[filtered["Status"].isin(status_filter)]
+
         if level_filter:
             filtered = filtered[filtered["Nível"].isin(level_filter)]
-        st.dataframe(filtered, use_container_width=True, hide_index=True, height=520)
 
-        st.markdown("#### Edição tabular rápida")
-        st.caption("Edite nome, responsável, status, entregável, datas, progresso, custo e tags. A hierarquia é preservada e os códigos são recalculados automaticamente.")
-        editable_rows = []
-        by_id = {node["id"]: node for node in nodes}
-        for row in table_rows(nodes):
-            original = by_id[row["ID"]]
-            editable_rows.append({
-                "ID": row["ID"], "Código": row["Código"], "Código pai": row["Código pai"], "Nome": row["Nome"],
-                "Responsável": row["Responsável"], "Status": original["status"], "Entregável": row["Entregável"],
-                "Início": row["Início"], "Fim": row["Fim"], "Duração (dias)": row["Duração (dias)"],
-                "Progresso (%)": row["Progresso (%)"], "Custo": row["Custo"], "Marco": original["milestone"], "Tags": row["Tags"],
-            })
-        edited = st.data_editor(
-            pd.DataFrame(editable_rows),
+        v1, v2, v3 = st.columns([1.4, 1, 1])
+
+        column_mode = v1.selectbox(
+            "Modo de colunas",
+            ["Compacta", "Operacional", "Completa"],
+            key="wbs_table_columns",
+        )
+
+        page_size = v2.selectbox(
+            "Itens por página",
+            [25, 50, 100, 250],
+            index=1,
+            key="wbs_table_page_size",
+        )
+
+        total_rows = len(filtered)
+        total_pages = max(
+            1,
+            (total_rows + int(page_size) - 1) // int(page_size),
+        )
+
+        page_number = v3.number_input(
+            "Página",
+            min_value=1,
+            max_value=total_pages,
+            value=1,
+            step=1,
+            key="wbs_table_page",
+        )
+
+        start = (int(page_number) - 1) * int(page_size)
+        end = start + int(page_size)
+        visible = filtered.iloc[start:end].copy()
+
+        if column_mode == "Compacta":
+            display_columns = [
+                "Estrutura",
+                "Responsável",
+                "Status",
+                "Progresso (%)",
+                "Entregável",
+            ]
+        elif column_mode == "Operacional":
+            display_columns = [
+                "Estrutura",
+                "Ramo principal",
+                "Nível",
+                "Responsável",
+                "Status",
+                "Entregável",
+                "Progresso (%)",
+                "Custo",
+                "Marco",
+                "Tags",
+            ]
+        else:
+            display_columns = [
+                "Estrutura",
+                "Ramo principal",
+                "Nível",
+                "Responsável",
+                "Status",
+                "Entregável",
+                "Início",
+                "Fim",
+                "Duração (dias)",
+                "Progresso (%)",
+                "Custo",
+                "Marco",
+                "Tags",
+                "Descrição",
+            ]
+
+        st.caption(
+            f"Exibindo **{len(visible)}** de **{total_rows}** itens filtrados · "
+            f"Página **{int(page_number)}/{total_pages}**."
+        )
+
+        display_frame = visible[display_columns].reset_index(drop=True)
+
+        st.dataframe(
+            style_readonly_table(display_frame),
             use_container_width=True,
             hide_index=True,
-            disabled=["ID", "Código", "Código pai"],
+            height=650,
             column_config={
-                "Status": st.column_config.SelectboxColumn(options=list(STATUS_OPTIONS)),
-                "Progresso (%)": st.column_config.NumberColumn(min_value=0.0, max_value=100.0, step=5.0),
-                "Custo": st.column_config.NumberColumn(min_value=0.0, step=100.0),
-                "Marco": st.column_config.CheckboxColumn(),
+                "Estrutura": st.column_config.TextColumn(
+                    "Estrutura",
+                    width="large",
+                ),
+                "Ramo principal": st.column_config.TextColumn(
+                    "Ramo principal",
+                    width="medium",
+                ),
+                "Responsável": st.column_config.TextColumn(
+                    "Responsável",
+                    width="medium",
+                ),
+                "Entregável": st.column_config.TextColumn(
+                    "Entregável",
+                    width="large",
+                ),
+                "Descrição": st.column_config.TextColumn(
+                    "Descrição",
+                    width="large",
+                ),
+                "Progresso (%)": st.column_config.ProgressColumn(
+                    "Progresso",
+                    min_value=0,
+                    max_value=100,
+                    format="%.0f%%",
+                ),
+                "Custo": st.column_config.NumberColumn(
+                    "Custo",
+                    format="R$ %.2f",
+                ),
             },
-            key=f"wbs_table_editor_{selected_id}_{record.get('revision', 1)}",
         )
-        if st.button("Salvar alterações da tabela", type="primary", disabled=not can_edit):
-            try:
-                updated_by_id = {node["id"]: deepcopy(node) for node in nodes}
-                for item in edited.to_dict("records"):
-                    target = updated_by_id.get(str(item.get("ID")))
-                    if not target:
-                        continue
-                    target.update({
-                        "name": str(item.get("Nome") or "").strip(),
-                        "owner": str(item.get("Responsável") or "").strip(),
-                        "status": str(item.get("Status") or "planned"),
-                        "deliverable": str(item.get("Entregável") or "").strip(),
-                        "start_date": str(item.get("Início") or "").strip(),
-                        "due_date": str(item.get("Fim") or "").strip(),
-                        "duration_days": item.get("Duração (dias)") or 0,
-                        "progress_percent": item.get("Progresso (%)") or 0,
-                        "cost": item.get("Custo") or 0,
-                        "milestone": bool(item.get("Marco")),
-                        "tags": str(item.get("Tags") or ""),
-                    })
-                saved = save_wbs(
-                    selected_id, username, name=record["name"], description=record.get("description", ""),
-                    project_id=record.get("project_id", ""), visibility=record.get("visibility", "private"), status=record.get("status", "draft"),
-                    nodes=list(updated_by_id.values()), expected_revision=record.get("revision"), is_admin=is_admin,
+
+        with st.expander("Edição tabular rápida", expanded=False):
+            st.caption(
+                "Edite nome, responsável, status, entregável, datas, progresso, "
+                "custo e tags. A hierarquia é preservada."
+            )
+
+            editable_rows = []
+            by_id = {node["id"]: node for node in nodes}
+
+            for row in table_rows(nodes):
+                original = by_id[row["ID"]]
+                editable_rows.append(
+                    {
+                        "ID": row["ID"],
+                        "Código": row["Código"],
+                        "Código pai": row["Código pai"],
+                        "Nome": row["Nome"],
+                        "Responsável": row["Responsável"],
+                        "Status": original["status"],
+                        "Entregável": row["Entregável"],
+                        "Início": row["Início"],
+                        "Fim": row["Fim"],
+                        "Duração (dias)": row["Duração (dias)"],
+                        "Progresso (%)": row["Progresso (%)"],
+                        "Custo": row["Custo"],
+                        "Marco": original["milestone"],
+                        "Tags": row["Tags"],
+                    }
                 )
-                st.success(f"Tabela salva. Revisão {saved.get('revision')}.")
-                st.rerun()
-            except Exception as exc:
-                st.error(str(exc))
+
+            edited = st.data_editor(
+                pd.DataFrame(editable_rows),
+                use_container_width=True,
+                hide_index=True,
+                disabled=["ID", "Código", "Código pai"],
+                column_config={
+                    "Status": st.column_config.SelectboxColumn(
+                        options=list(STATUS_OPTIONS)
+                    ),
+                    "Progresso (%)": st.column_config.NumberColumn(
+                        min_value=0.0,
+                        max_value=100.0,
+                        step=5.0,
+                    ),
+                    "Custo": st.column_config.NumberColumn(
+                        min_value=0.0,
+                        step=100.0,
+                    ),
+                    "Marco": st.column_config.CheckboxColumn(),
+                },
+                key=(
+                    f"wbs_table_editor_{selected_id}_"
+                    f"{record.get('revision', 1)}"
+                ),
+            )
+
+            if st.button(
+                "Salvar alterações da tabela",
+                type="primary",
+                disabled=not can_edit,
+            ):
+                try:
+                    updated_by_id = {
+                        node["id"]: deepcopy(node)
+                        for node in nodes
+                    }
+
+                    for item in edited.to_dict("records"):
+                        target = updated_by_id.get(str(item.get("ID")))
+
+                        if not target:
+                            continue
+
+                        target.update(
+                            {
+                                "name": str(item.get("Nome") or "").strip(),
+                                "owner": str(item.get("Responsável") or "").strip(),
+                                "status": str(item.get("Status") or "planned"),
+                                "deliverable": str(item.get("Entregável") or "").strip(),
+                                "start_date": str(item.get("Início") or "").strip(),
+                                "due_date": str(item.get("Fim") or "").strip(),
+                                "duration_days": item.get("Duração (dias)") or 0,
+                                "progress_percent": item.get("Progresso (%)") or 0,
+                                "cost": item.get("Custo") or 0,
+                                "milestone": bool(item.get("Marco")),
+                                "tags": str(item.get("Tags") or ""),
+                            }
+                        )
+
+                    saved = save_wbs(
+                        selected_id,
+                        username,
+                        name=record["name"],
+                        description=record.get("description", ""),
+                        project_id=record.get("project_id", ""),
+                        visibility=record.get("visibility", "private"),
+                        status=record.get("status", "draft"),
+                        nodes=list(updated_by_id.values()),
+                        expected_revision=record.get("revision"),
+                        is_admin=is_admin,
+                    )
+
+                    st.success(
+                        f"Tabela salva. Revisão {saved.get('revision')}."
+                    )
+                    st.rerun()
+
+                except Exception as exc:
+                    st.error(str(exc))
+
+
 
 with tabs[2]:
     left, right = st.columns([1, 2])

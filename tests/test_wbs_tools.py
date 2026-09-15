@@ -9,6 +9,8 @@ from services.wbs_tools import (
     graphviz_dot,
     import_wbs,
     normalize_nodes,
+    primary_branch_map,
+    select_graph_nodes,
     summary_metrics,
     table_rows,
     validate_wbs,
@@ -110,6 +112,71 @@ def test_import_templates_are_reimportable():
     imported_csv = import_wbs(csv_name, csv_data)
     assert len(imported_csv["nodes"]) == 4
     assert imported_csv["nodes"][2]["name"] == "Levantamento de requisitos"
+
+
+
+
+
+def test_graph_filters_and_primary_branches():
+    nodes = normalize_nodes(sample_nodes())
+
+    branches = primary_branch_map(nodes)
+    assert branches["design"] == "design"
+    assert branches["build"] == "build"
+    assert branches["api"] == "build"
+
+    top_two_levels = select_graph_nodes(nodes, max_level=2)
+    assert [node["code"] for node in top_two_levels] == [
+        "1",
+        "1.1",
+        "1.2",
+    ]
+
+    subtree = select_graph_nodes(
+        nodes,
+        focus_id="build",
+        max_relative_depth=1,
+    )
+    assert [node["id"] for node in subtree] == ["build", "api"]
+    assert [node["code"] for node in subtree] == ["1.2", "1.2.1"]
+
+
+def test_large_graph_filters_206_items():
+    raw = [{"id": "root", "name": "Programa", "order": 1}]
+
+    for branch_index in range(1, 11):
+        branch_id = f"branch_{branch_index}"
+        raw.append(
+            {
+                "id": branch_id,
+                "parent_id": "root",
+                "name": f"Ramo {branch_index}",
+                "order": branch_index,
+            }
+        )
+
+        for item_index in range(1, 21):
+            raw.append(
+                {
+                    "id": f"{branch_id}_{item_index}",
+                    "parent_id": branch_id,
+                    "name": f"Pacote {branch_index}.{item_index}",
+                    "order": item_index,
+                }
+            )
+
+    raw = raw[:206]
+    nodes = normalize_nodes(raw)
+
+    assert len(nodes) == 206
+    assert len(select_graph_nodes(nodes, max_level=2)) == 11
+
+    branch = select_graph_nodes(
+        nodes,
+        focus_id="branch_1",
+        max_relative_depth=1,
+    )
+    assert len(branch) == 21
 
 
 def test_graphviz_contains_hierarchy():

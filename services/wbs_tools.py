@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import re
+import textwrap
 import zipfile
 from collections import defaultdict
 from copy import deepcopy
@@ -323,25 +324,187 @@ def summary_metrics(nodes: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def outline_text(nodes: list[dict[str, Any]]) -> str:
-    normalized = normalize_nodes(nodes)
+    normalized = normalize_nodes(nodes, recode=False)
     depths = node_depths(normalized)
     return "\n".join(f"{'  ' * depths.get(node['id'], 0)}{node['code']} {node['name']}" for node in normalized)
 
 
-def graphviz_dot(nodes: list[dict[str, Any]], *, rankdir: str = "TB") -> str:
+def primary_branch_map(nodes: list[dict[str, Any]]) -> dict[str, str]:
     normalized = normalize_nodes(nodes)
+    by_id = {str(node["id"]): node for node in normalized}
+    depths = node_depths(normalized)
+    cache: dict[str, str] = {}
+
+    def resolve(identifier: str) -> str:
+        if identifier in cache:
+            return cache[identifier]
+        if identifier not in by_id:
+            return ""
+
+        cursor = identifier
+        depth = depths.get(cursor, 0)
+
+        if depth == 0:
+            cache[identifier] = cursor
+            return cursor
+
+        while depth > 1:
+            parent = _text((by_id.get(cursor) or {}).get("parent_id"))
+            if not parent or parent not in by_id:
+                break
+            cursor = parent
+            depth = depths.get(cursor, 0)
+
+        cache[identifier] = cursor
+        return cursor
+
+    return {identifier: resolve(identifier) for identifier in by_id}
+
+
+def select_graph_nodes(
+    nodes: list[dict[str, Any]],
+    *,
+    focus_id: str = "",
+    max_level: int | None = None,
+    max_relative_depth: int | None = None,
+) -> list[dict[str, Any]]:
+    normalized = normalize_nodes(nodes)
+    if not normalized:
+        return []
+
+    by_id = {str(node["id"]): node for node in normalized}
+    children: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+    for node in normalized:
+        children[_text(node.get("parent_id"))].append(node)
+
+    if focus_id and focus_id in by_id:
+        selected: set[str] = set()
+
+        def walk(identifier: str, relative_depth: int = 0) -> None:
+            if identifier not in by_id or identifier in selected:
+                return
+            selected.add(identifier)
+
+            if max_relative_depth is not None and relative_depth >= max_relative_depth:
+                return
+
+            for child in children.get(identifier, []):
+                walk(str(child["id"]), relative_depth + 1)
+
+        walk(focus_id)
+        return [
+            node
+            for node in normalized
+            if str(node["id"]) in selected
+        ]
+
+    if max_level is not None and max_level > 0:
+        depths = node_depths(normalized)
+        return [
+            node
+            for node in normalized
+            if depths.get(str(node["id"]), 0) + 1 <= max_level
+        ]
+
+    return normalized
+
+
+def _wrap_graph_text(value: Any, width: int = 28) -> str:
+    text = _text(value)
+    if not text:
+        return ""
+
+    lines = textwrap.wrap(
+        text,
+        width=width,
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+    return "\\n".join(lines or [text])
+
+
+def graphviz_dot(
+    nodes: list[dict[str, Any]],
+    *,
+    rankdir: str = "TB",
+    compact: bool = False,
+    include_owner: bool = True,
+    include_status: bool = True,
+    include_deliverable: bool = False,
+) -> str:
+    normalized = normalize_nodes(nodes, recode=False)
+
+    if not normalized:
+        return 'digraph WBS { empty [label="WBS vazia"]; }'
+
     safe_rank = "LR" if str(rankdir).upper() == "LR" else "TB"
-    lines = ["digraph WBS {", f"rankdir={safe_rank};", 'graph [pad="0.3", nodesep="0.35", ranksep="0.55"];', 'node [shape=box, style="rounded", fontname="Arial", fontsize=10];']
+    font_size = 9 if compact else 10
+    margin = "0.10,0.07" if compact else "0.16,0.12"
+    wrap_width = 34 if compact else 25
+
+    lines = [
+        "digraph WBS {",
+        f"rankdir={safe_rank};",
+        'graph [pad="0.35", nodesep="0.30", ranksep="0.55", splines=ortho, overlap=false];',
+        f'node [shape=box, style="rounded,filled", fontname="Arial", fontsize={font_size}, margin="{margin}"];',
+        'edge [color="#64748B", arrowsize=0.65, penwidth=1.0];',
+    ]
+
+    palettes = {
+        "planned": ("#E2E8F0", "#64748B", "#0F172A"),
+        "in_progress": ("#FEF3C7", "#D97706", "#78350F"),
+        "blocked": ("#FEE2E2", "#DC2626", "#7F1D1D"),
+        "done": ("#DCFCE7", "#16A34A", "#14532D"),
+        "cancelled": ("#E5E7EB", "#6B7280", "#374151"),
+    }
+
     for node in normalized:
-        label = f"{node['code']}\\n{node['name']}" + (f"\\n{node['owner']}" if node.get("owner") else "")
-        label = label.replace('"', '\\"')
+        status = _text(node.get("status")).lower() or "planned"
+        fill, border, font = palettes.get(status, palettes["planned"])
+
+        label_parts = [
+            node["code"],
+            _wrap_graph_text(node["name"], wrap_width),
+        ]
+
+        details: list[str] = []
+        if include_status:
+            details.append(STATUS_LABELS.get(status, status))
+        if include_owner and node.get("owner"):
+            details.append(_wrap_graph_text(node.get("owner"), wrap_width))
+
+        if details:
+            label_parts.append(" | ".join(details))
+
+        if include_deliverable and node.get("deliverable"):
+            label_parts.append(
+                _wrap_graph_text(node.get("deliverable"), wrap_width)
+            )
+
+        label = "\\n".join(
+            part for part in label_parts if part
+        ).replace('"', '\\"')
         identifier = str(node["id"]).replace('"', '\\"')
-        lines.append(f'"{identifier}" [label="{label}"];')
+
+        lines.append(
+            f'"{identifier}" '
+            f'[label="{label}", fillcolor="{fill}", color="{border}", '
+            f'fontcolor="{font}", penwidth=1.2];'
+        )
+
+    visible_ids = {str(node["id"]) for node in normalized}
+
     for node in normalized:
-        if node.get("parent_id"):
-            lines.append(f'"{node["parent_id"]}" -> "{node["id"]}";')
+        parent = _text(node.get("parent_id"))
+        if parent and parent in visible_ids:
+            parent_id = parent.replace('"', '\\"')
+            node_id = str(node["id"]).replace('"', '\\"')
+            lines.append(f'"{parent_id}" -> "{node_id}";')
+
     lines.append("}")
     return "\n".join(lines)
+
 
 
 def top_level_rollup(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
