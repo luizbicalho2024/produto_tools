@@ -11,7 +11,7 @@ REPOSITORY = ROOT / "services" / "wbs_repository.py"
 
 
 def test_wbs_release_configuration():
-    assert tuple(int(part) for part in APP_VERSION.split(".")) >= (4, 1, 0)
+    assert tuple(int(part) for part in APP_VERSION.split(".")) >= (4, 1, 2)
     assert WBS_COLLECTION == "produto_tools_wbs"
 
 
@@ -30,6 +30,10 @@ def test_wbs_page_exposes_crud_views_and_formats():
         "Baixar modelo CSV",
         '"json", "xml", "xlsx", "xls", "csv", "tsv", "txt", "md", "pdf"',
         "Todos (ZIP)",
+        "Modo de exibição",
+        "Subárvore",
+        "Visualização da tabela",
+        "Edição tabular rápida",
     ):
         assert token in source
 

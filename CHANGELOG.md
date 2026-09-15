@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.1.2
+
+- Melhora a visualizacao grafica de WBS grandes com modos completa, por nivel e subarvore.
+- Adiciona nos coloridos por status e opcoes para reduzir detalhes no grafico.
+- Melhora a tabela com hierarquia visual, filtros, paginacao e fundo mais escuro.
+- Mantem a edicao tabular disponivel em uma secao recolhivel.
+
+
 ## 4.1.1
 
 - Adiciona download de modelo de importação WBS em Excel e CSV.
