@@ -24,6 +24,7 @@ from services.wbs_tools import (
     STATUS_LABELS,
     STATUS_OPTIONS,
     delete_node,
+    export_import_template,
     export_wbs,
     graphviz_dot,
     import_wbs,
@@ -66,6 +67,27 @@ def rerun_select(wbs_id: str | None = None) -> None:
     st.rerun()
 
 
+def render_import_template_downloads(key_prefix: str) -> None:
+    st.caption(
+        "Baixe um modelo pronto, preencha sua estrutura e envie o mesmo arquivo "
+        "no campo de importação. O Excel inclui exemplos, instruções e valores aceitos."
+    )
+    c1, c2 = st.columns(2)
+    for column, label, fmt in (
+        (c1, "Baixar modelo Excel", "xlsx"),
+        (c2, "Baixar modelo CSV", "csv"),
+    ):
+        data, mime, filename = export_import_template(fmt)
+        column.download_button(
+            label,
+            data=data,
+            file_name=filename,
+            mime=mime,
+            use_container_width=True,
+            key=f"{key_prefix}_{fmt}",
+        )
+
+
 with st.expander("➕ Criar nova WBS", expanded=False):
     with st.form("create_wbs_form", clear_on_submit=False):
         c1, c2 = st.columns([2, 1])
@@ -93,6 +115,8 @@ with st.expander("➕ Criar nova WBS", expanded=False):
 wbss = list_wbs(username, is_admin=is_admin)
 if not wbss:
     st.info("Nenhuma WBS disponível. Crie uma acima ou importe um arquivo na seção de importação rápida.")
+    st.markdown("#### Modelo para importação")
+    render_import_template_downloads("wbs_empty_template")
     uploaded_empty = st.file_uploader(
         "Importar WBS para começar",
         type=["json", "xml", "xlsx", "xls", "csv", "tsv", "txt", "md", "pdf"],
@@ -357,6 +381,8 @@ with tabs[2]:
             st.info("Selecione um pacote à esquerda ou adicione um novo.")
 
 with tabs[3]:
+    st.markdown("#### Modelo para upload")
+    render_import_template_downloads(f"wbs_template_{selected_id}")
     st.markdown("#### Importar")
     uploaded = st.file_uploader(
         "Formatos aceitos: JSON, XML, Microsoft Project XML, Excel XLS/XLSX, CSV, TSV, TXT, Markdown e PDF com texto extraível",
@@ -460,6 +486,7 @@ with tabs[5]:
 - Vinculação opcional a projetos do Produto Tools.
 - Visualização gráfica hierárquica, outline textual, tabela pesquisável e indicadores.
 - Edição individual ou tabular.
+- Modelo de importação para download em Excel e CSV, pronto para preenchimento e reupload.
 - Importação: JSON, XML nativo, Microsoft Project XML, XLS/XLSX, CSV, TSV, TXT, Markdown e PDF textual.
 - Exportação: JSON, XML, Excel, CSV, TSV, PDF, Markdown, TXT e pacote ZIP completo.
 - Controle de revisão otimista e trilha de auditoria no MongoDB.

@@ -596,6 +596,291 @@ def import_pdf(content: bytes) -> dict[str, Any]:
     return result
 
 
+def export_import_template(fmt: str = "xlsx") -> tuple[bytes, str, str]:
+    # Gera um modelo preenchível que pode ser enviado novamente ao importador WBS.
+    fmt = _text(fmt).lower().lstrip(".")
+
+    rows = [
+        {
+            "Código": "1",
+            "Código pai": "",
+            "Nome": "Projeto / Entrega principal",
+            "Descrição": "Nível raiz da WBS",
+            "Responsável": "Gerente do projeto",
+            "Status": "planned",
+            "Entregável": "Entrega principal",
+            "Início": "2026-09-15",
+            "Fim": "2026-10-31",
+            "Duração (dias)": 46,
+            "Progresso (%)": 0,
+            "Custo": 0,
+            "Marco": "Não",
+            "Tags": "projeto",
+            "Ordem": 1,
+        },
+        {
+            "Código": "1.1",
+            "Código pai": "1",
+            "Nome": "Planejamento",
+            "Descrição": "Pacote de planejamento",
+            "Responsável": "Responsável pelo planejamento",
+            "Status": "in_progress",
+            "Entregável": "Plano aprovado",
+            "Início": "2026-09-15",
+            "Fim": "2026-09-25",
+            "Duração (dias)": 10,
+            "Progresso (%)": 50,
+            "Custo": 2500,
+            "Marco": "Não",
+            "Tags": "planejamento",
+            "Ordem": 1,
+        },
+        {
+            "Código": "1.1.1",
+            "Código pai": "1.1",
+            "Nome": "Levantamento de requisitos",
+            "Descrição": "Exemplo de pacote de trabalho de nível 3",
+            "Responsável": "Analista",
+            "Status": "done",
+            "Entregável": "Requisitos documentados",
+            "Início": "2026-09-15",
+            "Fim": "2026-09-18",
+            "Duração (dias)": 3,
+            "Progresso (%)": 100,
+            "Custo": 800,
+            "Marco": "Sim",
+            "Tags": "requisitos, exemplo",
+            "Ordem": 1,
+        },
+        {
+            "Código": "1.2",
+            "Código pai": "1",
+            "Nome": "Execução",
+            "Descrição": "Substitua as linhas de exemplo pelos seus pacotes",
+            "Responsável": "Equipe de execução",
+            "Status": "planned",
+            "Entregável": "Entrega executada",
+            "Início": "2026-09-26",
+            "Fim": "2026-10-31",
+            "Duração (dias)": 35,
+            "Progresso (%)": 0,
+            "Custo": 5000,
+            "Marco": "Não",
+            "Tags": "execucao",
+            "Ordem": 2,
+        },
+    ]
+
+    if fmt == "csv":
+        buffer = io.StringIO()
+        writer = csv.DictWriter(
+            buffer,
+            fieldnames=list(rows[0].keys()),
+            delimiter=",",
+            lineterminator="\n",
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+        return (
+            buffer.getvalue().encode("utf-8-sig"),
+            "text/csv",
+            "modelo_importacao_wbs.csv",
+        )
+
+    if fmt != "xlsx":
+        raise ValueError("O modelo de importação está disponível em XLSX ou CSV.")
+
+    import pandas as pd
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    instructions = [
+        {
+            "Campo": "Código",
+            "Obrigatório": "Recomendado",
+            "Orientação": "Código hierárquico, por exemplo 1, 1.1, 1.1.1. O sistema recalcula os códigos após importar.",
+            "Exemplo": "1.2.1",
+        },
+        {
+            "Campo": "Código pai",
+            "Obrigatório": "Para filhos",
+            "Orientação": "Informe o código do pacote pai. Deixe vazio para itens raiz.",
+            "Exemplo": "1.2",
+        },
+        {
+            "Campo": "Nome",
+            "Obrigatório": "Sim",
+            "Orientação": "Nome do pacote, entrega ou pacote de trabalho.",
+            "Exemplo": "Configurar ambiente",
+        },
+        {
+            "Campo": "Descrição",
+            "Obrigatório": "Não",
+            "Orientação": "Descrição detalhada do escopo do pacote.",
+            "Exemplo": "Preparar ambiente de homologação",
+        },
+        {
+            "Campo": "Responsável",
+            "Obrigatório": "Não",
+            "Orientação": "Pessoa, equipe ou papel responsável.",
+            "Exemplo": "Equipe de Infraestrutura",
+        },
+        {
+            "Campo": "Status",
+            "Obrigatório": "Não",
+            "Orientação": "Use: planned, in_progress, blocked, done ou cancelled.",
+            "Exemplo": "planned",
+        },
+        {
+            "Campo": "Entregável",
+            "Obrigatório": "Não",
+            "Orientação": "Resultado esperado do pacote.",
+            "Exemplo": "Ambiente homologado",
+        },
+        {
+            "Campo": "Início / Fim",
+            "Obrigatório": "Não",
+            "Orientação": "Preferencialmente AAAA-MM-DD.",
+            "Exemplo": "2026-09-15",
+        },
+        {
+            "Campo": "Duração (dias)",
+            "Obrigatório": "Não",
+            "Orientação": "Número maior ou igual a zero.",
+            "Exemplo": "5",
+        },
+        {
+            "Campo": "Progresso (%)",
+            "Obrigatório": "Não",
+            "Orientação": "Número entre 0 e 100.",
+            "Exemplo": "50",
+        },
+        {
+            "Campo": "Custo",
+            "Obrigatório": "Não",
+            "Orientação": "Valor numérico maior ou igual a zero.",
+            "Exemplo": "1500",
+        },
+        {
+            "Campo": "Marco",
+            "Obrigatório": "Não",
+            "Orientação": "Use Sim ou Não.",
+            "Exemplo": "Não",
+        },
+        {
+            "Campo": "Tags",
+            "Obrigatório": "Não",
+            "Orientação": "Separe múltiplas tags por vírgula.",
+            "Exemplo": "infra, homologacao",
+        },
+        {
+            "Campo": "Ordem",
+            "Obrigatório": "Não",
+            "Orientação": "Ordem entre pacotes irmãos. O sistema normaliza a hierarquia.",
+            "Exemplo": "1",
+        },
+    ]
+
+    values = [
+        {"Tipo": "Status", "Valor": "planned", "Descrição": "Planejado"},
+        {"Tipo": "Status", "Valor": "in_progress", "Descrição": "Em andamento"},
+        {"Tipo": "Status", "Valor": "blocked", "Descrição": "Bloqueado"},
+        {"Tipo": "Status", "Valor": "done", "Descrição": "Concluído"},
+        {"Tipo": "Status", "Valor": "cancelled", "Descrição": "Cancelado"},
+        {"Tipo": "Marco", "Valor": "Sim", "Descrição": "É um marco"},
+        {"Tipo": "Marco", "Valor": "Não", "Descrição": "Não é um marco"},
+    ]
+
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        pd.DataFrame(rows).to_excel(writer, sheet_name="WBS", index=False)
+        pd.DataFrame(instructions).to_excel(
+            writer,
+            sheet_name="Instruções",
+            index=False,
+        )
+        pd.DataFrame(values).to_excel(
+            writer,
+            sheet_name="Valores aceitos",
+            index=False,
+        )
+
+        workbook = writer.book
+        sheet = workbook["WBS"]
+        instruction_sheet = workbook["Instruções"]
+        values_sheet = workbook["Valores aceitos"]
+
+        header_fill = PatternFill("solid", fgColor="1F4E78")
+        header_font = Font(color="FFFFFF", bold=True)
+
+        for worksheet in (sheet, instruction_sheet, values_sheet):
+            worksheet.freeze_panes = "A2"
+            worksheet.auto_filter.ref = worksheet.dimensions
+            for cell in worksheet[1]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(
+                    horizontal="center",
+                    vertical="center",
+                )
+
+        widths = {
+            "A": 14,
+            "B": 14,
+            "C": 32,
+            "D": 42,
+            "E": 28,
+            "F": 18,
+            "G": 32,
+            "H": 14,
+            "I": 14,
+            "J": 16,
+            "K": 16,
+            "L": 16,
+            "M": 12,
+            "N": 26,
+            "O": 10,
+        }
+        for column, width in widths.items():
+            sheet.column_dimensions[column].width = width
+
+        for worksheet in (instruction_sheet, values_sheet):
+            for column_cells in worksheet.columns:
+                letter = get_column_letter(column_cells[0].column)
+                max_length = min(
+                    80,
+                    max(
+                        len(str(cell.value or ""))
+                        for cell in column_cells
+                    ) + 2,
+                )
+                worksheet.column_dimensions[letter].width = max(12, max_length)
+
+        status_validation = DataValidation(
+            type="list",
+            formula1='"planned,in_progress,blocked,done,cancelled"',
+            allow_blank=True,
+        )
+        milestone_validation = DataValidation(
+            type="list",
+            formula1='"Sim,Não"',
+            allow_blank=True,
+        )
+        sheet.add_data_validation(status_validation)
+        sheet.add_data_validation(milestone_validation)
+        status_validation.add("F2:F1000")
+        milestone_validation.add("M2:M1000")
+
+        sheet.row_dimensions[1].height = 24
+
+    return (
+        buffer.getvalue(),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "modelo_importacao_wbs.xlsx",
+    )
+
+
 def import_wbs(filename: str, content: bytes) -> dict[str, Any]:
     extension = "." + filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
     if extension == ".json": return import_json(content)

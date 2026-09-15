@@ -39,3 +39,18 @@ O módulo **WBS — Work Breakdown Structure** adiciona ao Produto Tools uma pá
 ## Modelo de dados
 
 Cada WBS é um documento MongoDB na coleção `produto_tools_wbs`. A hierarquia é persistida por `id`/`parent_id`; os códigos `1`, `1.1`, `1.1.1` etc. são recalculados deterministicamente conforme a ordem entre irmãos.
+
+## Modelo para importação
+
+Na aba **Importar / Exportar**, use **Baixar modelo Excel** ou **Baixar modelo CSV**.
+
+O modelo Excel contém:
+
+- aba `WBS`, pronta para preenchimento e upload;
+- aba `Instruções`, com descrição de cada coluna;
+- aba `Valores aceitos`, com status e valores de marco;
+- exemplos de níveis `1`, `1.1`, `1.1.1` e `1.2`;
+- validação de lista para `Status` e `Marco`.
+
+Após preencher o modelo, envie-o no próprio campo de importação da WBS.
+
